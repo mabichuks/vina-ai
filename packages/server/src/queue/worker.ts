@@ -1,6 +1,6 @@
 import PQueue from 'p-queue';
 import type { Database as DatabaseType } from 'better-sqlite3';
-import { createLogger, type Task, type TaskKind } from '@vina/shared';
+import { createLogger, TASK_KINDS, type Task, type TaskKind } from '@vina/shared';
 import {
   claimNext,
   complete,
@@ -43,15 +43,10 @@ export function createWorker(options: WorkerOptions): WorkerHandle {
   const pollIntervalMs = options.pollIntervalMs ?? 1_000;
   const BACKOFF_MS = options.backoffMs ?? [30_000, 60_000, 120_000];
   const queues = new Map<TaskKind, PQueue>();
-  const KINDS: TaskKind[] = [
-    'search',
-    'score',
-    'tailor',
-    'apply',
-    'prepare_manual_apply',
-    'resume',
-  ];
-  for (const kind of KINDS) {
+  // Iterate the shared TASK_KINDS so adding a new kind in @vina/shared
+  // forces a TS error here until we set up its concurrency lane — otherwise
+  // unknown kinds fall through to `unhandled_kind` and mask the real bug.
+  for (const kind of TASK_KINDS) {
     queues.set(
       kind,
       new PQueue({ concurrency: options.concurrency?.[kind] ?? DEFAULT_CONCURRENCY[kind] }),
@@ -86,8 +81,20 @@ export function createWorker(options: WorkerOptions): WorkerHandle {
       emitCounts();
       return;
     }
+    // Parse outside the retry try/catch — a JSON parse error means the row
+    // is corrupt, which won't fix itself by retrying. Fail-fast like an
+    // unhandled kind.
+    let payload: unknown;
     try {
-      const payload: unknown = JSON.parse(task.payload);
+      payload = JSON.parse(task.payload);
+    } catch (err) {
+      const reason = `payload_parse: ${err instanceof Error ? err.message : String(err)}`;
+      fail(options.db, task.id, reason, false);
+      log.error({ task_id: task.id, kind: task.kind, err }, 'task payload parse failed');
+      emitCounts();
+      return;
+    }
+    try {
       await handler(payload);
       complete(options.db, task.id);
     } catch (err) {
