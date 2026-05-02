@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import type { Database as DatabaseType } from 'better-sqlite3';
 import type { ScoreMessages, StructuredScorer } from '@vina/orchestrator';
 import { ScoreSchema } from '@vina/orchestrator';
+import { NotFoundError } from '@vina/shared';
 import { findJobById, insertJob } from '../../../src/db/repositories/jobs.js';
 import { insertProfile } from '../../../src/db/repositories/profile.js';
 import { upsertSearchPreferences } from '../../../src/db/repositories/search-preferences.js';
@@ -88,6 +89,6 @@ describe('score handler', () => {
       bus: createEventBus(),
       buildModel: async () => fakeScorer(50),
     });
-    await expect(handler({ job_id: 'missing' })).rejects.toThrow(/missing/);
+    await expect(handler({ job_id: 'missing' })).rejects.toThrow(NotFoundError);
   });
 });

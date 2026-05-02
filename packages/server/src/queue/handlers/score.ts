@@ -1,7 +1,7 @@
 import type { Database as DatabaseType } from 'better-sqlite3';
 import type { BaseChatModel } from '@langchain/core/language_models/chat_models';
 import { runScoreJob, type ScoreInput } from '@vina/orchestrator';
-import { createLogger, NotFoundError } from '@vina/shared';
+import { ConflictError, createLogger, NotFoundError } from '@vina/shared';
 import { findJobById, updateJobScore, updateJobStatus } from '../../db/repositories/jobs.js';
 import { findProfile } from '../../db/repositories/profile.js';
 import { getOrInitSearchPreferences } from '../../db/repositories/search-preferences.js';
@@ -31,7 +31,7 @@ export function createScoreHandler(
     if (!job) throw new NotFoundError(`Job ${payload.job_id} not found`);
 
     const profile = findProfile(deps.db);
-    if (!profile) throw new NotFoundError('Profile not configured — cannot score');
+    if (!profile) throw new ConflictError('Profile not configured — cannot score');
 
     const prefs = getOrInitSearchPreferences(deps.db);
 
@@ -59,8 +59,10 @@ export function createScoreHandler(
     const model = await deps.buildModel();
     const result = await runScoreJob(input, model);
 
-    updateJobScore(deps.db, job.id, result.score, result.justification);
-    updateJobStatus(deps.db, job.id, 'scored');
+    deps.db.transaction(() => {
+      updateJobScore(deps.db, job.id, result.score, result.justification);
+      updateJobStatus(deps.db, job.id, 'scored');
+    })();
     deps.bus.emit('jobs:updated', { ids: [job.id] });
     log.info({ job_id: job.id, score: result.score }, 'job scored');
   };
