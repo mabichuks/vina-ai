@@ -39,6 +39,9 @@ const TABLES_TO_RESET = [
 function isOnboarded(db: DatabaseType): boolean {
   if (!findProfile(db)) return false;
   if (listLlmProviders(db).length === 0) return false;
+  // Having providers configured isn't enough — the user must have selected
+  // one as active, otherwise the orchestrator has nothing to call.
+  if (!getOrInitSettings(db).active_llm_provider_id) return false;
   if (listCvs(db).length === 0) return false;
   if (!listSites(db).some((s) => s.enabled)) return false;
   return true;

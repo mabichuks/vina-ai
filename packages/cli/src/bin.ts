@@ -41,7 +41,7 @@ program
     '-n, --lines <n>',
     'number of trailing lines to print',
     (v) => Number.parseInt(v, 10),
-    100,
+    200,
   )
   .action(async (opts: { follow?: boolean; lines?: number }) => {
     process.exit(await logsCommand({ follow: opts.follow, lines: opts.lines }));

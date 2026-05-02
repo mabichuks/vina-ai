@@ -7,6 +7,7 @@ import { deleteCv, findCvById, listCvs, setDefaultCv } from '../../db/repositori
 import { resolveCvPath, uploadCv } from '../../services/cv-service.js';
 import type { ServerConfig } from '../../config.js';
 import { parse } from '../parse.js';
+import { MAX_UPLOAD_BYTES } from '../upload-limits.js';
 
 const IdParamsSchema = z.object({ id: z.string().min(1) });
 
@@ -45,12 +46,10 @@ export async function cvRoutes(
       // bites; surface as a 413.
       const e = err as { code?: string; message?: string };
       if (e.code === 'FST_REQ_FILE_TOO_LARGE') {
-        return await Promise.reject(
-          new ValidationError(
-            `File exceeds the maximum upload size`,
-            { limit_bytes: 10 * 1024 * 1024 },
-            'file_too_large',
-          ),
+        throw new ValidationError(
+          `File exceeds the maximum upload size`,
+          { limit_bytes: MAX_UPLOAD_BYTES },
+          'file_too_large',
         );
       }
       throw err;

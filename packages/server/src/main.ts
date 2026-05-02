@@ -29,6 +29,7 @@ function writeStatusFile(config: ServerConfig, port: number, version: string): v
       null,
       2,
     ),
+    { mode: 0o600 },
   );
 }
 

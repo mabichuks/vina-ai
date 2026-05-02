@@ -86,7 +86,7 @@ vina/
 - **Strict TypeScript**: `"strict": true`, no `any` without a `// reason:` comment
 - **No default exports** except for React page components and Vite entrypoints
 - **File naming**: `kebab-case.ts` for modules, `PascalCase.tsx` for React components
-- **Imports**: absolute imports via `tsconfig` paths (e.g. `@vina/shared`)
+- **Imports**: absolute imports via `tsconfig` paths (e.g. `@vina/shared`). Do **not** set `baseUrl` — TypeScript 6 deprecates it. Declare `paths` standalone with entries relative to the tsconfig file (e.g. `"@/*": ["./src/*"]`). When adding a path alias to a package, mirror it in that package's bundler config (Vite `resolve.alias`, etc.) so runtime resolution matches
 - **Formatting**: Prettier; lint with ESLint (`@typescript-eslint`, `eslint-plugin-react`)
 - **Errors**: Throw typed errors that extend a base `VinaError` class. Never throw bare strings
 - **Async**: Always use async/await. No floating promises — enable the lint rule

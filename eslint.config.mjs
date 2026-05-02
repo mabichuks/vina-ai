@@ -35,7 +35,11 @@ export default tseslint.config(
         'error',
         { argsIgnorePattern: '^_', varsIgnorePattern: '^_' },
       ],
-      '@typescript-eslint/no-explicit-any': 'warn',
+      // CLAUDE.md: no `any` without a `// reason:` comment. Treat `any` as a
+      // hard error; intentional uses must opt in explicitly via
+      // `// eslint-disable-next-line @typescript-eslint/no-explicit-any` with
+      // a reason.
+      '@typescript-eslint/no-explicit-any': 'error',
     },
   },
   {

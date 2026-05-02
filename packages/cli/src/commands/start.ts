@@ -14,10 +14,18 @@ export interface StartOptions {
 export async function startCommand(options: StartOptions = {}): Promise<number> {
   const existing = readPidFile();
   if (existing && isProcessAlive(existing)) {
+    // Re-running `vina start` against a live daemon is a "show me the UI"
+    // request, not an error. Open the browser (unless suppressed) and exit 0.
     const status = readStatus();
-    const where = status ? ` on port ${status.port}` : '';
-    process.stderr.write(`Vina is already running${where} (pid ${existing}).\n`);
-    return 1;
+    const port = status?.port;
+    const url = port ? `http://127.0.0.1:${port}` : null;
+    process.stdout.write(
+      url
+        ? `Vina is already running at ${url} (pid ${existing}).\n`
+        : `Vina is already running (pid ${existing}).\n`,
+    );
+    if (url) await openBrowser(url, { skip: options.noBrowser });
+    return 0;
   }
 
   fs.mkdirSync(logsDir, { recursive: true });

@@ -14,6 +14,7 @@ import { settingsRoutes } from './http/routes/settings.js';
 import { siteRoutes } from './http/routes/sites.js';
 import { systemRoutes } from './http/routes/system.js';
 import { registerStatic } from './http/static.js';
+import { MAX_UPLOAD_BYTES } from './http/upload-limits.js';
 import { registerWebSocket } from './http/ws.js';
 
 export interface BuildAppDeps {
@@ -22,8 +23,6 @@ export interface BuildAppDeps {
   version: string;
   startedAt: string;
 }
-
-const MAX_UPLOAD_BYTES = 10 * 1024 * 1024; // 10 MB (PRD-074)
 
 export async function buildApp(deps: BuildAppDeps): Promise<FastifyInstance> {
   const app = Fastify({

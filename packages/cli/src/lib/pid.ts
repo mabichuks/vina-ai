@@ -15,7 +15,7 @@ export function readPidFile(): number | null {
 
 export function writePidFile(pid: number): void {
   fs.mkdirSync(path.dirname(pidFile), { recursive: true });
-  fs.writeFileSync(pidFile, String(pid));
+  fs.writeFileSync(pidFile, String(pid), { mode: 0o600 });
 }
 
 export function deletePidFile(): void {

@@ -4,6 +4,7 @@ import type { Database as DatabaseType } from 'better-sqlite3';
 import { insertCv } from '../../src/db/repositories/cvs.js';
 import { insertLlmProvider } from '../../src/db/repositories/llm-providers.js';
 import { insertProfile } from '../../src/db/repositories/profile.js';
+import { updateSettings } from '../../src/db/repositories/settings.js';
 import { updateSiteEnabled } from '../../src/db/repositories/sites.js';
 import { buildTestApp, type TestAppHandle } from './helpers.js';
 
@@ -53,7 +54,7 @@ describe('bearer auth', () => {
 });
 
 describe('GET /api/bootstrap', () => {
-  it('returns the bearer token and onboarded toggles only when all four prerequisites exist', async () => {
+  it('returns the bearer token and onboarded toggles only when every prerequisite exists', async () => {
     const fresh = (await app.inject({ method: 'GET', url: '/api/bootstrap' })).json() as {
       token: string;
       onboarded: boolean;
@@ -62,20 +63,27 @@ describe('GET /api/bootstrap', () => {
     expect(fresh.onboarded).toBe(false);
 
     insertProfile(db, { full_name: 'Ada', email: 'ada@x.com' });
-    insertLlmProvider(db, { kind: 'anthropic', label: 'C', model: 'm' });
+    const provider = insertLlmProvider(db, { kind: 'anthropic', label: 'C', model: 'm' });
     insertCv(db, {
       label: 'A',
       original_filename: 'cv.pdf',
       mime_type: 'application/pdf',
       file_path: 'cv.pdf',
     });
-    // Last prerequisite: at least one enabled site.
+    // Provider exists but isn't selected as active, and no site is enabled.
     let res = (await app.inject({ method: 'GET', url: '/api/bootstrap' })).json() as {
       onboarded: boolean;
     };
     expect(res.onboarded).toBe(false);
 
     updateSiteEnabled(db, 'linkedin', true);
+    res = (await app.inject({ method: 'GET', url: '/api/bootstrap' })).json() as {
+      onboarded: boolean;
+    };
+    // Still false — no active LLM provider yet.
+    expect(res.onboarded).toBe(false);
+
+    updateSettings(db, { active_llm_provider_id: provider.id });
     res = (await app.inject({ method: 'GET', url: '/api/bootstrap' })).json() as {
       onboarded: boolean;
     };

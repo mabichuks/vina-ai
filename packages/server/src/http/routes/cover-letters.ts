@@ -12,6 +12,7 @@ import {
 import { resolveCoverLetterPath, uploadCoverLetter } from '../../services/cover-letter-service.js';
 import type { ServerConfig } from '../../config.js';
 import { parse } from '../parse.js';
+import { MAX_UPLOAD_BYTES } from '../upload-limits.js';
 
 const IdParamsSchema = z.object({ id: z.string().min(1) });
 
@@ -48,7 +49,7 @@ export async function coverLetterRoutes(
       if (e.code === 'FST_REQ_FILE_TOO_LARGE') {
         throw new ValidationError(
           `File exceeds the maximum upload size`,
-          { limit_bytes: 10 * 1024 * 1024 },
+          { limit_bytes: MAX_UPLOAD_BYTES },
           'file_too_large',
         );
       }

@@ -401,3 +401,35 @@ For any job marked `apply_method = 'manual'`:
 - LinkedIn and Indeed adapters must detect Easy Apply vs external during discovery — this routing decision is captured at the time the job is inserted
 - The apply graph has an early exit for manual jobs — it runs `tailor-cv` and stops, never invoking browser tools
 - The user is responsible for the final click; analytics about what they actually submitted are limited to whether they clicked "mark as applied"
+
+## ADR-017: shadcn/ui for component primitives, themed against Vina tokens
+
+**Status:** Accepted.
+
+**Context.** The frontend needs a coherent component system covering buttons, cards, dialogs, dropdowns, toasts, tabs, and the dozens of other primitives implied by the M14–M22 milestones (Alerts UI, Ready-to-Apply cards, Application detail tabs, Settings forms, the chat slide-over, etc.). The realistic options:
+
+1. **Hand-roll every primitive** — maximum control, but reinvents accessibility (focus trap, keyboard nav, ARIA roles) for every component
+2. **Pick a styled component library** (MUI, Chakra, Mantine) — fastest, but their visual language fights the editorial Vina theme (warm neutrals, electric lime, Fraunces) and re-theming them is an uphill battle
+3. **shadcn/ui** — copy-in components built on Radix primitives + Tailwind. Each component lands as source in `src/components/ui/` and is owned by us; the CLI just bootstraps it
+
+**Decision.** Option 3, but variants are themed against Vina's existing design tokens (`--color-accent`, `--color-surface-*`, etc.) rather than shadcn's stock theme.
+
+This means:
+
+- `npx shadcn add <component>` works (config in `packages/web/components.json`)
+- The `cn()` helper from `@/lib/utils` is the canonical class-name combinator
+- Each generated component is **edited after generation** to swap shadcn's default colour names (`bg-primary`, `text-destructive`, etc.) for Vina tokens (`bg-accent`, `text-danger`, etc.). The first such component, `Button`, sets the pattern
+- We do not adopt shadcn's HSL-channel CSS variable convention; Vina tokens stay as hex in `tokens.css` and Tailwind classes resolve them via `var(--color-*)`
+
+**Reasons.**
+
+- Radix gets us correct accessibility for free
+- Tailwind composability matches the rest of our styling pipeline
+- Source-in-repo means no surprise upgrades and no library version sprawl — components evolve with the codebase
+- Theming via tokens means the editorial Vina look is preserved; shadcn is a primitive layer, not a visual layer
+
+**Consequences.**
+
+- Every shadcn component added must be re-themed against Vina tokens before merge — the default `bg-primary` is a stock indigo, not our electric lime. The `Button` in [src/components/ui/button.tsx](packages/web/src/components/ui/button.tsx) is the reference
+- The web package gains five runtime deps (`class-variance-authority`, `clsx`, `tailwind-merge`, `lucide-react`, `@radix-ui/react-slot`) and one dev dep (`tailwindcss-animate`); per-component Radix primitives (e.g. `@radix-ui/react-dialog`) get added as components are pulled in
+- Future docs (especially `docs/frontend-designer.md`) should reference `components/ui/*` as the source for primitives rather than describing them inline

@@ -24,7 +24,7 @@ export async function resetCommand(options: ResetOptions = {}): Promise<number> 
   const status = readStatus();
   if (!pid || !isProcessAlive(pid) || !status) {
     process.stderr.write('Vina is not running. Run `vina start` first.\n');
-    return 1;
+    return 3;
   }
 
   if (!options.yes) {
@@ -42,9 +42,9 @@ export async function resetCommand(options: ResetOptions = {}): Promise<number> 
   } catch (err) {
     if (err instanceof DaemonNotRunningError) {
       process.stderr.write('Could not reach the daemon — is it still running?\n');
-    } else {
-      process.stderr.write(`Reset failed: ${(err as Error).message}\n`);
+      return 3;
     }
+    process.stderr.write(`Reset failed: ${(err as Error).message}\n`);
     return 1;
   }
 }

@@ -101,6 +101,8 @@ Each tool is exposed to LangChain as a `Tool` with a zod schema for arguments. T
 
 ## 5. Graphs
 
+> **Single-node bypass.** Graphs that are a single LLM call with no branching, no tool use, and no human-in-the-loop pause MAY be implemented as a direct LangChain `withStructuredOutput` invocation rather than wrapped in a `StateGraph`. LangGraph is introduced when a graph has conditional edges, tool loops, retries, or pauses — Score, Tailor CV, and Tailor Cover Letter are bypass-eligible; Apply, Prepare Manual Apply, and Chat are not. Bypassed graphs still live under `graphs/` and follow the same input/output contract documented below.
+
 ### 5.1 Score Job (`graphs/score-job.ts`)
 
 Inputs: `{ job, profile, searchPreferences }`. Output: `{ score: 0–100, justification: string }`.

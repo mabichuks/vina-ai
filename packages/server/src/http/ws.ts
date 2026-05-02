@@ -1,4 +1,5 @@
 import type { FastifyInstance } from 'fastify';
+import websocket from '@fastify/websocket';
 import { createLogger } from '@vina/shared';
 import type { ServerConfig } from '../config.js';
 
@@ -12,8 +13,6 @@ const log = createLogger('ws');
  * wired in alongside the features that emit them in later phases.
  */
 export async function registerWebSocket(app: FastifyInstance, config: ServerConfig): Promise<void> {
-  // Lazy import so the websocket dep stays optional at type-check time.
-  const websocket = (await import('@fastify/websocket')).default;
   await app.register(websocket);
 
   app.get('/ws', { websocket: true }, (socket, req) => {

@@ -310,6 +310,18 @@ Returns a streamed ZIP with the database and all files. For backup.
 
 The WS is mostly server→client. The only client-initiated message is a heartbeat `{ type: 'ping' }` which the server replies to with `{ type: 'pong' }`.
 
+### Close codes
+
+When the server closes the socket it uses the following codes. The frontend reconnect loop only retries on `1006` and standard transient codes — it stops retrying on `4401` (the token will not become valid by retrying).
+
+| Code   | Meaning                                                                                                                                                  |
+| ------ | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `4401` | Unauthorized — bearer token missing, malformed, or does not match the per-process token in `/api/bootstrap`. Client must refetch bootstrap before reconnecting. |
+| `1000` | Normal closure (server shutting down or client navigated away).                                                                                          |
+| `1006` | Abnormal closure (network blip, daemon crash). Reconnect with exponential backoff up to 30s.                                                             |
+
+Codes in the `4xxx` range are application-defined per RFC 6455 and reserved for Vina-specific failures; the `1xxx` range follows the standard.
+
 ## Pagination
 
 Cursor-based for lists that can grow:

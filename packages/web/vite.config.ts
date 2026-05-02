@@ -9,6 +9,11 @@ const DAEMON_TARGET = 'http://127.0.0.1:7341';
 
 export default defineConfig({
   plugins: [react()],
+  resolve: {
+    alias: {
+      '@': path.resolve(root, 'src'),
+    },
+  },
   build: {
     outDir: path.resolve(root, '../server/public'),
     emptyOutDir: true,
