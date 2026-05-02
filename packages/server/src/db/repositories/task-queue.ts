@@ -152,6 +152,16 @@ export function countByStatus(db: DatabaseType, status: TaskStatus): number {
   return row.n;
 }
 
+/**
+ * Push a task's next-attempt time forward — used by the worker after a
+ * retriable failure to apply backoff between attempts. The row is left in
+ * whatever status `fail(..., retry=true)` put it (`pending`); the runner
+ * skips it until `next_attempt_at <= now`.
+ */
+export function setNextAttemptAt(db: DatabaseType, id: string, nextAttemptAt: string): void {
+  db.prepare(`UPDATE task_queue SET next_attempt_at = ? WHERE id = ?`).run(nextAttemptAt, id);
+}
+
 /** Reset all `running` rows back to `pending`. Used on startup recovery. */
 export function resetStaleRunning(db: DatabaseType): number {
   const result = db

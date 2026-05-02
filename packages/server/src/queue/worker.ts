@@ -6,6 +6,7 @@ import {
   complete,
   countByStatus,
   fail,
+  setNextAttemptAt,
 } from '../db/repositories/task-queue.js';
 import type { EventBus } from '../events/bus.js';
 import { DEFAULT_CONCURRENCY } from './concurrency.js';
@@ -104,9 +105,7 @@ export function createWorker(options: WorkerOptions): WorkerHandle {
         // `fail(..., retry=true)` flips the row back to `pending`. Push the
         // next-attempt time forward so we don't busy-loop on a flaky task.
         fail(options.db, task.id, reason, true);
-        options.db
-          .prepare(`UPDATE task_queue SET next_attempt_at = ? WHERE id = ?`)
-          .run(nextAttemptAtIso(task.attempts), task.id);
+        setNextAttemptAt(options.db, task.id, nextAttemptAtIso(task.attempts));
       } else {
         fail(options.db, task.id, reason, false);
       }
@@ -119,19 +118,23 @@ export function createWorker(options: WorkerOptions): WorkerHandle {
   }
 
   async function tick(): Promise<void> {
-    // Drain up to N tasks per tick — N higher than total concurrency so each
-    // p-queue can fill its lanes. The atomic claim in the repo ensures we
-    // never double-process even if a poke arrived mid-tick.
-    const totalCap = [...queues.values()].reduce((acc, q) => acc + q.concurrency, 0);
-    for (let i = 0; i < totalCap * 2; i++) {
-      const task = claimNext(options.db);
-      if (!task) break;
-      const q = queues.get(task.kind);
-      if (!q) {
-        fail(options.db, task.id, 'unhandled_kind', false);
-        continue;
+    // Per-kind cap: only claim a task when its PQueue has live in-memory
+    // headroom (`size + pending < concurrency`). Avoids over-pulling rows
+    // that would sit `running` in the DB while waiting for a PQueue slot —
+    // since claimNext bumps `attempts` in the same transaction, an over-
+    // pulled row that crashes pre-execution would burn a retry without
+    // running. Looping until no kind makes progress drains saturation
+    // bursts inside one tick rather than waiting for the next poll.
+    let progressed = true;
+    while (progressed) {
+      progressed = false;
+      for (const [kind, q] of queues) {
+        if (q.size + q.pending >= q.concurrency) continue;
+        const task = claimNext(options.db, kind);
+        if (!task) continue;
+        void q.add(() => runOne(task));
+        progressed = true;
       }
-      void q.add(() => runOne(task));
     }
     emitCounts();
   }
