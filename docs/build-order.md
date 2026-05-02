@@ -186,12 +186,14 @@ This is a recommendation, not a contract. If a milestone's scope changes, update
 
 **Tasks.**
 
-- `packages/server/src/scheduler/scheduler.ts` — registers `node-cron` jobs from the `schedules` table
-- `packages/server/src/queue/queue.ts` — `p-queue` per kind, persisted to `task_queue`
-- `packages/server/src/queue/runner.ts` — picks pending rows, dispatches by kind, handles retries with backoff
-- A `search` task handler that, for now, just logs (real adapters land in M11–M12)
-- A `score` task handler that calls `runScoreJob`
-- WebSocket gateway emits `queue:updated` and `jobs:updated` events
+- `packages/server/src/scheduler/scheduler.ts` — registers `node-cron` jobs from the `schedules` table; on fire, enqueues a `search` task per enabled site, persists `last_run_at`/`next_run_at`, and pokes the worker. Live refresh on schedule mutation is deferred — see `packages/server/src/scheduler/scheduler.ts` top-of-file
+- `packages/server/src/scheduler/cron.ts` — pure `nextRunAt(expr, from?)` helper using `cron-parser`, reused by route handlers
+- `packages/server/src/queue/worker.ts` — combined queue + runner: poll loop on `task_queue`, `p-queue` per `TaskKind` for in-memory concurrency, retry-with-backoff (default 30/60/120s, overrideable for tests). Lifecycle (`start/poke/stop`) integrates with daemon shutdown
+- `packages/server/src/queue/concurrency.ts` — `DEFAULT_CONCURRENCY` per kind
+- `packages/server/src/queue/handlers/search.ts` — M10 stub that synthesises a job; replaced by real adapters in M11–M13
+- `packages/server/src/queue/handlers/score.ts` — calls orchestrator's `runScoreJob`, persists `match_score` + `match_justification` atomically, transitions status to `scored`
+- `packages/server/src/events/bus.ts` — typed in-process event bus consumed by the WS gateway
+- WebSocket gateway emits `queue:updated` and `jobs:updated` events through the bus
 
 **Done when:** Manually inserting a fake job triggers the score handler and updates the row's `match_score`. The Dashboard's "next run at" reflects the schedule.
 

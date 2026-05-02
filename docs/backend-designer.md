@@ -30,11 +30,12 @@ packages/server/
 │   │   ├── settings-service.ts
 │   │   └── serpapi-service.ts   # Google Jobs discovery via SerpAPI
 │   ├── scheduler/
-│   │   ├── scheduler.ts      # node-cron driver
-│   │   └── tasks.ts          # task definitions: searchTask, scoreTask, applyTask, prepareManualApplyTask, resumeTask
+│   │   ├── scheduler.ts      # node-cron driver: registers enabled schedules, on-fire enqueues per-site `search` tasks, persists last_run_at / next_run_at, pokes the worker
+│   │   └── cron.ts           # `nextRunAt(expr, from?)` helper using cron-parser; reused by routes/system + routes/schedules
 │   ├── queue/
-│   │   ├── queue.ts          # p-queue + persistence
-│   │   └── runner.ts         # the worker loop
+│   │   ├── worker.ts         # poll loop on task_queue + p-queue per TaskKind for in-memory concurrency; retry with backoff, lifecycle (start/poke/stop)
+│   │   ├── concurrency.ts    # DEFAULT_CONCURRENCY: per-kind in-memory limits
+│   │   └── handlers/         # one file per task kind (search.ts, score.ts; tailor/apply/prepare_manual_apply/resume land in M14+)
 │   ├── secrets/
 │   │   └── vault.ts          # encrypt/decrypt API keys (keytar with file fallback)
 │   ├── files/
@@ -100,7 +101,8 @@ The service does not depend on the orchestrator or automation packages — it on
 ### Scheduler
 
 - Loads all enabled `schedules` rows on startup, registers a cron job for each
-- Each tick enqueues a `search` task per enabled site (browser-kind and api-kind)
+- Each tick enqueues a `search` task per enabled site (browser-kind and api-kind), updates `last_run_at` / `next_run_at` on the schedule row, and pokes the worker so the new tasks run promptly rather than waiting for the next poll
+- **Live refresh is deferred (M10):** `start()` reads the schedules table once. POST/PATCH/DELETE on `/api/schedules` only takes effect after the next daemon restart. A future module will subscribe to schedule mutations and re-register cron jobs in place
 
 ### Queue / Worker
 
@@ -110,7 +112,7 @@ The service does not depend on the orchestrator or automation packages — it on
   - `apply`: 1 globally (auto-apply uses the browser, sequential for safety)
   - `prepare_manual_apply`: 2 (no browser involvement; bounded by LLM rate limits)
 - On startup, all `pending` rows whose `next_attempt_at` is past are re-enqueued; `running` rows are reset to `pending` (assume crash)
-- Each task handler is registered in `tasks.ts` and resolved by `kind`
+- Each task handler lives in its own file under `queue/handlers/<kind>.ts` and is registered in `main.ts` via the `TaskHandlers` map (`Partial<Record<TaskKind, TaskHandler>>`); kinds without an entry are marked `failed: unhandled_kind` (no retry)
 - On failure, increments `attempts`, sets `next_attempt_at = now + backoff(attempts)` if attempts < max; otherwise marks `failed`
 
 Task dispatch by site kind:
