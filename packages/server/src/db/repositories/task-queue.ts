@@ -162,10 +162,22 @@ export function setNextAttemptAt(db: DatabaseType, id: string, nextAttemptAt: st
   db.prepare(`UPDATE task_queue SET next_attempt_at = ? WHERE id = ?`).run(nextAttemptAt, id);
 }
 
-/** Reset all `running` rows back to `pending`. Used on startup recovery. */
-export function resetStaleRunning(db: DatabaseType): number {
+/**
+ * Reset all `running` rows back to `pending`. Used on startup recovery.
+ *
+ * Pushes `next_attempt_at` forward by `breathingRoomMs` (default 30s) so a
+ * deterministic crash-on-fail handler doesn't reclaim the row on the next
+ * tick and burn all retries within seconds — gives the operator time to
+ * notice the daemon is restart-looping before the queue gives up.
+ */
+export function resetStaleRunning(db: DatabaseType, breathingRoomMs = 30_000): number {
+  const nextAttemptAt = new Date(Date.now() + breathingRoomMs).toISOString();
   const result = db
-    .prepare(`UPDATE task_queue SET status = 'pending', started_at = NULL WHERE status = 'running'`)
-    .run();
+    .prepare(
+      `UPDATE task_queue
+         SET status = 'pending', started_at = NULL, next_attempt_at = ?
+       WHERE status = 'running'`,
+    )
+    .run(nextAttemptAt);
   return result.changes;
 }
