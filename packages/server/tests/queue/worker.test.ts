@@ -155,4 +155,11 @@ describe('worker', () => {
     await worker.stop();
     expect(handler).toHaveBeenCalledTimes(2);
   });
+
+  it('throws if start() is called after stop()', async () => {
+    const worker = harness({});
+    worker.start();
+    await worker.stop();
+    expect(() => worker.start()).toThrow(/cannot be restarted/);
+  });
 });

@@ -180,7 +180,13 @@ export function createWorker(options: WorkerOptions): WorkerHandle {
 
   return {
     start(): void {
-      if (timer || stopping) return;
+      // A stopped worker is single-shot — restart attempts are silently
+      // hostile (a test or hot-reload caller would think the worker is
+      // running when it's actually idle). Throw so the misuse surfaces.
+      if (stopping) {
+        throw new Error('Worker has been stopped and cannot be restarted; create a new one');
+      }
+      if (timer) return; // already running — start is idempotent in the live path
       scheduleNext(0);
     },
     poke(): void {
