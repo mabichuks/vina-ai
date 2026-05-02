@@ -6,6 +6,7 @@ import { insertLlmProvider } from '../../src/db/repositories/llm-providers.js';
 import { insertProfile } from '../../src/db/repositories/profile.js';
 import { updateSettings } from '../../src/db/repositories/settings.js';
 import { updateSiteEnabled } from '../../src/db/repositories/sites.js';
+import { insertSchedule, updateSchedule } from '../../src/db/repositories/schedules.js';
 import { buildTestApp, type TestAppHandle } from './helpers.js';
 
 let handle: TestAppHandle;
@@ -102,11 +103,24 @@ describe('system routes', () => {
       version: string;
       started_at: string;
       sources: { id: string; kind: string }[];
+      scheduler: { running: boolean; next_run_at: string | null };
+      queue: { pending: number; running: number };
     };
     expect(res.statusCode).toBe(200);
     expect(body.version).toBe('0.0.0-test');
     expect(new Date(body.started_at).getTime()).toBeLessThanOrEqual(Date.now());
     expect(body.sources.map((s) => s.id).sort()).toEqual(['google', 'indeed', 'linkedin']);
+
+    // New shape assertions for scheduler and queue
+    expect(body.scheduler).toMatchObject({
+      running: expect.any(Boolean),
+    });
+    // next_run_at is null until a schedule exists; else an ISO string
+    expect(body.scheduler.next_run_at === null || typeof body.scheduler.next_run_at === 'string').toBe(true);
+    expect(body.queue).toMatchObject({
+      pending: expect.any(Number),
+      running: expect.any(Number),
+    });
   });
 
   it('pause/resume flips settings.paused and shows in /status.scheduler.running', async () => {
@@ -158,5 +172,32 @@ describe('system routes', () => {
       onboarded: boolean;
     };
     expect(after.onboarded).toBe(false);
+  });
+
+  it('reflects the earliest next_run_at across enabled schedules', async () => {
+    const now = new Date();
+    const next = new Date(now.getTime() + 60 * 60 * 1000).toISOString(); // +1h
+    const created = insertSchedule(db, { cron_expression: '0 12 * * *' });
+    updateSchedule(db, created.id, { next_run_at: next });
+
+    const res = await app.inject({
+      method: 'GET',
+      url: '/api/system/status',
+      headers: auth(),
+    });
+    const json = res.json() as { scheduler: { next_run_at: string | null } };
+    expect(json.scheduler.next_run_at).toBe(next);
+  });
+
+  it('returns null next_run_at when no schedule has next_run_at set', async () => {
+    insertSchedule(db, { cron_expression: '0 12 * * *', enabled: false });
+
+    const res = await app.inject({
+      method: 'GET',
+      url: '/api/system/status',
+      headers: auth(),
+    });
+    const json = res.json() as { scheduler: { next_run_at: string | null } };
+    expect(json.scheduler.next_run_at).toBeNull();
   });
 });

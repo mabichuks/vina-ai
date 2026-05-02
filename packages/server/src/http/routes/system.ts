@@ -10,6 +10,8 @@ import { findLlmProviderById, listLlmProviders } from '../../db/repositories/llm
 import { listSites } from '../../db/repositories/sites.js';
 import { getOrInitSettings, updateSettings } from '../../db/repositories/settings.js';
 import { listPending } from '../../db/repositories/task-queue.js';
+import { listSchedules } from '../../db/repositories/schedules.js';
+import { nextRunAt } from '../../scheduler/cron.js';
 
 export interface SystemRouteDeps {
   db: DatabaseType;
@@ -62,11 +64,29 @@ export async function systemRoutes(app: FastifyInstance, deps: SystemRouteDeps):
       ? findLlmProviderById(db, settings.active_llm_provider_id)
       : null;
 
+    const pending = listPending(db).length;
+    const running = (
+      db.prepare(`SELECT COUNT(*) AS n FROM task_queue WHERE status = 'running'`).get() as {
+        n: number;
+      }
+    ).n;
+
+    // Earliest next_run_at across enabled schedules — null if no schedule has
+    // a value yet. Falls back to computing from the cron expression for rows
+    // whose next_run_at is null but whose schedule is enabled (e.g. inserted
+    // before Task 9's route changes persist next_run_at on insert).
+    const enabled = listSchedules(db).filter((s) => s.enabled);
+    let earliest: string | null = null;
+    for (const s of enabled) {
+      const next = s.next_run_at ?? nextRunAt(s.cron_expression);
+      if (earliest === null || next < earliest) earliest = next;
+    }
+
     return {
       version,
       started_at: startedAt,
-      scheduler: { running: !settings.paused, next_run_at: null },
-      queue: { pending: listPending(db).length, running: 0 },
+      scheduler: { running: !settings.paused, next_run_at: earliest },
+      queue: { pending, running },
       active_provider: provider ? { kind: provider.kind, model: provider.model } : null,
       sources: listSites(db).map((s) => ({
         id: s.id,
