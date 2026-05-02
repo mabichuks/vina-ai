@@ -13,6 +13,15 @@ import { nextRunAt } from './cron.js';
 
 const log = createLogger('scheduler');
 
+/*
+ * M10 deferral: schedule changes via POST/PATCH/DELETE only take effect on
+ * the next daemon restart. `start()` reads the schedules table once and
+ * registers every enabled row with node-cron; subsequent inserts/updates
+ * are NOT reflected in the running scheduler. Live refresh is tracked as a
+ * follow-up — likely a `subscribeToScheduleChanges(db, scheduler)` module
+ * that re-registers per row.
+ */
+
 export interface SchedulerOptions {
   db: DatabaseType;
   bus: EventBus;
@@ -39,13 +48,20 @@ export function createScheduler(options: SchedulerOptions): SchedulerHandle {
       return;
     }
     const enabledSites = listSites(options.db).filter((s) => s.enabled);
+    const now = new Date().toISOString();
     if (enabledSites.length === 0) {
+      // The cron tick still happened — record it so the UI reflects reality —
+      // but skip the poke since nothing was enqueued for the worker to do.
       log.info({ scheduleId }, 'no enabled sites; skipping fire');
+      updateSchedule(options.db, scheduleId, {
+        last_run_at: now,
+        next_run_at: nextRunAt(schedule.cron_expression, new Date(now)),
+      });
+      return;
     }
     for (const site of enabledSites) {
       enqueue(options.db, { kind: 'search', payload: { site_id: site.id } });
     }
-    const now = new Date().toISOString();
     updateSchedule(options.db, scheduleId, {
       last_run_at: now,
       next_run_at: nextRunAt(schedule.cron_expression, new Date(now)),
@@ -69,8 +85,15 @@ export function createScheduler(options: SchedulerOptions): SchedulerHandle {
       }
     },
     stop(): void {
-      for (const [, task] of jobs) {
-        void task.stop();
+      // node-cron@4 types `task.stop()` as `void | Promise<void>` — sync in
+      // some paths, async in others. `Promise.resolve` normalises both so
+      // we can attach a single rejection handler. Daemon shutdown does not
+      // await these — they fire-and-log so cleanup races stay visible in
+      // logs without blocking the rest of the shutdown sequence.
+      for (const [scheduleId, task] of jobs) {
+        Promise.resolve(task.stop()).catch((err: unknown) =>
+          log.warn({ err, scheduleId }, 'cron stop rejected'),
+        );
       }
       jobs.clear();
     },

@@ -14,7 +14,7 @@ beforeEach(() => {
 afterEach(() => db.close());
 
 describe('scheduler', () => {
-  it('on fire, enqueues a search task per enabled site and updates last/next_run_at', async () => {
+  it('on fire, enqueues a search task per enabled site and updates last/next_run_at', () => {
     updateSiteEnabled(db, 'linkedin', true);
     updateSiteEnabled(db, 'indeed', true);
     // google stays disabled
@@ -55,5 +55,23 @@ describe('scheduler', () => {
     sched.fireNow(schedule.id);
 
     expect(poke).toHaveBeenCalledTimes(1);
+  });
+
+  it('still records last/next_run_at but does not poke when no sites are enabled', () => {
+    // All three seed sites stay disabled.
+    const schedule = insertSchedule(db, { cron_expression: '0 0 * * *' });
+
+    const poke = vi.fn();
+    const sched = createScheduler({ db, bus: createEventBus(), poke });
+    sched.fireNow(schedule.id);
+
+    expect(poke).not.toHaveBeenCalled();
+    expect(listPending(db)).toHaveLength(0);
+
+    const refreshed = db
+      .prepare(`SELECT last_run_at, next_run_at FROM schedules WHERE id = ?`)
+      .get(schedule.id) as { last_run_at: string | null; next_run_at: string | null };
+    expect(refreshed.last_run_at).toMatch(/^\d{4}-/);
+    expect(refreshed.next_run_at).toMatch(/^\d{4}-/);
   });
 });
