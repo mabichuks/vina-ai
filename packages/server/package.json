@@ -34,11 +34,14 @@
     "env-paths": "^4.0.0",
     "fastify": "^5.8.5",
     "mammoth": "^1.12.0",
+    "node-cron": "^4.2.1",
+    "p-queue": "^9.2.0",
     "pdf-parse": "^1.1.4",
     "zod": "^4.3.6"
   },
   "devDependencies": {
     "@types/better-sqlite3": "^7.6.13",
+    "@types/node-cron": "^3.0.11",
     "@types/pdf-parse": "^1.1.5",
     "tsx": "^4.21.0"
   },
