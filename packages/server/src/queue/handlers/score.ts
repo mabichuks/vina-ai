@@ -1,6 +1,6 @@
 import type { Database as DatabaseType } from 'better-sqlite3';
 import type { BaseChatModel } from '@langchain/core/language_models/chat_models';
-import { runScoreJob, type ScoreInput } from '@vina/orchestrator';
+import { runScoreJob, type ScoreInput, type StructuredScorer } from '@vina/orchestrator';
 import { ConflictError, createLogger, NotFoundError } from '@vina/shared';
 import { findJobById, updateJobScore, updateJobStatus } from '../../db/repositories/jobs.js';
 import { findProfile } from '../../db/repositories/profile.js';
@@ -57,7 +57,13 @@ export function createScoreHandler(
     };
 
     const model = await deps.buildModel();
-    const result = await runScoreJob(input, model);
+    // BaseChatModel.withStructuredOutput returns a Runnable typed against
+    // BaseLanguageModelInput, while runScoreJob's StructuredScorer narrows
+    // invoke to ScoreMessages. The shapes are runtime-compatible (LangChain
+    // accepts {role, content} arrays) but TS 6's stricter variance rejects
+    // the assignment. The orchestrator's interface should be widened — see
+    // M10 review note M-1 — until then, cast at the boundary.
+    const result = await runScoreJob(input, model as unknown as StructuredScorer);
 
     deps.db.transaction(() => {
       updateJobScore(deps.db, job.id, result.score, result.justification);
