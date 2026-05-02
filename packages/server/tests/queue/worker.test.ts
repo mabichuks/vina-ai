@@ -124,4 +124,35 @@ describe('worker', () => {
     });
     await worker.stop();
   });
+
+  it('rejects with handler_timeout when a handler exceeds its budget', async () => {
+    // Handler that hangs forever — only the timeout will end it.
+    const handler = vi.fn(async () => {
+      await new Promise(() => undefined);
+    });
+    const worker = createWorker({
+      db,
+      bus: createEventBus(),
+      handlers: { score: handler },
+      pollIntervalMs: 5,
+      backoffMs: [10, 20],
+      timeoutsMs: { score: 30 },
+    });
+    enqueue(db, { kind: 'score', payload: {}, max_attempts: 2 });
+
+    worker.start();
+    await vi.waitFor(
+      () => {
+        const row = db
+          .prepare(`SELECT status, attempts, failed_reason FROM task_queue`)
+          .get() as { status: string; attempts: number; failed_reason: string | null };
+        expect(row.status).toBe('failed');
+        expect(row.attempts).toBe(2);
+        expect(row.failed_reason).toMatch(/handler_timeout/);
+      },
+      { timeout: 5_000, interval: 25 },
+    );
+    await worker.stop();
+    expect(handler).toHaveBeenCalledTimes(2);
+  });
 });

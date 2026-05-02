@@ -10,8 +10,31 @@ import {
 } from '../db/repositories/task-queue.js';
 import type { EventBus } from '../events/bus.js';
 import { DEFAULT_CONCURRENCY } from './concurrency.js';
+import { DEFAULT_TIMEOUTS_MS } from './timeouts.js';
 
 const log = createLogger('worker');
+
+/**
+ * Race a handler promise against a timeout. The timer is always cleared so
+ * a fast handler doesn't keep the event loop alive past task completion.
+ * On timeout the rejection message is `handler_timeout: <kind> exceeded
+ * <ms>ms` so the worker's catch path treats it as a normal retriable
+ * failure (transient — assume the next attempt will fare better).
+ */
+async function runWithTimeout(promise: Promise<void>, ms: number, kind: TaskKind): Promise<void> {
+  let timer: NodeJS.Timeout | null = null;
+  const timeout = new Promise<never>((_, reject) => {
+    timer = setTimeout(
+      () => reject(new Error(`handler_timeout: ${kind} exceeded ${ms}ms`)),
+      ms,
+    );
+  });
+  try {
+    await Promise.race([promise, timeout]);
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}
 
 /** A handler is any async function from a parsed payload to nothing. */
 export type TaskHandler<P = unknown> = (payload: P) => Promise<void>;
@@ -33,6 +56,12 @@ export interface WorkerOptions {
   concurrency?: Partial<Record<TaskKind, number>>;
   /** Override the retry backoff schedule (ms per attempt). Used by tests. */
   backoffMs?: readonly number[];
+  /**
+   * Override per-handler timeouts (sparse map, ms per kind). Defaults from
+   * `DEFAULT_TIMEOUTS_MS`. A handler that exceeds its budget is rejected
+   * with `handler_timeout` and goes through the normal retry path.
+   */
+  timeoutsMs?: Partial<Record<TaskKind, number>>;
 }
 
 export interface WorkerHandle {
@@ -96,7 +125,8 @@ export function createWorker(options: WorkerOptions): WorkerHandle {
       return;
     }
     try {
-      await handler(payload);
+      const timeoutMs = options.timeoutsMs?.[task.kind] ?? DEFAULT_TIMEOUTS_MS[task.kind];
+      await runWithTimeout(handler(payload), timeoutMs, task.kind);
       complete(options.db, task.id);
     } catch (err) {
       const reason = err instanceof Error ? err.message : String(err);
