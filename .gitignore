@@ -14,6 +14,9 @@ packages/server/public/
 .vite/
 .eslintcache
 
+# Git worktrees (per superpowers:using-git-worktrees)
+.worktrees/
+
 # Test / coverage
 coverage/
 .nyc_output/
