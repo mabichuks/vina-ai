@@ -433,3 +433,37 @@ This means:
 - Every shadcn component added must be re-themed against Vina tokens before merge — the default `bg-primary` is a stock indigo, not our electric lime. The `Button` in [src/components/ui/button.tsx](packages/web/src/components/ui/button.tsx) is the reference
 - The web package gains five runtime deps (`class-variance-authority`, `clsx`, `tailwind-merge`, `lucide-react`, `@radix-ui/react-slot`) and one dev dep (`tailwindcss-animate`); per-component Radix primitives (e.g. `@radix-ui/react-dialog`) get added as components are pulled in
 - Future docs (especially `docs/frontend-designer.md`) should reference `components/ui/*` as the source for primitives rather than describing them inline
+
+## ADR-018: Playwright stack pinning
+
+**Status:** Accepted.
+
+**Context.** M11 introduces real browser automation for the LinkedIn and Indeed adapters. Before writing any adapter code, five interlocking decisions need to be locked because almost every line of `packages/automation/` references one of them, and changing any later means revisiting selectors, fixture HTML, and detection-evasion behaviour.
+
+The five decisions: (1) Playwright version pin, (2) browser channel (bundled Chromium vs. installed Chrome vs. exotic), (3) browser binary install location, (4) install UX (postinstall hook vs. lazy install vs. explicit step), (5) persistent context model (`launchPersistentContext` vs. `launch().newContext({ storageState })`).
+
+**Decision.**
+
+| Decision | Locked value | Rationale |
+|---|---|---|
+| Playwright version | `^1.x.0` (caret on minor) | Get patch-level fixes automatically; trust their semver. Run an integration test on every dependabot bump |
+| Browser channel | `'chrome'` in production, with bundled-Chromium fallback when Chrome is missing | Real Chrome has fewer detection signals than Playwright's bundled headless-shell — LinkedIn flags the bundled build heavily. Tests pass `channel: undefined` explicitly to use bundled |
+| Browser binary install location | Playwright default cache (`~/Library/Caches/ms-playwright/` on macOS, `~/.cache/ms-playwright/` on Linux, `%LOCALAPPDATA%\ms-playwright\` on Windows) | Shared with other Playwright projects on the user's machine; saves ~150 MB per project |
+| Install UX | Lazy install on first `vina start`, with a `vina doctor` informational check | Default postinstall hooks fight corporate proxies and surprise users with 150 MB downloads during `npm i -g`. An explicit step adds friction. Lazy install matches modern CLI conventions (Vercel, Supabase) |
+| Persistent context model | `chromium.launchPersistentContext(<dataDir>/sessions/<siteId>/, opts)` per site | Cookies + localStorage + IndexedDB + cache all persist together — matters for "still logged in tomorrow" UX. The `storageState.json` form is more fragile and doesn't capture everything |
+
+**Reasons.**
+
+- Channel `'chrome'` is the single biggest detection-quality lever and costs nothing at the code site (one option key)
+- Default cache location keeps install-size tractable; per-app cache override is a one-line change in `launchSiteContext` if we ever need it for `vina reset` hygiene
+- Lazy install means `npm i -g vina` followed by `vina start` works without an extra command, while CI environments that pre-install Chromium pay no overhead
+- Persistent context per site mirrors how a human's browser actually works — one profile per site, never shared across services
+
+**Consequences.**
+
+- `packages/automation/src/browser/launch.ts` exposes a single `launchSiteContext({ siteId, dataDir, headless?, channel? })` helper; every M11 adapter and the `BrowserManager` go through it. No direct `chromium.launch*` calls anywhere else
+- M11 Task 10 (`vina doctor`) checks for installed Chrome (channel preference) and bundled Chromium (fallback). Missing-binary remediation prints `pnpm exec playwright install chromium` for the bundled fallback path
+- `tests/queue/handlers/search.test.ts` and adapter unit tests drive Playwright via the bundled Chromium (no Chrome dependency in CI). Production users without Chrome get a one-line warning and the bundled fallback
+- M11 Task 7 (`/api/sites/linkedin/login`) launches headful by default for the interactive login. Production headless/headful is wired from `settings.browser_headful`
+- This ADR locks the M10 deferred item from `docs/cli-spec.md` §14 ("Playwright browser binaries" check). Doctor's actual implementation lands in M11 Task 10 — the decision is captured here so the implementation is mechanical
+- The `@playwright/test` package is a dev dep used only by the e2e harness (M11 Task 6) against the LinkedIn fixture site; unit tests stay on Vitest with `playwright` directly
