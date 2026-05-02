@@ -144,10 +144,40 @@ export function listPending(db: DatabaseType): Task[] {
   return rows.map(rowToTask);
 }
 
-/** Reset all `running` rows back to `pending`. Used on startup recovery. */
-export function resetStaleRunning(db: DatabaseType): number {
+/** Cheap counter for status-faceted summaries (system status route, queue:updated emits). */
+export function countByStatus(db: DatabaseType, status: TaskStatus): number {
+  const row = db
+    .prepare(`SELECT COUNT(*) AS n FROM task_queue WHERE status = ?`)
+    .get(status) as { n: number };
+  return row.n;
+}
+
+/**
+ * Push a task's next-attempt time forward — used by the worker after a
+ * retriable failure to apply backoff between attempts. The row is left in
+ * whatever status `fail(..., retry=true)` put it (`pending`); the runner
+ * skips it until `next_attempt_at <= now`.
+ */
+export function setNextAttemptAt(db: DatabaseType, id: string, nextAttemptAt: string): void {
+  db.prepare(`UPDATE task_queue SET next_attempt_at = ? WHERE id = ?`).run(nextAttemptAt, id);
+}
+
+/**
+ * Reset all `running` rows back to `pending`. Used on startup recovery.
+ *
+ * Pushes `next_attempt_at` forward by `breathingRoomMs` (default 30s) so a
+ * deterministic crash-on-fail handler doesn't reclaim the row on the next
+ * tick and burn all retries within seconds — gives the operator time to
+ * notice the daemon is restart-looping before the queue gives up.
+ */
+export function resetStaleRunning(db: DatabaseType, breathingRoomMs = 30_000): number {
+  const nextAttemptAt = new Date(Date.now() + breathingRoomMs).toISOString();
   const result = db
-    .prepare(`UPDATE task_queue SET status = 'pending', started_at = NULL WHERE status = 'running'`)
-    .run();
+    .prepare(
+      `UPDATE task_queue
+         SET status = 'pending', started_at = NULL, next_attempt_at = ?
+       WHERE status = 'running'`,
+    )
+    .run(nextAttemptAt);
   return result.changes;
 }

@@ -10,6 +10,7 @@ import {
   updateSchedule,
 } from '../../db/repositories/schedules.js';
 import { parse } from '../parse.js';
+import { nextRunAt } from '../../scheduler/cron.js';
 
 const CreateScheduleSchema = z.object({
   cron_expression: z.string().min(1),
@@ -42,14 +43,23 @@ export async function scheduleRoutes(
   app.post('/api/schedules', async (req) => {
     const input = parse(CreateScheduleSchema, req.body);
     assertValidCron(input.cron_expression);
-    return insertSchedule(db, input);
+    const created = insertSchedule(db, input);
+    // Persist the canonical next firing time so reads (system status,
+    // dashboard, etc.) reflect it without having to recompute.
+    return updateSchedule(db, created.id, {
+      next_run_at: nextRunAt(input.cron_expression),
+    });
   });
 
   app.patch('/api/schedules/:id', async (req) => {
     const { id } = parse(IdParamsSchema, req.params, 'route params');
     const input = parse(UpdateScheduleSchema, req.body);
     if (input.cron_expression) assertValidCron(input.cron_expression);
-    return updateSchedule(db, id, input);
+    const patch = {
+      ...input,
+      ...(input.cron_expression && { next_run_at: nextRunAt(input.cron_expression) }),
+    };
+    return updateSchedule(db, id, patch);
   });
 
   app.delete('/api/schedules/:id', async (req, reply) => {

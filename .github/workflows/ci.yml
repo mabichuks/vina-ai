@@ -27,6 +27,13 @@ jobs:
       - name: Install
         run: pnpm install --frozen-lockfile
 
+      - name: Install Playwright Chromium
+        # Browser-using tests (packages/automation/tests/browser/) launch a real
+        # Chromium via @vina/automation's launchSiteContext — needs the binary.
+        # `--with-deps` adds Linux system libraries (libnss3, libxkbcommon, etc.)
+        # via apt-get so the bundled Chromium can launch on ubuntu-latest.
+        run: pnpm --filter @vina/automation exec playwright install --with-deps chromium
+
       - name: Build
         run: pnpm build
 

@@ -11,7 +11,8 @@ packages/automation/
 ├── src/
 │   ├── index.ts
 │   ├── browser/
-│   │   ├── manager.ts          # owns persistent contexts, lifecycle, headful toggle
+│   │   ├── launch.ts           # `launchSiteContext` helper — single entry point for chromium.launchPersistentContext (per ADR-018)
+│   │   ├── manager.ts          # owns persistent contexts, lifecycle, headful toggle (built on launchSiteContext)
 │   │   └── humanise.ts         # realistic delays, mouse jitter, scrolling
 │   ├── adapters/
 │   │   ├── adapter.ts          # SiteAdapter interface
@@ -33,23 +34,24 @@ packages/automation/
 
 ## 2. Browser Manager
 
-One Playwright `BrowserContext` per browser-kind site, persisted across runs:
+One Playwright `BrowserContext` per browser-kind site, persisted across runs. All launches go through the shared `launchSiteContext` helper in `packages/automation/src/browser/launch.ts` so the channel/profile-dir/anti-detection conventions from [ADR-018](./decisions.md#adr-018-playwright-stack-pinning) are honoured everywhere:
 
 ```ts
-const context = await chromium.launchPersistentContext(sessionDir, {
-  headless: settings.browser_headful ? false : true,
-  viewport: { width: 1366, height: 800 },
-  // Use a real user-agent string from a recent stable Chromium
-  userAgent: chromiumDefaultUA,
-  acceptDownloads: true,
-  timezoneId: profile.timezone || 'Europe/London',
-  locale: 'en-GB',
+import { launchSiteContext } from '@vina/automation';
+
+const context = await launchSiteContext({
+  siteId: 'linkedin',
+  dataDir: config.dataDir,
+  headless: !settings.browser_headful,
+  channel: 'chrome', // omit to fall back to bundled Chromium
 });
 ```
 
-`sessionDir` is `~/<data-dir>/sessions/{site}/` — Playwright manages cookies, localStorage, and IndexedDB inside it.
+`launchSiteContext` resolves the session dir to `<dataDir>/sessions/<siteId>/`, ensures it exists, and calls `chromium.launchPersistentContext` with the Vina conventions: system locale and timezone (no `locale: 'en-GB'` overrides — see ADR-013), default viewport, no fingerprint masking. Cookies, localStorage, IndexedDB, and cache all persist inside the profile dir.
 
-The manager exposes:
+Per ADR-018, production passes `channel: 'chrome'` for fewer detection signals; tests omit `channel` to use Playwright's bundled Chromium so CI doesn't need Chrome installed. `vina doctor` (M11 Task 10) checks both and surfaces a remediation hint when neither is available.
+
+The manager (M11 Task 2 — built on top of `launchSiteContext`) exposes:
 
 ```ts
 interface BrowserManager {

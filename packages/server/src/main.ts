@@ -8,6 +8,13 @@ import { buildConfig, type ServerConfig } from './config.js';
 import { closeDb, getDb } from './db/client.js';
 import { migrate } from './db/migrate.js';
 import { initVault } from './secrets/vault.js';
+import { resetStaleRunning } from './db/repositories/task-queue.js';
+import { createEventBus } from './events/bus.js';
+import { createSearchHandler } from './queue/handlers/search.js';
+import { createScoreHandler } from './queue/handlers/score.js';
+import { createWorker, type TaskHandler, type TaskHandlers } from './queue/worker.js';
+import { createScheduler } from './scheduler/scheduler.js';
+import { getActiveChatModel } from './services/llm-service.js';
 
 const log = createLogger('main');
 
@@ -61,15 +68,49 @@ export async function bootServer(overrides: Partial<ServerConfig> = {}): Promise
   migrate(db, { migrationsDir: MIGRATIONS_DIR });
   await initVault(config.dataDir);
 
+  // Recover from a hard crash mid-task — anything left `running` returns to
+  // `pending`. Idempotent on a clean shutdown (no rows in `running`).
+  const stale = resetStaleRunning(db);
+  if (stale > 0) log.warn({ count: stale }, 'reset stale running tasks at boot');
+
+  const bus = createEventBus();
+
+  // M10 ships `search` and `score`. Other TaskKinds (tailor, apply,
+  // prepare_manual_apply, resume) intentionally have no entry — the worker
+  // marks them `failed: unhandled_kind` (no retry) until M14+ provides
+  // handlers. The factory return types are widened via `adapt` because each
+  // handler accepts its own narrow payload but `TaskHandler` accepts
+  // `unknown` (function-parameter contravariance).
+  const adapt = <P>(h: (p: P) => Promise<void>): TaskHandler => (p) => h(p as P);
+  const handlers: TaskHandlers = {
+    search: adapt(createSearchHandler({ db, bus })),
+    score: adapt(
+      createScoreHandler({
+        db,
+        bus,
+        buildModel: () => getActiveChatModel(db),
+      }),
+    ),
+  };
+
+  const worker = createWorker({ db, bus, handlers });
+  const scheduler = createScheduler({ db, bus, poke: () => worker.poke() });
+
   const startedAt = new Date().toISOString();
-  const app = await buildApp({ db, config, version, startedAt });
+  const app = await buildApp({ db, config, version, startedAt, bus });
 
   const address = await app.listen({ port: config.port, host: '127.0.0.1' });
   const port = Number.parseInt(new URL(address).port, 10);
   writeStatusFile(config, port, version);
+
+  worker.start();
+  scheduler.start();
+
   log.info({ port, url: address, version }, 'ready');
 
   const shutdown = async (): Promise<void> => {
+    scheduler.stop();
+    await worker.stop();
     await app.close();
     closeDb();
     deleteStatusFile(config);

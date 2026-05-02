@@ -67,4 +67,20 @@ describe('task_queue repository', () => {
     expect(listPending(db)).toHaveLength(2);
     db.close();
   });
+
+  it('resetStaleRunning pushes next_attempt_at forward to avoid immediate reclaim loops', () => {
+    const db = freshTestDb();
+    enqueue(db, { kind: 'apply', payload: {} });
+    claimNext(db, 'apply');
+    const before = Date.now();
+    resetStaleRunning(db, 5_000);
+    const row = db
+      .prepare(`SELECT next_attempt_at FROM task_queue`)
+      .get() as { next_attempt_at: string };
+    const next = new Date(row.next_attempt_at).getTime();
+    // Should be at least 5s in the future (allowing for clock jitter on slow CI).
+    expect(next - before).toBeGreaterThanOrEqual(5_000 - 100);
+    expect(next - before).toBeLessThan(5_000 + 1_000);
+    db.close();
+  });
 });

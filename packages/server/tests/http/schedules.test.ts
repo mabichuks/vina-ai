@@ -28,7 +28,11 @@ describe('schedule routes', () => {
         headers: auth(h.token),
         payload: { cron_expression: '0 9 * * *' },
       })
-    ).json() as { id: string };
+    ).json() as { id: string; next_run_at: string | null };
+
+    expect(a.next_run_at).not.toBeNull();
+    expect(typeof a.next_run_at).toBe('string');
+    expect(new Date(a.next_run_at!).getTime()).toBeGreaterThan(Date.now());
 
     const b = (
       await h.app.inject({
@@ -37,7 +41,11 @@ describe('schedule routes', () => {
         headers: auth(h.token),
         payload: { cron_expression: '0 18 * * *' },
       })
-    ).json() as { id: string };
+    ).json() as { id: string; next_run_at: string | null };
+
+    expect(b.next_run_at).not.toBeNull();
+    expect(typeof b.next_run_at).toBe('string');
+    expect(new Date(b.next_run_at!).getTime()).toBeGreaterThan(Date.now());
 
     const list = (
       await h.app.inject({
@@ -63,5 +71,31 @@ describe('schedule routes', () => {
       headers: auth(h.token),
     });
     expect(del.statusCode).toBe(204);
+  });
+
+  it('PATCH /api/schedules/:id with new cron_expression recomputes next_run_at', async () => {
+    // First, create a schedule
+    const created = (
+      await h.app.inject({
+        method: 'POST',
+        url: '/api/schedules',
+        headers: auth(h.token),
+        payload: { cron_expression: '0 0 * * *' },
+      })
+    ).json() as { id: string; next_run_at: string };
+    const original = created.next_run_at;
+
+    // Then PATCH the cron_expression
+    const updated = (
+      await h.app.inject({
+        method: 'PATCH',
+        url: `/api/schedules/${created.id}`,
+        headers: auth(h.token),
+        payload: { cron_expression: '*/5 * * * *' },
+      })
+    ).json() as { id: string; next_run_at: string };
+    expect(updated.next_run_at).not.toBe(original);
+    expect(typeof updated.next_run_at).toBe('string');
+    expect(new Date(updated.next_run_at).getTime()).toBeGreaterThan(Date.now());
   });
 });

@@ -74,6 +74,21 @@ API keys (LLM provider and SerpAPI) are encrypted at rest using your OS keychain
 
 Pre-MVP. See `SPEC.md` for the full product spec and `docs/` for the design.
 
+## Development
+
+```bash
+git clone <repo>
+cd vina
+pnpm install
+pnpm --filter @vina/automation exec playwright install chromium  # one-time, ~100 MB
+pnpm test
+pnpm dev    # server (port 7341) + web (port 5173) in parallel
+```
+
+The Playwright Chromium binary is **not** installed automatically — per [ADR-018](./docs/decisions.md) we deliberately chose lazy install over a postinstall hook so `pnpm install` plays well with corporate proxies and doesn't surprise contributors with a 100 MB download. Run the install command above once after cloning; CI runs the equivalent step automatically before every test job.
+
+If you skip the install step, the `packages/automation/tests/browser/` tests (and any future browser-using test) fail with `browserType.launchPersistentContext: Executable doesn't exist at ~/.cache/ms-playwright/...`. That's the signal to run the install command above.
+
 ## Documentation
 
 - [`SPEC.md`](./SPEC.md) — product spec, scope, user stories

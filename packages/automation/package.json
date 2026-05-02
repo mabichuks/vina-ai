@@ -15,11 +15,16 @@
     "dist"
   ],
   "scripts": {
-    "build": "tsc -p .",
-    "dev": "tsc -p . --watch",
+    "build": "tsc -p tsconfig.build.json",
+    "dev": "tsc -p tsconfig.build.json --watch",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
     "clean": "rm -rf dist *.tsbuildinfo"
   },
   "dependencies": {
-    "@vina/shared": "workspace:*"
+    "@vina/shared": "workspace:*",
+    "playwright": "^1.59.1"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.59.1"
   }
 }

@@ -16,12 +16,14 @@ import { systemRoutes } from './http/routes/system.js';
 import { registerStatic } from './http/static.js';
 import { MAX_UPLOAD_BYTES } from './http/upload-limits.js';
 import { registerWebSocket } from './http/ws.js';
+import type { EventBus } from './events/bus.js';
 
 export interface BuildAppDeps {
   db: DatabaseType;
   config: ServerConfig;
   version: string;
   startedAt: string;
+  bus: EventBus;
 }
 
 export async function buildApp(deps: BuildAppDeps): Promise<FastifyInstance> {
@@ -35,7 +37,7 @@ export async function buildApp(deps: BuildAppDeps): Promise<FastifyInstance> {
 
   await app.register(multipart, { limits: { fileSize: MAX_UPLOAD_BYTES } });
 
-  await registerWebSocket(app, deps.config);
+  await registerWebSocket(app, deps.config, deps.bus);
   await app.register(async (api) => {
     await systemRoutes(api, deps);
     await profileRoutes(api, { db: deps.db });
