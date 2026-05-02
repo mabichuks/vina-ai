@@ -1,0 +1,43 @@
+import { describe, expect, expectTypeOf, it } from 'vitest';
+import { EVENT_PAYLOADS, EVENTS, type EventPayloadFor } from '../src/events.js';
+
+describe('events catalog', () => {
+  it('includes the manual-apply lifecycle events and a payload schema for every name', () => {
+    const names = Object.values(EVENTS);
+    expect(names).toContain('application:ready_for_manual_apply');
+    expect(names).toContain('application:applied_manually');
+    for (const name of names) expect(EVENT_PAYLOADS[name]).toBeDefined();
+  });
+
+  it('EventPayloadFor resolves to the correct payload shape', () => {
+    type ReadyPayload = EventPayloadFor<typeof EVENTS.APPLICATION_READY_FOR_MANUAL_APPLY>;
+    expectTypeOf<ReadyPayload>().toMatchTypeOf<{
+      application_id: string;
+      external_apply_url: string;
+      tailored_cv_path: string;
+    }>();
+  });
+
+  it('round-trips a representative payload per event', () => {
+    const fixtures = [
+      [EVENTS.JOBS_UPDATED, { ids: ['01J'] }],
+      [EVENTS.APPLICATION_UPDATED, { id: '01A', status: 'submitted' }],
+      [
+        EVENTS.APPLICATION_READY_FOR_MANUAL_APPLY,
+        {
+          application_id: '01A',
+          external_apply_url: 'https://x.greenhouse.io/jobs/1',
+          tailored_cv_path: 't.docx',
+        },
+      ],
+      [
+        EVENTS.APPLICATION_APPLIED_MANUALLY,
+        { application_id: '01A', applied_at: '2026-04-29T10:00:00Z' },
+      ],
+      [EVENTS.QUEUE_UPDATED, { pending: 3, running: 1 }],
+    ] as const;
+    for (const [name, payload] of fixtures) {
+      expect(EVENT_PAYLOADS[name].parse(payload)).toEqual(payload);
+    }
+  });
+});

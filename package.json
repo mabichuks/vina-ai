@@ -1,0 +1,37 @@
+{
+  "name": "vina",
+  "version": "0.0.0",
+  "private": true,
+  "description": "AI-powered job application assistant",
+  "packageManager": "pnpm@10.33.2",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "build": "pnpm -r build",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "lint": "eslint .",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "dev": "concurrently -k -n server,web -c blue,magenta \"pnpm --filter @vina/server dev\" \"pnpm --filter @vina/web dev\"",
+    "vina": "node packages/cli/dist/bin.js"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.39.4",
+    "@types/node": "^20.19.39",
+    "@typescript-eslint/eslint-plugin": "8.59.1",
+    "@typescript-eslint/parser": "8.59.1",
+    "@vitest/coverage-v8": "^2.1.9",
+    "concurrently": "9.2.1",
+    "eslint": "^9.39.4",
+    "eslint-config-prettier": "10.1.8",
+    "eslint-plugin-react": "7.37.5",
+    "eslint-plugin-react-hooks": "7.1.1",
+    "globals": "17.5.0",
+    "prettier": "3.8.3",
+    "typescript": "6.0.3",
+    "typescript-eslint": "8.59.1",
+    "vitest": "^2.1.9"
+  }
+}

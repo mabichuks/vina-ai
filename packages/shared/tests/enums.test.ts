@@ -1,0 +1,143 @@
+import { describe, expect, it } from 'vitest';
+import {
+  ALERT_KINDS,
+  ALERT_SEVERITIES,
+  ALERT_STATUSES,
+  APPLICATION_EVENT_KINDS,
+  APPLICATION_STATUSES,
+  APPLY_METHODS,
+  APPROVAL_SETTINGS,
+  CHAT_ROLES,
+  JOB_STATUSES,
+  LLM_PROVIDER_KINDS,
+  OPERATING_MODES,
+  SITE_KINDS,
+  TASK_KINDS,
+  TASK_STATUSES,
+} from '../src/enums.js';
+
+describe('enum constants', () => {
+  it('match the database CHECK constraint snapshot', () => {
+    expect({
+      JOB_STATUSES,
+      APPLICATION_STATUSES,
+      APPLY_METHODS,
+      SITE_KINDS,
+      OPERATING_MODES,
+      APPROVAL_SETTINGS,
+      ALERT_KINDS,
+      ALERT_SEVERITIES,
+      ALERT_STATUSES,
+      LLM_PROVIDER_KINDS,
+      TASK_KINDS,
+      TASK_STATUSES,
+      APPLICATION_EVENT_KINDS,
+      CHAT_ROLES,
+    }).toMatchInlineSnapshot(`
+      {
+        "ALERT_KINDS": [
+          "missing_field",
+          "captcha",
+          "session_expired",
+          "awaiting_approval",
+          "apply_failed",
+          "ready_for_manual_apply",
+          "general",
+        ],
+        "ALERT_SEVERITIES": [
+          "info",
+          "action_required",
+          "error",
+        ],
+        "ALERT_STATUSES": [
+          "open",
+          "resolved",
+          "dismissed",
+        ],
+        "APPLICATION_EVENT_KINDS": [
+          "created",
+          "cv_tailored",
+          "cv_approved",
+          "cv_rejected",
+          "apply_started",
+          "field_filled",
+          "field_unknown",
+          "captcha_detected",
+          "session_expired",
+          "submitted",
+          "failed",
+          "resumed",
+          "ready_for_manual_apply",
+          "applied_manually",
+        ],
+        "APPLICATION_STATUSES": [
+          "queued",
+          "applying",
+          "awaiting_user",
+          "awaiting_approval",
+          "ready_for_manual_apply",
+          "submitted",
+          "applied_manually",
+          "failed",
+          "skipped",
+        ],
+        "APPLY_METHODS": [
+          "auto",
+          "manual",
+        ],
+        "APPROVAL_SETTINGS": [
+          "auto-apply",
+          "review-first",
+        ],
+        "CHAT_ROLES": [
+          "user",
+          "assistant",
+          "tool",
+          "system",
+        ],
+        "JOB_STATUSES": [
+          "new",
+          "scored",
+          "queued",
+          "applying",
+          "awaiting_user",
+          "awaiting_approval",
+          "ready_for_manual_apply",
+          "submitted",
+          "applied_manually",
+          "failed",
+          "skipped",
+          "dismissed",
+        ],
+        "LLM_PROVIDER_KINDS": [
+          "anthropic",
+          "openai",
+          "ollama",
+        ],
+        "OPERATING_MODES": [
+          "autonomous",
+          "supervised",
+        ],
+        "SITE_KINDS": [
+          "browser",
+          "api",
+        ],
+        "TASK_KINDS": [
+          "search",
+          "score",
+          "tailor",
+          "apply",
+          "prepare_manual_apply",
+          "resume",
+        ],
+        "TASK_STATUSES": [
+          "pending",
+          "running",
+          "completed",
+          "failed",
+          "cancelled",
+        ],
+      }
+    `);
+  });
+});
