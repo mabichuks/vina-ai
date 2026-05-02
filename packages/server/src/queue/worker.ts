@@ -14,7 +14,13 @@ const log = createLogger('worker');
 
 /** A handler is any async function from a parsed payload to nothing. */
 export type TaskHandler<P = unknown> = (payload: P) => Promise<void>;
-export type TaskHandlers = Record<TaskKind, TaskHandler>;
+/**
+ * Handlers map. Sparse on purpose — kinds without an entry are marked
+ * `failed: unhandled_kind` (no retry) when the worker tries to run them.
+ * That gives M14+ the freedom to land tailor/apply/etc. one at a time
+ * without forcing every caller to register no-op stubs.
+ */
+export type TaskHandlers = Partial<Record<TaskKind, TaskHandler>>;
 
 export interface WorkerOptions {
   db: DatabaseType;

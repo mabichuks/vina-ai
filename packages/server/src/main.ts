@@ -12,7 +12,7 @@ import { resetStaleRunning } from './db/repositories/task-queue.js';
 import { createEventBus } from './events/bus.js';
 import { createSearchHandler } from './queue/handlers/search.js';
 import { createScoreHandler } from './queue/handlers/score.js';
-import { createWorker, type TaskHandlers } from './queue/worker.js';
+import { createWorker, type TaskHandler, type TaskHandlers } from './queue/worker.js';
 import { createScheduler } from './scheduler/scheduler.js';
 import { getActiveChatModel } from './services/llm-service.js';
 
@@ -75,20 +75,22 @@ export async function bootServer(overrides: Partial<ServerConfig> = {}): Promise
 
   const bus = createEventBus();
 
+  // M10 ships `search` and `score`. Other TaskKinds (tailor, apply,
+  // prepare_manual_apply, resume) intentionally have no entry — the worker
+  // marks them `failed: unhandled_kind` (no retry) until M14+ provides
+  // handlers. The factory return types are widened via `adapt` because each
+  // handler accepts its own narrow payload but `TaskHandler` accepts
+  // `unknown` (function-parameter contravariance).
+  const adapt = <P>(h: (p: P) => Promise<void>): TaskHandler => (p) => h(p as P);
   const handlers: TaskHandlers = {
-    search: createSearchHandler({ db, bus }) as TaskHandlers['search'],
-    score: createScoreHandler({
-      db,
-      bus,
-      buildModel: () => getActiveChatModel(db),
-    }) as TaskHandlers['score'],
-    // M14+ kinds intentionally unhandled — worker marks them failed with
-    // `unhandled_kind`. The handlers map must exhaustively list every TaskKind
-    // (TS enforces this via `Record<TaskKind, TaskHandler>`).
-    tailor: async () => undefined,
-    apply: async () => undefined,
-    prepare_manual_apply: async () => undefined,
-    resume: async () => undefined,
+    search: adapt(createSearchHandler({ db, bus })),
+    score: adapt(
+      createScoreHandler({
+        db,
+        bus,
+        buildModel: () => getActiveChatModel(db),
+      }),
+    ),
   };
 
   const worker = createWorker({ db, bus, handlers });

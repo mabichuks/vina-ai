@@ -19,13 +19,20 @@ export async function registerWebSocket(
 ): Promise<void> {
   await app.register(websocket);
 
-  // Track connected sockets so bus events can fan out. The Set is module-
-  // scoped to this registration call (one per app); do not move to module
-  // scope or restarts will leak references.
-  // reason: @fastify/websocket doesn't export the socket type; we infer it
-  // from the route handler parameter type.
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const sockets = new Set<any>();
+  // Track connected sockets so bus events can fan out. The Set is scoped
+  // to this registration call (one per app); do not move to module scope
+  // or restarts will leak references. `@fastify/websocket` doesn't export
+  // the socket type, so we use a structural duck-type that names only the
+  // pieces we touch — TS still verifies the route handler's `socket`
+  // parameter satisfies it at the `sockets.add(socket)` call below.
+  interface WsLike {
+    readonly readyState: number;
+    readonly OPEN: number;
+    send(data: string): void;
+    close(code: number, reason: string): void;
+    on(event: 'message' | 'close', handler: (data: Buffer) => void): void;
+  }
+  const sockets = new Set<WsLike>();
 
   // Subscribe once per event name. These subscribers stay alive for the
   // lifetime of the app — the bus is owned by main.ts and torn down when
