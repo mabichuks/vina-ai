@@ -1,11 +1,14 @@
 import type { Database as DatabaseType } from 'better-sqlite3';
-import { NotFoundError, type LlmProviderKind } from '@vina/shared';
+import type { BaseChatModel } from '@langchain/core/language_models/chat_models';
+import { NotFoundError, ConflictError, type LlmProviderKind } from '@vina/shared';
+import { buildModel } from '@vina/orchestrator';
 import {
   findLlmProviderById,
   insertLlmProvider,
   updateLlmProvider,
   type LlmProviderRow,
 } from '../db/repositories/llm-providers.js';
+import { getOrInitSettings } from '../db/repositories/settings.js';
 import { decrypt, encrypt } from '../secrets/vault.js';
 
 /**
@@ -193,4 +196,28 @@ async function validateOllama(baseUrl: string): Promise<ValidateResult> {
   } catch {
     return { ok: false, reason: 'network' };
   }
+}
+
+/**
+ * Resolves the user-selected active LLM provider, decrypts its key, and
+ * returns a configured LangChain chat model. Throws ConflictError if no
+ * provider is selected (a clear "configure provider first" UX) or
+ * NotFoundError if the selected id has been deleted under us.
+ */
+export async function getActiveChatModel(db: DatabaseType): Promise<BaseChatModel> {
+  const settings = getOrInitSettings(db);
+  if (!settings.active_llm_provider_id) {
+    throw new ConflictError('No active LLM provider configured');
+  }
+  const row = findLlmProviderById(db, settings.active_llm_provider_id);
+  if (!row) {
+    throw new NotFoundError(`Active LLM provider ${settings.active_llm_provider_id} not found`);
+  }
+  const apiKey = row.encrypted_api_key ? decrypt(row.encrypted_api_key) : null;
+  return buildModel({
+    kind: row.kind,
+    model: row.model,
+    ...(apiKey !== null && { apiKey }),
+    ...(row.base_url !== null && { baseUrl: row.base_url }),
+  });
 }
