@@ -6,6 +6,7 @@ import type { FastifyInstance } from 'fastify';
 import { buildApp } from '../../src/app.js';
 import { buildConfig, type ServerConfig } from '../../src/config.js';
 import { _resetVaultForTests, initVault } from '../../src/secrets/vault.js';
+import { createEventBus } from '../../src/events/bus.js';
 import { freshTestDb } from '../db/helpers.js';
 
 export interface TestAppHandle {
@@ -31,11 +32,13 @@ export async function buildTestApp(): Promise<TestAppHandle> {
 
   const db = freshTestDb();
   const config = buildConfig({ dataDir });
+  const bus = createEventBus();
   const app = await buildApp({
     db,
     config,
     version: '0.0.0-test',
     startedAt: '2026-04-01T00:00:00Z',
+    bus,
   });
 
   const cleanup = async (): Promise<void> => {

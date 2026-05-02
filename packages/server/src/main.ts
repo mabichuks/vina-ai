@@ -8,6 +8,13 @@ import { buildConfig, type ServerConfig } from './config.js';
 import { closeDb, getDb } from './db/client.js';
 import { migrate } from './db/migrate.js';
 import { initVault } from './secrets/vault.js';
+import { resetStaleRunning } from './db/repositories/task-queue.js';
+import { createEventBus } from './events/bus.js';
+import { createSearchHandler } from './queue/handlers/search.js';
+import { createScoreHandler } from './queue/handlers/score.js';
+import { createWorker, type TaskHandlers } from './queue/worker.js';
+import { createScheduler } from './scheduler/scheduler.js';
+import { getActiveChatModel } from './services/llm-service.js';
 
 const log = createLogger('main');
 
@@ -61,15 +68,47 @@ export async function bootServer(overrides: Partial<ServerConfig> = {}): Promise
   migrate(db, { migrationsDir: MIGRATIONS_DIR });
   await initVault(config.dataDir);
 
+  // Recover from a hard crash mid-task — anything left `running` returns to
+  // `pending`. Idempotent on a clean shutdown (no rows in `running`).
+  const stale = resetStaleRunning(db);
+  if (stale > 0) log.warn({ count: stale }, 'reset stale running tasks at boot');
+
+  const bus = createEventBus();
+
+  const handlers: TaskHandlers = {
+    search: createSearchHandler({ db, bus }) as TaskHandlers['search'],
+    score: createScoreHandler({
+      db,
+      bus,
+      buildModel: () => getActiveChatModel(db),
+    }) as TaskHandlers['score'],
+    // M14+ kinds intentionally unhandled — worker marks them failed with
+    // `unhandled_kind`. The handlers map must exhaustively list every TaskKind
+    // (TS enforces this via `Record<TaskKind, TaskHandler>`).
+    tailor: async () => undefined,
+    apply: async () => undefined,
+    prepare_manual_apply: async () => undefined,
+    resume: async () => undefined,
+  };
+
+  const worker = createWorker({ db, bus, handlers });
+  const scheduler = createScheduler({ db, bus, poke: () => worker.poke() });
+
   const startedAt = new Date().toISOString();
-  const app = await buildApp({ db, config, version, startedAt });
+  const app = await buildApp({ db, config, version, startedAt, bus });
 
   const address = await app.listen({ port: config.port, host: '127.0.0.1' });
   const port = Number.parseInt(new URL(address).port, 10);
   writeStatusFile(config, port, version);
+
+  worker.start();
+  scheduler.start();
+
   log.info({ port, url: address, version }, 'ready');
 
   const shutdown = async (): Promise<void> => {
+    scheduler.stop();
+    await worker.stop();
     await app.close();
     closeDb();
     deleteStatusFile(config);
