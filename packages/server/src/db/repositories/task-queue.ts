@@ -144,6 +144,14 @@ export function listPending(db: DatabaseType): Task[] {
   return rows.map(rowToTask);
 }
 
+/** Cheap counter for status-faceted summaries (system status route, queue:updated emits). */
+export function countByStatus(db: DatabaseType, status: TaskStatus): number {
+  const row = db
+    .prepare(`SELECT COUNT(*) AS n FROM task_queue WHERE status = ?`)
+    .get(status) as { n: number };
+  return row.n;
+}
+
 /** Reset all `running` rows back to `pending`. Used on startup recovery. */
 export function resetStaleRunning(db: DatabaseType): number {
   const result = db

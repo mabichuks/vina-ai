@@ -189,7 +189,7 @@ describe('system routes', () => {
     expect(json.scheduler.next_run_at).toBe(next);
   });
 
-  it('returns null next_run_at when no schedule has next_run_at set', async () => {
+  it('disabled schedules do not contribute to next_run_at', async () => {
     insertSchedule(db, { cron_expression: '0 12 * * *', enabled: false });
 
     const res = await app.inject({
@@ -199,5 +199,22 @@ describe('system routes', () => {
     });
     const json = res.json() as { scheduler: { next_run_at: string | null } };
     expect(json.scheduler.next_run_at).toBeNull();
+  });
+
+  it('falls back to computing next_run_at from cron when stored value is null', async () => {
+    // Enabled schedule, no stored next_run_at — route should compute on the fly.
+    insertSchedule(db, { cron_expression: '0 12 * * *' });
+
+    const res = await app.inject({
+      method: 'GET',
+      url: '/api/system/status',
+      headers: auth(),
+    });
+    const json = res.json() as { scheduler: { next_run_at: string | null } };
+    expect(json.scheduler.next_run_at).not.toBeNull();
+    // Computed value is a future ISO timestamp; exact value depends on the
+    // local timezone since cron-parser interprets bare expressions locally.
+    const computed = new Date(json.scheduler.next_run_at!).getTime();
+    expect(computed).toBeGreaterThan(Date.now());
   });
 });

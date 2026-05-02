@@ -4,8 +4,8 @@ import { createLogger, TASK_KINDS, type Task, type TaskKind } from '@vina/shared
 import {
   claimNext,
   complete,
+  countByStatus,
   fail,
-  listPending,
 } from '../db/repositories/task-queue.js';
 import type { EventBus } from '../events/bus.js';
 import { DEFAULT_CONCURRENCY } from './concurrency.js';
@@ -69,14 +69,8 @@ export function createWorker(options: WorkerOptions): WorkerHandle {
   }
 
   function emitCounts(): void {
-    const pending = listPending(options.db).length;
-    const running = (
-      options.db
-        .prepare(`SELECT COUNT(*) AS n FROM task_queue WHERE status = 'running'`)
-        .get() as {
-          n: number;
-        }
-    ).n;
+    const pending = countByStatus(options.db, 'pending');
+    const running = countByStatus(options.db, 'running');
     options.bus.emit('queue:updated', { pending, running });
   }
 

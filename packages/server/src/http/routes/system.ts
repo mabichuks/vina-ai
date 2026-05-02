@@ -9,7 +9,7 @@ import { listCvs } from '../../db/repositories/cvs.js';
 import { findLlmProviderById, listLlmProviders } from '../../db/repositories/llm-providers.js';
 import { listSites } from '../../db/repositories/sites.js';
 import { getOrInitSettings, updateSettings } from '../../db/repositories/settings.js';
-import { listPending } from '../../db/repositories/task-queue.js';
+import { countByStatus } from '../../db/repositories/task-queue.js';
 import { listSchedules } from '../../db/repositories/schedules.js';
 import { nextRunAt } from '../../scheduler/cron.js';
 
@@ -64,12 +64,8 @@ export async function systemRoutes(app: FastifyInstance, deps: SystemRouteDeps):
       ? findLlmProviderById(db, settings.active_llm_provider_id)
       : null;
 
-    const pending = listPending(db).length;
-    const running = (
-      db.prepare(`SELECT COUNT(*) AS n FROM task_queue WHERE status = 'running'`).get() as {
-        n: number;
-      }
-    ).n;
+    const pending = countByStatus(db, 'pending');
+    const running = countByStatus(db, 'running');
 
     // Earliest next_run_at across enabled schedules — null if no schedule has
     // a value yet. Falls back to computing from the cron expression for rows
