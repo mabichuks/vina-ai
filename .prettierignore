@@ -1,0 +1,13 @@
+node_modules
+dist
+build
+coverage
+.turbo
+.cache
+.vite
+pnpm-lock.yaml
+packages/server/public
+packages/web/dist
+*.tsbuildinfo
+PRD.md
+DEFERRED.md

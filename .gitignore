@@ -1,0 +1,57 @@
+# Dependencies
+node_modules/
+.pnpm-store/
+
+# Build outputs
+dist/
+build/
+*.tsbuildinfo
+packages/server/public/
+
+# Tooling caches
+.turbo/
+.cache/
+.vite/
+.eslintcache
+
+# Test / coverage
+coverage/
+.nyc_output/
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# Logs
+*.log
+npm-debug.log*
+pnpm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+logs/
+
+# OS detritus
+.DS_Store
+Thumbs.db
+
+# Editor
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json
+.idea/
+.claude/
+
+# Playwright
+/test-results/
+/playwright-report/
+/playwright/.cache/
+
+# Vina runtime data (user DB / browser profiles live in OS user-data dir, but guard against accidental local copies)
+*.sqlite
+*.sqlite-journal
+*.db
+
+# Working planning docs — kept locally only
+PRD.md
+DEFERRED.md
