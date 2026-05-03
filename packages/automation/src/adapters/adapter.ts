@@ -8,8 +8,8 @@ import type { JobDetail, RawListing } from './types.js';
  * `search`, `openListing`, and `detectApplyMethod`. The form-walker
  * methods (`startApplication`, `inspectFields`, `fillField`, `uploadCv`,
  * `uploadCoverLetter`, `submit`, `takeScreenshot`) extend this interface
- * in M15 when `ApplicationSession` and `FormField` types can be designed
- * with full context.
+ * in M15 and may revisit the discovery method shapes if `ApplicationSession`
+ * integration requires it.
  *
  * Adapter implementations are plain `const` exports (no factory needed —
  * adapters hold no closure state); they import helpers from
@@ -63,5 +63,8 @@ export interface SiteAdapter {
     page: Page,
     listing: RawListing,
     signal?: AbortSignal,
-  ): Promise<{ method: 'auto' | 'manual'; externalApplyUrl?: string }>;
+  ): Promise<
+    | { method: 'auto' }
+    | { method: 'manual'; externalApplyUrl: string | null }
+  >;
 }

@@ -82,14 +82,18 @@ interface SiteAdapter {
 
   // Inspect a listing and decide if it's auto-applyable on this site.
   // Returns 'auto' for in-site quick/easy apply, 'manual' for external redirects.
-  // Also captures the external apply URL when the method is 'manual'.
+  // The discriminated union eliminates the auto-with-URL bug class: callers
+  // narrow on `method` and the auto branch has no `externalApplyUrl` field.
+  // The manual branch's URL is nullable so an adapter that detects "manual
+  // listing, but no extractable URL" can still classify honestly without
+  // throwing.
   detectApplyMethod(
     page: Page,
     listing: RawListing,
-  ): Promise<{
-    method: 'auto' | 'manual';
-    externalApplyUrl?: string;
-  }>;
+  ): Promise<
+    | { method: 'auto' }
+    | { method: 'manual'; externalApplyUrl: string | null }
+  >;
 
   openListing(page: Page, listing: RawListing): Promise<JobDetail>;
 

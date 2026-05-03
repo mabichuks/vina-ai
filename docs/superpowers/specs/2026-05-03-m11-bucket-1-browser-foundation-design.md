@@ -187,7 +187,10 @@ export interface SiteAdapter {
     page: Page,
     listing: RawListing,
     signal?: AbortSignal,
-  ): Promise<{ method: 'auto' | 'manual'; externalApplyUrl?: string }>;
+  ): Promise<
+    | { method: 'auto' }
+    | { method: 'manual'; externalApplyUrl: string | null }
+  >;
 }
 ```
 
