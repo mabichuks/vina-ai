@@ -7,3 +7,4 @@ export {
 } from './browser/humanise.js';
 export { type SiteAdapter } from './adapters/adapter.js';
 export { type JobDetail, type RawListing } from './adapters/types.js';
+export { firstVisible, getHref, isExternalUrl } from './detect/apply-method.js';
