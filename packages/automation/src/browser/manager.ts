@@ -2,7 +2,7 @@ import type { BrowserContext } from 'playwright';
 import { createLogger } from '@vina/shared';
 import { launchSiteContext, type LaunchSiteContextOptions } from './launch.js';
 
-const log = createLogger('browser-manager');
+const log = createLogger('automation.browser-manager');
 
 export interface BrowserManagerOptions {
   /** Vina data directory. Persistent profiles live at `<dataDir>/sessions/<siteId>/`. */
@@ -49,11 +49,17 @@ export function createBrowserManager(opts: BrowserManagerOptions): BrowserManage
     const cached = cache.get(siteId);
     if (cached) return cached;
 
+    // Evict on launch failure so the next caller retries instead of being
+    // permanently stuck with a poisoned cache entry. Concurrent in-flight
+    // callers still share this rejection — dedup is preserved.
     const launching = launchSiteContext({
       siteId,
       dataDir: opts.dataDir,
       headless: opts.headless ?? true,
       ...(opts.channel && { channel: opts.channel }),
+    }).catch((err: unknown) => {
+      cache.delete(siteId);
+      throw err;
     });
     cache.set(siteId, launching);
     return launching;

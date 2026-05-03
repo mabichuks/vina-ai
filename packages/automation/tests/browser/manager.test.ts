@@ -1,8 +1,17 @@
 import os from 'node:os';
 import path from 'node:path';
 import fs from 'node:fs/promises';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createBrowserManager } from '../../src/browser/manager.js';
+
+// Mock the launch module so individual tests can override the function's
+// return value. By default we passthrough to the real implementation.
+vi.mock('../../src/browser/launch.js', async () => {
+  const actual = await vi.importActual<typeof import('../../src/browser/launch.js')>(
+    '../../src/browser/launch.js',
+  );
+  return { ...actual };
+});
 
 let dataDir: string;
 
@@ -62,6 +71,28 @@ describe('BrowserManager', () => {
       ]);
       expect(a).toBe(b);
       expect(b).toBe(c);
+    } finally {
+      await mgr.closeAll();
+    }
+  }, 30_000);
+
+  it('evicts a failed launch from the cache so the next call retries', async () => {
+    // First call: force a launch failure via mock.
+    const launchMock = vi.spyOn(
+      await import('../../src/browser/launch.js'),
+      'launchSiteContext',
+    );
+    launchMock.mockRejectedValueOnce(new Error('chromium missing'));
+
+    const mgr = createBrowserManager({ dataDir });
+    await expect(mgr.getContext('site-a')).rejects.toThrow('chromium missing');
+
+    // Second call: mock not configured for this call, falls through to real
+    // launch and should succeed.
+    launchMock.mockRestore();
+    try {
+      const ctx = await mgr.getContext('site-a');
+      expect(ctx).toBeDefined();
     } finally {
       await mgr.closeAll();
     }
