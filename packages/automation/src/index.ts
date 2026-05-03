@@ -5,3 +5,5 @@ export {
   pause,
   sleepBetweenListings,
 } from './browser/humanise.js';
+export { type SiteAdapter } from './adapters/adapter.js';
+export { type JobDetail, type RawListing } from './adapters/types.js';
