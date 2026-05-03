@@ -4,6 +4,10 @@
  * order and returns the first hit. Single-string constants are the
  * canonical form for elements that don't drift across cohorts.
  *
+ * **Array order is load-bearing.** The most specific selector goes first,
+ * the fallback last. The arrays are typed `as const` (readonly) so the
+ * type system prevents accidental reordering or mutation by consumers.
+ *
  * The fixture site at `tests/fixtures/sites/linkedin/` mirrors a subset
  * of these selectors so adapter tests exercise the same selector paths
  * the real-LinkedIn DOM does. The two are kept in sync manually — a
@@ -18,13 +22,13 @@ export const APPLY_BUTTON_ROOT_SELECTOR = '[data-test-id="jobs-apply-button-id"]
 export const EASY_APPLY_SELECTORS = [
   'button[data-test-id="jobs-apply-button-id"]:has-text("Easy Apply")',
   'button:has-text("Easy Apply")',
-];
+] as const;
 
-/** External-redirect variants — anchor preferred (href readable), button fallback. */
+/** External-redirect variants — order matters; anchor preferred (href readable), button fallback. */
 export const EXTERNAL_APPLY_SELECTORS = [
   'a[data-test-id="jobs-apply-button-id"]',
   'button[data-test-id="jobs-apply-button-id"]',
-];
+] as const;
 
 /** Job title element on the listing detail page. */
 export const JOB_TITLE_SELECTOR = '.jobs-unified-top-card__job-title';

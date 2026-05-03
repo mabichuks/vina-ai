@@ -9,7 +9,10 @@ import type { Locator, Page } from 'playwright';
  * cohorts and a plain `button:has-text("Easy Apply")` in others. Adapters
  * pass an ordered list and let the helper pick whichever is present.
  */
-export async function firstVisible(page: Page, selectors: string[]): Promise<Locator | null> {
+export async function firstVisible(
+  page: Page,
+  selectors: readonly string[],
+): Promise<Locator | null> {
   for (const selector of selectors) {
     const locator = page.locator(selector).first();
     if (await locator.isVisible()) return locator;
