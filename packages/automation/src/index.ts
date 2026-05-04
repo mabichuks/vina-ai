@@ -13,3 +13,4 @@ export {
   type BrowserManagerHandle,
   type BrowserManagerOptions,
 } from './browser/manager.js';
+export { linkedInAdapter } from './adapters/linkedin.js';
