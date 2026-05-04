@@ -12,6 +12,7 @@ import {
  * include only the DOM structure the adapter actually targets.
  */
 
+// All fixture inputs are trusted constants in this file — no escaping needed.
 function html(body: string): string {
   return `<!doctype html><html><head><meta charset="utf-8"><title>fixture</title></head><body>${body}</body></html>`;
 }
@@ -34,8 +35,10 @@ export function feedPage(): string {
   `);
 }
 
+type FixtureListingId = 'easy' | 'ext' | 'ndi';
+
 interface FixtureListing {
-  id: string;
+  id: FixtureListingId;
   title: string;
   company: string;
   location: string;
@@ -43,8 +46,8 @@ interface FixtureListing {
   postedAt: string;
 }
 
-const FIXTURE_LISTINGS: readonly FixtureListing[] = [
-  {
+const FIXTURE_LISTINGS = {
+  easy: {
     id: 'easy',
     title: 'Senior TypeScript Engineer',
     company: 'Acme Corp',
@@ -52,7 +55,7 @@ const FIXTURE_LISTINGS: readonly FixtureListing[] = [
     snippet: 'Backend role with TypeScript, Postgres, AWS.',
     postedAt: '2026-05-01T00:00:00.000Z',
   },
-  {
+  ext: {
     id: 'ext',
     title: 'Staff Software Engineer',
     company: 'Globex',
@@ -60,7 +63,7 @@ const FIXTURE_LISTINGS: readonly FixtureListing[] = [
     snippet: 'Platform team — distributed systems, Go preferred.',
     postedAt: '2026-04-30T00:00:00.000Z',
   },
-  {
+  ndi: {
     id: 'ndi',
     title: 'Principal Backend Engineer',
     company: 'Initech',
@@ -68,11 +71,13 @@ const FIXTURE_LISTINGS: readonly FixtureListing[] = [
     snippet: 'Greenfield infrastructure work.',
     postedAt: '2026-04-29T00:00:00.000Z',
   },
-] as const;
+} as const satisfies Record<FixtureListingId, FixtureListing>;
 
 export function searchResultsPage(): string {
-  const cards = FIXTURE_LISTINGS.map(
-    (l) => `
+  // Search cards intentionally omit JOB_SALARY_CLASS — salary appears only on detail pages.
+  const cards = Object.values(FIXTURE_LISTINGS)
+    .map(
+      (l) => `
       <div ${JOB_CARD_DATA_ATTR}="${l.id}">
         <a href="/jobs/view/${l.id}">
           <h3 class="${JOB_TITLE_CLASS}">${l.title}</h3>
@@ -83,7 +88,8 @@ export function searchResultsPage(): string {
         </a>
       </div>
     `,
-  ).join('');
+    )
+    .join('');
   return html(`<main><h1>Search results</h1>${cards}</main>`);
 }
 
@@ -101,25 +107,22 @@ function detailPageBase(listing: FixtureListing, applyHtml: string): string {
 }
 
 export function easyApplyDetailPage(): string {
-  const listing = FIXTURE_LISTINGS[0]!;
   return detailPageBase(
-    listing,
+    FIXTURE_LISTINGS.easy,
     `<button data-test-id="${APPLY_BUTTON_TEST_ID}">Easy Apply</button>`,
   );
 }
 
 export function externalRedirectDetailPage(): string {
-  const listing = FIXTURE_LISTINGS[1]!;
   return detailPageBase(
-    listing,
+    FIXTURE_LISTINGS.ext,
     `<a data-test-id="${APPLY_BUTTON_TEST_ID}" href="https://workday.example/jobs/123">Apply</a>`,
   );
 }
 
 export function externalNoUrlDetailPage(): string {
-  const listing = FIXTURE_LISTINGS[2]!;
   return detailPageBase(
-    listing,
+    FIXTURE_LISTINGS.ndi,
     `<button data-test-id="${APPLY_BUTTON_TEST_ID}">Apply</button>`,
   );
 }
