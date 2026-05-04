@@ -41,3 +41,16 @@ export const JOB_SALARY_SELECTOR = '.jobs-unified-top-card__job-insight-salary';
 
 /** Listing card on the search results page; carries `data-job-id`. */
 export const JOB_CARD_SELECTOR = '[data-job-id]';
+
+/**
+ * Card sub-selectors used by `extractRawListing`. These match the fixture
+ * DOM today; real LinkedIn cards use different class names (e.g.
+ * `.job-card-list__company-name`) and will need cohort-aware variants
+ * when the live integration lands. Kept here so the file is the single
+ * source of truth for everything the adapter targets.
+ */
+export const JOB_CARD_LINK_SELECTOR = 'a';
+export const JOB_CARD_COMPANY_SELECTOR = '.company';
+export const JOB_CARD_LOCATION_SELECTOR = '.location';
+export const JOB_CARD_SNIPPET_SELECTOR = '.snippet';
+export const JOB_CARD_POSTED_AT_SELECTOR = 'time';

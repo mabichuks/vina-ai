@@ -8,7 +8,12 @@ import {
   APPLY_BUTTON_ROOT_SELECTOR,
   EASY_APPLY_SELECTORS,
   EXTERNAL_APPLY_SELECTORS,
+  JOB_CARD_COMPANY_SELECTOR,
+  JOB_CARD_LINK_SELECTOR,
+  JOB_CARD_LOCATION_SELECTOR,
+  JOB_CARD_POSTED_AT_SELECTOR,
   JOB_CARD_SELECTOR,
+  JOB_CARD_SNIPPET_SELECTOR,
   JOB_DESCRIPTION_SELECTOR,
   JOB_SALARY_SELECTOR,
   JOB_TITLE_SELECTOR,
@@ -16,43 +21,59 @@ import {
 
 const LINKEDIN_ORIGIN = 'https://www.linkedin.com';
 
+// 10s ceiling on readiness waits — surfaces selector drift / anti-bot
+// interstitials as a typed Playwright timeout instead of hanging the
+// worker for the default 30s.
+const SELECTOR_TIMEOUT_MS = 10_000;
+
 function buildSearchUrl(currentUrl: string, prefs: SearchPreferences): string {
   const base = new URL(currentUrl);
   const url = new URL('/jobs/search', base.origin);
   if (prefs.keywords.length > 0) {
     url.searchParams.set('keywords', prefs.keywords.join(' '));
   }
-  if (prefs.locations.length > 0) {
-    url.searchParams.set('location', prefs.locations[0]!);
+  const [firstLocation] = prefs.locations;
+  if (firstLocation) {
+    url.searchParams.set('location', firstLocation);
   }
   return url.toString();
 }
 
-async function readOptional(page: Page, selector: string): Promise<string | null> {
-  const locator = page.locator(selector).first();
+async function readInner(scope: Locator | Page, selector: string): Promise<string | null> {
+  const locator = scope.locator(selector).first();
   if ((await locator.count()) === 0) return null;
   return await locator.innerText();
+}
+
+async function readAttr(
+  scope: Locator,
+  selector: string,
+  attr: string,
+): Promise<string | null> {
+  const locator = scope.locator(selector).first();
+  if ((await locator.count()) === 0) return null;
+  return await locator.getAttribute(attr);
 }
 
 async function extractRawListing(card: Locator, baseUrl: string): Promise<RawListing | null> {
   const externalId = await card.getAttribute('data-job-id');
   if (!externalId) return null;
-  const titleText = await card.locator(JOB_TITLE_SELECTOR).first().innerText();
-  if (!titleText) return null;
-  const company = await card.locator('.company').first().innerText();
-  const location = await card.locator('.location').first().innerText();
-  const snippet = await card.locator('.snippet').first().innerText();
-  const postedAt = await card.locator('time').first().getAttribute('datetime');
-  const href = await card.locator('a').first().getAttribute('href');
+  const title = await readInner(card, JOB_TITLE_SELECTOR);
+  if (!title) return null;
+  const company = (await readInner(card, JOB_CARD_COMPANY_SELECTOR)) ?? '';
+  const location = await readInner(card, JOB_CARD_LOCATION_SELECTOR);
+  const snippet = await readInner(card, JOB_CARD_SNIPPET_SELECTOR);
+  const postedAt = await readAttr(card, JOB_CARD_POSTED_AT_SELECTOR, 'datetime');
+  const href = await readAttr(card, JOB_CARD_LINK_SELECTOR, 'href');
   const url = href ? new URL(href, baseUrl).toString() : '';
   return {
     externalId,
-    title: titleText,
+    title,
     company,
-    location: location || null,
+    location,
     url,
-    snippet: snippet || null,
-    postedAt: postedAt || null,
+    snippet,
+    postedAt,
   };
 }
 
@@ -78,7 +99,10 @@ export const linkedInAdapter: SiteAdapter = {
   async *search(page, prefs, signal) {
     const url = buildSearchUrl(page.url(), prefs);
     await page.goto(url);
-    await page.waitForSelector(JOB_CARD_SELECTOR, { state: 'visible' });
+    await page.waitForSelector(JOB_CARD_SELECTOR, {
+      state: 'visible',
+      timeout: SELECTOR_TIMEOUT_MS,
+    });
 
     const cards = await page.locator(JOB_CARD_SELECTOR).all();
     for (const card of cards) {
@@ -88,16 +112,25 @@ export const linkedInAdapter: SiteAdapter = {
     }
   },
 
+  // reason: signal threading lands with the M15 form-walker rework that
+  // also revisits this method's signature; for M11 discovery the search
+  // loop is the only long-running path that needs cooperative cancel.
   async openListing(page, listing) {
     await page.goto(listing.url);
-    await page.waitForSelector(JOB_TITLE_SELECTOR, { state: 'visible' });
+    await page.waitForSelector(JOB_TITLE_SELECTOR, {
+      state: 'visible',
+      timeout: SELECTOR_TIMEOUT_MS,
+    });
     const description = await page.locator(JOB_DESCRIPTION_SELECTOR).innerText();
-    const salaryText = await readOptional(page, JOB_SALARY_SELECTOR);
+    const salaryText = await readInner(page, JOB_SALARY_SELECTOR);
     return { description, salaryText } satisfies JobDetail;
   },
 
   async detectApplyMethod(page) {
-    await page.waitForSelector(APPLY_BUTTON_ROOT_SELECTOR, { state: 'visible' });
+    await page.waitForSelector(APPLY_BUTTON_ROOT_SELECTOR, {
+      state: 'visible',
+      timeout: SELECTOR_TIMEOUT_MS,
+    });
 
     const easyApply = await firstVisible(page, EASY_APPLY_SELECTORS);
     if (easyApply) return { method: 'auto' };
