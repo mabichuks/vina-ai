@@ -1,7 +1,7 @@
 import type { Locator, Page } from 'playwright';
 import type { SearchPreferences } from '@vina/shared';
 import { firstVisible, getHref, isExternalUrl } from '../detect/apply-method.js';
-import { pause } from '../browser/humanise.js';
+import { sleepBetweenListings } from '../browser/humanise.js';
 import type { SiteAdapter } from './adapter.js';
 import type { JobDetail, RawListing } from './types.js';
 import {
@@ -105,10 +105,15 @@ export const linkedInAdapter: SiteAdapter = {
     });
 
     const cards = await page.locator(JOB_CARD_SELECTOR).all();
+    let isFirst = true;
     for (const card of cards) {
+      // Pace per ADR-013: 4-8s between listings yielded from search.
+      // Skipped on the first iteration so we don't pause before yielding
+      // anything, and not run after the last yield.
+      if (!isFirst) await sleepBetweenListings(signal);
+      isFirst = false;
       const listing = await extractRawListing(card, page.url());
       if (listing) yield listing;
-      await pause(200, 600, signal);
     }
   },
 
