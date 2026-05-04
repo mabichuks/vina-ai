@@ -1,9 +1,9 @@
 import type { Locator, Page } from 'playwright';
 import type { SearchPreferences } from '@vina/shared';
-import { firstVisible, getHref, isExternalUrl } from '../detect/apply-method.js';
-import { sleepBetweenListings } from '../browser/humanise.js';
-import type { SiteAdapter } from './adapter.js';
-import type { JobDetail, RawListing } from './types.js';
+import { firstVisible, getHref, isExternalUrl } from '../../detect/apply-method.js';
+import { sleepBetweenListings } from '../../browser/humanise.js';
+import type { SiteAdapter } from '../adapter.js';
+import type { JobDetail, RawListing } from '../types.js';
 import {
   APPLY_BUTTON_ROOT_SELECTOR,
   EASY_APPLY_SELECTORS,
@@ -17,7 +17,7 @@ import {
   JOB_DESCRIPTION_SELECTOR,
   JOB_SALARY_SELECTOR,
   JOB_TITLE_SELECTOR,
-} from './linkedin-selectors.js';
+} from './selectors.js';
 
 const LINKEDIN_ORIGIN = 'https://www.linkedin.com';
 

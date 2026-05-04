@@ -9,7 +9,7 @@ import {
 } from 'vitest';
 import { chromium, type Browser, type Page } from 'playwright';
 import type { SearchPreferences } from '@vina/shared';
-import { linkedInAdapter } from '../../src/adapters/linkedin.js';
+import { linkedInAdapter } from '../../src/adapters/linkedin/index.js';
 import { startLinkedInFixture } from '../../../../tests/fixtures/sites/linkedin/server.js';
 import type { FixtureServerHandle } from '../../../../tests/fixtures/start-server.js';
 

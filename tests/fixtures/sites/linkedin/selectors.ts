@@ -1,6 +1,6 @@
 /**
  * Selectors used in the fixture HTML. These mirror the canonical (first)
- * variant of `packages/automation/src/adapters/linkedin-selectors.ts` —
+ * variant of `packages/automation/src/adapters/linkedin/selectors.ts` —
  * the adapter side may include legacy-cohort fallbacks the fixture
  * doesn't need to render. The two files are kept in sync manually.
  *
