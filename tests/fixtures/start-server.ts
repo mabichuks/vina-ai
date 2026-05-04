@@ -11,7 +11,8 @@ export interface FixtureServerHandle {
 
 /**
  * Boot a Fastify app with the given route registrar on an OS-assigned
- * ephemeral port (binds `0.0.0.0:0`). Returns a handle with the running
+ * ephemeral port (binds `127.0.0.1:0` — loopback only, never reachable
+ * off-host even during a test run). Returns a handle with the running
  * URL and a cleanup function.
  *
  * Used by per-site fixtures (`startLinkedInFixture` today, Indeed/Google

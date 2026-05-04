@@ -123,7 +123,7 @@ export interface LinkedInFixtureHandle {
 export async function startLinkedInFixture(): Promise<LinkedInFixtureHandle>;
 ```
 
-The fixture binds to `0.0.0.0:0` so the OS picks an ephemeral free port; tests read the actual port from `server.address()`. Two parallel test files don't collide.
+The fixture binds to `127.0.0.1:0` so the OS picks an ephemeral free port (loopback only — never reachable off-host during a test run). Two parallel test files don't collide because each gets a distinct port.
 
 **Routes:**
 
@@ -281,7 +281,7 @@ export async function startFixtureServer(
 ): Promise<FixtureServerHandle>;
 ```
 
-~30 lines. Creates a Fastify instance with logging disabled (test noise), registers the caller's routes, listens on `0.0.0.0:0`, computes the URL from `server.address()`. Cleanup closes the Fastify instance.
+~30 lines. Creates a Fastify instance with logging disabled (test noise), registers the caller's routes, listens on `127.0.0.1:0` (loopback + OS-assigned ephemeral port), computes the URL from `server.address()`. Cleanup closes the Fastify instance.
 
 Future M12 Indeed fixture: `tests/fixtures/sites/indeed/server.ts` is then a one-liner wrapping a different route registrar.
 
