@@ -1,12 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import { freshTestDb } from '../test-helpers.js';
 import {
   deleteCoverLetter,
   findCoverLetterById,
   insertCoverLetter,
   listCoverLetters,
   setDefaultCoverLetter,
-} from './cover-letters.js';
+} from '../../../src/db/repositories/cover-letters.js';
+import { freshTestDb } from '../helpers.js';
 
 function newInput(label = 'Default') {
   return {
