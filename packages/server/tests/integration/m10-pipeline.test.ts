@@ -7,7 +7,6 @@ import { insertProfile } from '../../src/db/repositories/profile.js';
 import { upsertSearchPreferences } from '../../src/db/repositories/search-preferences.js';
 import { enqueue } from '../../src/db/repositories/task-queue.js';
 import { createEventBus } from '../../src/events/bus.js';
-import { createSearchHandler } from '../../src/queue/handlers/search.js';
 import { createScoreHandler } from '../../src/queue/handlers/score.js';
 import { createWorker, type TaskHandler, type TaskHandlers } from '../../src/queue/worker.js';
 import { freshTestDb } from '../db/helpers.js';
@@ -51,7 +50,6 @@ describe('M10 pipeline', () => {
     });
 
     const handlers: TaskHandlers = {
-      search: adapt(createSearchHandler({ db, bus })),
       score: adapt(
         createScoreHandler({
           db,

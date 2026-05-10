@@ -47,6 +47,10 @@ export function createScheduler(options: SchedulerOptions): SchedulerHandle {
       log.warn({ scheduleId }, 'fire on missing schedule');
       return;
     }
+    if (schedule.paused) {
+      log.info({ scheduleId }, 'schedule paused; skipping fire');
+      return;
+    }
     const enabledSites = listSites(options.db).filter((s) => s.enabled);
     const now = new Date().toISOString();
     if (enabledSites.length === 0) {
@@ -60,7 +64,10 @@ export function createScheduler(options: SchedulerOptions): SchedulerHandle {
       return;
     }
     for (const site of enabledSites) {
-      enqueue(options.db, { kind: 'search', payload: { site_id: site.id } });
+      enqueue(options.db, {
+        kind: 'search',
+        payload: { site_id: site.id, schedule_id: scheduleId },
+      });
     }
     updateSchedule(options.db, scheduleId, {
       last_run_at: now,

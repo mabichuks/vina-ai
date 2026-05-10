@@ -1,6 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Database as DatabaseType } from 'better-sqlite3';
-import { insertSchedule } from '../../src/db/repositories/schedules.js';
+import {
+  insertSchedule,
+  setSchedulePaused,
+} from '../../src/db/repositories/schedules.js';
 import { updateSiteEnabled } from '../../src/db/repositories/sites.js';
 import { listPending } from '../../src/db/repositories/task-queue.js';
 import { createEventBus } from '../../src/events/bus.js';
@@ -73,5 +76,30 @@ describe('scheduler', () => {
       .get(schedule.id) as { last_run_at: string | null; next_run_at: string | null };
     expect(refreshed.last_run_at).toMatch(/^\d{4}-/);
     expect(refreshed.next_run_at).toMatch(/^\d{4}-/);
+  });
+
+  it('skips firing for paused schedules', () => {
+    updateSiteEnabled(db, 'linkedin', true);
+    const sch = insertSchedule(db, { cron_expression: '*/5 * * * *' });
+    setSchedulePaused(db, sch.id, true);
+    const poke = vi.fn();
+    const sched = createScheduler({ db, bus: createEventBus(), poke });
+    sched.fireNow(sch.id);
+    expect(listPending(db)).toHaveLength(0);
+    expect(poke).not.toHaveBeenCalled();
+  });
+
+  it('embeds schedule_id in the search task payload', () => {
+    updateSiteEnabled(db, 'linkedin', true);
+    const sch = insertSchedule(db, { cron_expression: '*/5 * * * *' });
+    const sched = createScheduler({ db, bus: createEventBus(), poke: () => undefined });
+    sched.fireNow(sch.id);
+    const tasks = listPending(db);
+    const search = tasks.find((t) => t.kind === 'search');
+    expect(search).toBeDefined();
+    expect(JSON.parse(search!.payload)).toMatchObject({
+      site_id: 'linkedin',
+      schedule_id: sch.id,
+    });
   });
 });

@@ -11,6 +11,7 @@ import {
 } from '../../db/repositories/sites.js';
 import { getDecryptedSerpApiKey, hasSerpApiKey } from '../../services/settings-service.js';
 import { validateSerpApiKey } from '../../services/serpapi-service.js';
+import type { LinkedInConnectService } from '../../services/linkedin-connect-service.js';
 import type { ServerConfig } from '../../config.js';
 import { parse } from '../parse.js';
 
@@ -29,9 +30,13 @@ interface SiteResponse {
 
 export async function siteRoutes(
   app: FastifyInstance,
-  deps: { db: DatabaseType; config: ServerConfig },
+  deps: {
+    db: DatabaseType;
+    config: ServerConfig;
+    linkedInConnectService: LinkedInConnectService;
+  },
 ): Promise<void> {
-  const { db, config } = deps;
+  const { db, config, linkedInConnectService } = deps;
 
   app.get(
     '/api/sites',
@@ -97,6 +102,23 @@ export async function siteRoutes(
     const key = getDecryptedSerpApiKey(db);
     if (!key) return { ok: false as const, reason: 'no_key_configured' as const };
     return validateSerpApiKey(key);
+  });
+
+  app.get('/api/sites/linkedin/status', async () => linkedInConnectService.getStatus());
+
+  app.post('/api/sites/linkedin/connect', async (_req, reply) => {
+    await linkedInConnectService.startConnect();
+    return reply.status(202).send({ attempting: true });
+  });
+
+  app.delete('/api/sites/linkedin/connect', async (_req, reply) => {
+    await linkedInConnectService.cancelConnect();
+    return reply.status(204).send();
+  });
+
+  app.delete('/api/sites/linkedin', async (_req, reply) => {
+    await linkedInConnectService.disconnect();
+    return reply.status(204).send();
   });
 
   // PRD-087: clear the session for browser sites; 405 for api sites.

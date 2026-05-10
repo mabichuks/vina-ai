@@ -1,14 +1,18 @@
 import Fastify, { type FastifyInstance } from 'fastify';
 import multipart from '@fastify/multipart';
 import type { Database as DatabaseType } from 'better-sqlite3';
+import type { BrowserManagerHandle } from '@vina/automation';
 import type { ServerConfig } from './config.js';
+import type { LinkedInConnectService } from './services/linkedin-connect-service.js';
 import { errorHandler } from './http/error-handler.js';
 import { registerBearerAuth } from './http/auth.js';
 import { coverLetterRoutes } from './http/routes/cover-letters.js';
 import { cvRoutes } from './http/routes/cvs.js';
+import { jobRoutes } from './http/routes/jobs.js';
 import { llmProviderRoutes } from './http/routes/llm-providers.js';
 import { profileRoutes } from './http/routes/profile.js';
 import { scheduleRoutes } from './http/routes/schedules.js';
+import { searchRoutes } from './http/routes/searches.js';
 import { searchPreferencesRoutes } from './http/routes/search-preferences.js';
 import { settingsRoutes } from './http/routes/settings.js';
 import { siteRoutes } from './http/routes/sites.js';
@@ -24,6 +28,9 @@ export interface BuildAppDeps {
   version: string;
   startedAt: string;
   bus: EventBus;
+  browserManager: BrowserManagerHandle;
+  linkedInConnectService: LinkedInConnectService;
+  poke: () => void;
 }
 
 export async function buildApp(deps: BuildAppDeps): Promise<FastifyInstance> {
@@ -47,7 +54,13 @@ export async function buildApp(deps: BuildAppDeps): Promise<FastifyInstance> {
     await scheduleRoutes(api, { db: deps.db });
     await settingsRoutes(api, { db: deps.db });
     await llmProviderRoutes(api, { db: deps.db });
-    await siteRoutes(api, { db: deps.db, config: deps.config });
+    await siteRoutes(api, {
+      db: deps.db,
+      config: deps.config,
+      linkedInConnectService: deps.linkedInConnectService,
+    });
+    await jobRoutes(api, { db: deps.db, bus: deps.bus });
+    await searchRoutes(api, { db: deps.db, poke: deps.poke });
   });
   await registerStatic(app);
 

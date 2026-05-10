@@ -47,6 +47,11 @@ export const ALERT_KINDS = [
   'apply_failed',
   'ready_for_manual_apply',
   'general',
+  'linkedin_session_expired',
+  'search_failed',
+  'score_failed',
+  'schedule_paused',
+  'provider_failed',
 ] as const;
 export type AlertKind = (typeof ALERT_KINDS)[number];
 

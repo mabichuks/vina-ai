@@ -1,6 +1,11 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import {
+  createBrowserManager,
+  linkedInAdapter,
+  type BrowserManagerHandle,
+} from '@vina/automation';
 import { createLogger } from '@vina/shared';
 import type { FastifyInstance } from 'fastify';
 import { buildApp } from './app.js';
@@ -8,12 +13,14 @@ import { buildConfig, type ServerConfig } from './config.js';
 import { closeDb, getDb } from './db/client.js';
 import { migrate } from './db/migrate.js';
 import { initVault } from './secrets/vault.js';
+import { insertAlert } from './db/repositories/alerts.js';
 import { resetStaleRunning } from './db/repositories/task-queue.js';
 import { createEventBus } from './events/bus.js';
 import { createSearchHandler } from './queue/handlers/search.js';
 import { createScoreHandler } from './queue/handlers/score.js';
 import { createWorker, type TaskHandler, type TaskHandlers } from './queue/worker.js';
 import { createScheduler } from './scheduler/scheduler.js';
+import { createLinkedInConnectService } from './services/linkedin-connect-service.js';
 import { getActiveChatModel } from './services/llm-service.js';
 
 const log = createLogger('main');
@@ -52,6 +59,7 @@ export interface BootedServer {
   app: FastifyInstance;
   config: ServerConfig;
   port: number;
+  browserManager: BrowserManagerHandle;
   shutdown: () => Promise<void>;
 }
 
@@ -75,6 +83,18 @@ export async function bootServer(overrides: Partial<ServerConfig> = {}): Promise
 
   const bus = createEventBus();
 
+  const browserManager = createBrowserManager({
+    dataDir: config.dataDir,
+    headless: !config.headfulBrowser,
+  });
+
+  const linkedInConnectService = createLinkedInConnectService({
+    db,
+    bus,
+    browserManager,
+    adapter: linkedInAdapter,
+  });
+
   // M10 ships `search` and `score`. Other TaskKinds (tailor, apply,
   // prepare_manual_apply, resume) intentionally have no entry — the worker
   // marks them `failed: unhandled_kind` (no retry) until M14+ provides
@@ -83,7 +103,14 @@ export async function bootServer(overrides: Partial<ServerConfig> = {}): Promise
   // `unknown` (function-parameter contravariance).
   const adapt = <P>(h: (p: P) => Promise<void>): TaskHandler => (p) => h(p as P);
   const handlers: TaskHandlers = {
-    search: adapt(createSearchHandler({ db, bus })),
+    search: adapt(
+      createSearchHandler({
+        db,
+        bus,
+        browserManager,
+        adapters: { linkedin: linkedInAdapter },
+      }),
+    ),
     score: adapt(
       createScoreHandler({
         db,
@@ -93,11 +120,35 @@ export async function bootServer(overrides: Partial<ServerConfig> = {}): Promise
     ),
   };
 
-  const worker = createWorker({ db, bus, handlers });
+  const worker = createWorker({
+    db,
+    bus,
+    handlers,
+    onTerminalFailure: (task, reason) => {
+      if (task.kind === 'score') {
+        insertAlert(db, {
+          kind: 'score_failed',
+          severity: 'error',
+          title: 'Scoring failed',
+          description: reason,
+          payload: { task_id: task.id },
+        });
+      }
+    },
+  });
   const scheduler = createScheduler({ db, bus, poke: () => worker.poke() });
 
   const startedAt = new Date().toISOString();
-  const app = await buildApp({ db, config, version, startedAt, bus });
+  const app = await buildApp({
+    db,
+    config,
+    version,
+    startedAt,
+    bus,
+    browserManager,
+    linkedInConnectService,
+    poke: () => worker.poke(),
+  });
 
   const address = await app.listen({ port: config.port, host: '127.0.0.1' });
   const port = Number.parseInt(new URL(address).port, 10);
@@ -111,12 +162,13 @@ export async function bootServer(overrides: Partial<ServerConfig> = {}): Promise
   const shutdown = async (): Promise<void> => {
     scheduler.stop();
     await worker.stop();
+    await browserManager.closeAll();
     await app.close();
     closeDb();
     deleteStatusFile(config);
   };
 
-  return { app, config, port, shutdown };
+  return { app, config, port, browserManager, shutdown };
 }
 
 async function runDaemon(): Promise<void> {

@@ -80,3 +80,37 @@ describe('sites routes', () => {
     expect(res.json()).toMatchObject({ ok: true });
   });
 });
+
+describe('LinkedIn connect endpoints', () => {
+  it('GET /api/sites/linkedin/status returns the initial state', async () => {
+    const res = await h.app.inject({
+      method: 'GET',
+      url: '/api/sites/linkedin/status',
+      headers: auth(h.token),
+    });
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toMatchObject({
+      connected: false,
+      attempting: false,
+      last_success_at: null,
+    });
+  });
+
+  it('DELETE /api/sites/linkedin/connect cancels and returns 204', async () => {
+    const res = await h.app.inject({
+      method: 'DELETE',
+      url: '/api/sites/linkedin/connect',
+      headers: auth(h.token),
+    });
+    expect(res.statusCode).toBe(204);
+  });
+
+  it('DELETE /api/sites/linkedin disconnects and returns 204', async () => {
+    const res = await h.app.inject({
+      method: 'DELETE',
+      url: '/api/sites/linkedin',
+      headers: auth(h.token),
+    });
+    expect(res.statusCode).toBe(204);
+  });
+});

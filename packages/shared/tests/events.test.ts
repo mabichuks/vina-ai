@@ -41,3 +41,39 @@ describe('events catalog', () => {
     }
   });
 });
+
+describe('EVENTS — linkedin slice additions', () => {
+  it.each(['SEARCH_STARTED', 'SEARCH_COMPLETED', 'SEARCH_FAILED', 'LINKEDIN_SESSION_EXPIRED'])(
+    'includes %s',
+    (key) => {
+      expect((EVENTS as Record<string, string>)[key]).toBeTruthy();
+    },
+  );
+
+  it('search:completed payload validates listings_added and scored', () => {
+    const schema = EVENT_PAYLOADS['search:completed'];
+    expect(() =>
+      schema.parse({
+        task_id: 't1',
+        site_id: 'linkedin',
+        listings_added: 3,
+        scored: 2,
+      }),
+    ).not.toThrow();
+  });
+
+  it('search:failed payload validates the error_kind enum', () => {
+    const schema = EVENT_PAYLOADS['search:failed'];
+    expect(() =>
+      schema.parse({ task_id: 't1', site_id: 'linkedin', error_kind: 'session_expired' }),
+    ).not.toThrow();
+    expect(() =>
+      schema.parse({ task_id: 't1', site_id: 'linkedin', error_kind: 'bogus' }),
+    ).toThrow();
+  });
+
+  it('linkedin:session-expired payload validates an ISO timestamp', () => {
+    const schema = EVENT_PAYLOADS['linkedin:session-expired'];
+    expect(() => schema.parse({ at: '2026-05-09T12:00:00.000Z' })).not.toThrow();
+  });
+});

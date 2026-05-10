@@ -15,6 +15,7 @@ export interface ScoreInput {
     full_name: string;
     bio: string | null;
   };
+  cv_text?: string | null;
   prefs: {
     description: string;
     keywords: string[];
@@ -59,6 +60,12 @@ export function scoreUserPrompt(input: ScoreInput): string {
   lines.push(`Name: ${profile.full_name}`);
   if (profile.bio) lines.push(`Bio: ${profile.bio}`);
   lines.push('');
+
+  if (input.cv_text && input.cv_text.trim().length > 0) {
+    lines.push('## CV');
+    lines.push(input.cv_text.trim());
+    lines.push('');
+  }
 
   lines.push('## Search preferences');
   if (prefs.description) lines.push(`Description: ${prefs.description}`);

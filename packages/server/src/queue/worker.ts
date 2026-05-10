@@ -62,6 +62,12 @@ export interface WorkerOptions {
    * with `handler_timeout` and goes through the normal retry path.
    */
   timeoutsMs?: Partial<Record<TaskKind, number>>;
+  /**
+   * Called once when a task transitions to terminal `failed` — either retries
+   * exhausted or the kind is unhandled. Lets callers (alerts, telemetry) react
+   * without coupling the worker to those subsystems.
+   */
+  onTerminalFailure?: (task: Task, reason: string) => void;
 }
 
 export interface WorkerHandle {
@@ -108,6 +114,7 @@ export function createWorker(options: WorkerOptions): WorkerHandle {
     const handler = options.handlers[task.kind];
     if (!handler) {
       fail(options.db, task.id, 'unhandled_kind', false);
+      options.onTerminalFailure?.(task, 'unhandled_kind');
       emitCounts();
       return;
     }
@@ -120,6 +127,7 @@ export function createWorker(options: WorkerOptions): WorkerHandle {
     } catch (err) {
       const reason = `payload_parse: ${err instanceof Error ? err.message : String(err)}`;
       fail(options.db, task.id, reason, false);
+      options.onTerminalFailure?.(task, reason);
       log.error({ task_id: task.id, kind: task.kind, err }, 'task payload parse failed');
       emitCounts();
       return;
@@ -138,6 +146,7 @@ export function createWorker(options: WorkerOptions): WorkerHandle {
         setNextAttemptAt(options.db, task.id, nextAttemptAtIso(task.attempts));
       } else {
         fail(options.db, task.id, reason, false);
+        options.onTerminalFailure?.(task, reason);
       }
       log.warn(
         { task_id: task.id, kind: task.kind, attempts: task.attempts, err },
