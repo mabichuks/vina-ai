@@ -98,3 +98,46 @@ describe('001_init', () => {
     db.close();
   });
 });
+
+describe('002_linkedin_e2e_schema', () => {
+  it('adds consecutive_failures and paused columns to schedules', () => {
+    const db = freshTestDb();
+    const cols = db.prepare(`PRAGMA table_info(schedules)`).all() as { name: string }[];
+    const names = new Set(cols.map((c) => c.name));
+    expect(names.has('consecutive_failures')).toBe(true);
+    expect(names.has('paused')).toBe(true);
+    db.close();
+  });
+
+  it('widens alerts.kind to include the new linkedin slice values', () => {
+    const db = freshTestDb();
+    for (const kind of [
+      'linkedin_session_expired',
+      'search_failed',
+      'score_failed',
+      'schedule_paused',
+      'provider_failed',
+    ]) {
+      expect(() =>
+        db
+          .prepare(
+            `INSERT INTO alerts (id, kind, severity, title, description, status, created_at)
+             VALUES (?, ?, 'info', 't', 'd', 'open', ?)`,
+          )
+          .run(`a-${kind}`, kind, new Date().toISOString()),
+      ).not.toThrow();
+    }
+    db.close();
+  });
+
+  it('preserves existing alert rows through the rebuild', () => {
+    const db = freshTestDb();
+    db.prepare(
+      `INSERT INTO alerts (id, kind, severity, title, description, status, created_at)
+       VALUES ('pre-existing', 'general', 'info', 't', 'd', 'open', ?)`,
+    ).run(new Date().toISOString());
+    const row = db.prepare(`SELECT id FROM alerts WHERE id = 'pre-existing'`).get();
+    expect(row).toBeDefined();
+    db.close();
+  });
+});
