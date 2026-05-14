@@ -31,11 +31,10 @@ const POOLS: Partial<Record<SearchPhase, readonly string[]>> = {
  */
 export function useSearchGerund(phase: SearchPhase, intervalMs = 1500): string | null {
   const pool = POOLS[phase] ?? null;
-  const [idx, setIdx] = useState(0);
+  const [idx, setIdx] = useState(() => Math.floor(Math.random() * 1000));
 
   useEffect(() => {
     if (!pool) return undefined;
-    setIdx(Math.floor(Math.random() * pool.length));
     const id = setInterval(() => setIdx((i) => i + 1), intervalMs);
     return () => clearInterval(id);
   }, [pool, intervalMs]);

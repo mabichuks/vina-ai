@@ -14,16 +14,18 @@ export function SearchActivityPanel(): JSX.Element | null {
   const gerund = useSearchGerund(phase);
 
   // Tick once a second while a search is active so "started Ns ago" stays fresh.
-  const [, force] = useState(0);
+  // `nowMs` lives in state so the elapsed read is pure under React's purity rule;
+  // the only setState happens inside an async interval callback, not the effect body.
+  const [nowMs, setNowMs] = useState(() => Date.now());
   useEffect(() => {
     if (phase === 'idle') return undefined;
-    const id = setInterval(() => force((n) => n + 1), 1_000);
+    const id = setInterval(() => setNowMs(Date.now()), 1_000);
     return () => clearInterval(id);
   }, [phase]);
 
   if (phase === 'idle') return null;
 
-  const elapsedSeconds = Math.max(0, Math.round((Date.now() - phaseChangedAt) / 1000));
+  const elapsedSeconds = Math.max(0, Math.round((nowMs - phaseChangedAt) / 1000));
   const elapsed =
     elapsedSeconds < 60 ? `${elapsedSeconds}s` : `${Math.floor(elapsedSeconds / 60)}m`;
 

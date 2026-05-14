@@ -87,8 +87,7 @@ export function ConnectLinkedIn(): JSX.Element {
           <div className="space-y-2">
             <p>Sign in to LinkedIn in the window we just opened.</p>
             <p>
-              We'll detect when you're signed in and move on automatically. Captchas and
-              "Verify it's you" challenges are fine — just complete them.
+              {`We'll detect when you're signed in and move on automatically. Captchas and "Verify it's you" challenges are fine — just complete them.`}
             </p>
             <TextButton onClick={() => cancel.mutate()}>Cancel</TextButton>
           </div>
@@ -103,7 +102,7 @@ export function ConnectLinkedIn(): JSX.Element {
           </div>
         )}
         {ui === 'error' && status.data?.error && (
-          <p className="text-danger">Couldn't connect: {status.data.error}</p>
+          <p className="text-danger">{`Couldn't connect: ${status.data.error}`}</p>
         )}
       </div>
     </WizardShell>
