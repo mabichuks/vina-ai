@@ -1,5 +1,10 @@
 import { useNavigate } from 'react-router-dom';
-import { useCvs, useLlmProviders, useProfile, useSites } from '../../api/resources.js';
+import {
+  useCvs,
+  useLinkedInStatus,
+  useLlmProviders,
+  useProfile,
+} from '../../api/resources.js';
 
 /**
  * Step IDs in PRD order. The path under /onboarding is `/${id}`.
@@ -7,13 +12,11 @@ import { useCvs, useLlmProviders, useProfile, useSites } from '../../api/resourc
 export const STEPS = [
   'welcome',
   'profile',
-  'llm-provider',
   'cv',
-  'cover-letter',
+  'llm-provider',
   'preferences',
-  'sources',
   'schedule',
-  'mode',
+  'connect-linkedin',
   'done',
 ] as const;
 export type StepId = (typeof STEPS)[number];
@@ -25,21 +28,19 @@ export type StepId = (typeof STEPS)[number];
  */
 export const REQUIRED_STEPS: ReadonlySet<StepId> = new Set<StepId>([
   'profile',
-  'llm-provider',
   'cv',
-  'sources',
+  'llm-provider',
+  'connect-linkedin',
 ]);
 
 export const STEP_LABELS: Record<StepId, string> = {
   welcome: 'Welcome',
   profile: 'Profile',
-  'llm-provider': 'LLM Provider',
   cv: 'CV',
-  'cover-letter': 'Cover letter',
+  'llm-provider': 'LLM Provider',
   preferences: 'Search preferences',
-  sources: 'Sources',
   schedule: 'Schedule',
-  mode: 'Mode',
+  'connect-linkedin': 'Connect LinkedIn',
   done: 'Done',
 };
 
@@ -47,7 +48,7 @@ interface CompletionFlags {
   profile: boolean;
   'llm-provider': boolean;
   cv: boolean;
-  sources: boolean;
+  'connect-linkedin': boolean;
 }
 
 export function useWizardCompletion(): {
@@ -58,18 +59,20 @@ export function useWizardCompletion(): {
   const profile = useProfile();
   const providers = useLlmProviders();
   const cvs = useCvs();
-  const sites = useSites();
+  const linkedin = useLinkedInStatus();
 
-  const isLoading = profile.isLoading || providers.isLoading || cvs.isLoading || sites.isLoading;
+  const isLoading =
+    profile.isLoading || providers.isLoading || cvs.isLoading || linkedin.isLoading;
   if (isLoading) return { flags: null, isLoading: true, allRequiredDone: false };
 
   const flags: CompletionFlags = {
     profile: profile.data !== null,
     'llm-provider': providers.data.length > 0,
     cv: cvs.data.length > 0,
-    sources: sites.data.some((s) => s.enabled),
+    'connect-linkedin': linkedin.data?.connected === true,
   };
-  const allRequiredDone = flags.profile && flags['llm-provider'] && flags.cv && flags.sources;
+  const allRequiredDone =
+    flags.profile && flags['llm-provider'] && flags.cv && flags['connect-linkedin'];
   return { flags, isLoading: false, allRequiredDone };
 }
 
@@ -81,9 +84,9 @@ export function useWizardCompletion(): {
  */
 export function firstIncompleteStep(flags: CompletionFlags): Exclude<StepId, 'welcome'> {
   if (!flags.profile) return 'profile';
-  if (!flags['llm-provider']) return 'llm-provider';
   if (!flags.cv) return 'cv';
-  if (!flags.sources) return 'sources';
+  if (!flags['llm-provider']) return 'llm-provider';
+  if (!flags['connect-linkedin']) return 'connect-linkedin';
   return 'done';
 }
 

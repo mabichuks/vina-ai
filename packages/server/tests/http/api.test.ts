@@ -105,6 +105,9 @@ describe('system routes', () => {
       sources: { id: string; kind: string }[];
       scheduler: { running: boolean; next_run_at: string | null };
       queue: { pending: number; running: number };
+      linkedin_connected: boolean;
+      linkedin_last_search_at: string | null;
+      schedule_paused: boolean;
     };
     expect(res.statusCode).toBe(200);
     expect(body.version).toBe('0.0.0-test');
@@ -121,6 +124,9 @@ describe('system routes', () => {
       pending: expect.any(Number),
       running: expect.any(Number),
     });
+    expect(typeof body.linkedin_connected).toBe('boolean');
+    expect(body.linkedin_last_search_at === null || typeof body.linkedin_last_search_at === 'string').toBe(true);
+    expect(typeof body.schedule_paused).toBe('boolean');
   });
 
   it('pause/resume flips settings.paused and shows in /status.scheduler.running', async () => {

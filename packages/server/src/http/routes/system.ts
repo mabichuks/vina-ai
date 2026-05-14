@@ -7,7 +7,7 @@ import type { ServerConfig } from '../../config.js';
 import { findProfile } from '../../db/repositories/profile.js';
 import { listCvs } from '../../db/repositories/cvs.js';
 import { findLlmProviderById, listLlmProviders } from '../../db/repositories/llm-providers.js';
-import { listSites } from '../../db/repositories/sites.js';
+import { findSiteById, listSites } from '../../db/repositories/sites.js';
 import { getOrInitSettings, updateSettings } from '../../db/repositories/settings.js';
 import { countByStatus } from '../../db/repositories/task-queue.js';
 import { listSchedules } from '../../db/repositories/schedules.js';
@@ -78,6 +78,9 @@ export async function systemRoutes(app: FastifyInstance, deps: SystemRouteDeps):
       if (earliest === null || next < earliest) earliest = next;
     }
 
+    const linkedin = findSiteById(db, 'linkedin');
+    const schedulePaused = listSchedules(db).some((s) => s.paused);
+
     return {
       version,
       started_at: startedAt,
@@ -90,7 +93,15 @@ export async function systemRoutes(app: FastifyInstance, deps: SystemRouteDeps):
         enabled: s.enabled,
         ok: s.kind === 'browser' ? s.session_valid_at !== null : null,
       })),
+      linkedin_connected: linkedin?.session_valid_at !== null && linkedin?.session_valid_at !== undefined,
+      linkedin_last_search_at: linkedin?.last_search_at ?? null,
+      schedule_paused: schedulePaused,
     };
+  });
+
+  app.get('/api/system/chromium', async () => {
+    const { getChromiumInfo } = await import('@vina/automation');
+    return getChromiumInfo();
   });
 
   app.post('/api/system/pause', async () => {

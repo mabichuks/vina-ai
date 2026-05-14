@@ -11,7 +11,11 @@ beforeEach(() => {
 });
 afterEach(() => db.close());
 
-function harness(handlers: Partial<TaskHandlers>, backoffMs?: readonly number[]) {
+function harness(
+  handlers: Partial<TaskHandlers>,
+  backoffMs?: readonly number[],
+  onTerminalFailure?: Parameters<typeof createWorker>[0]['onTerminalFailure'],
+) {
   return createWorker({
     db,
     bus: createEventBus(),
@@ -25,6 +29,7 @@ function harness(handlers: Partial<TaskHandlers>, backoffMs?: readonly number[])
     },
     pollIntervalMs: 5,
     backoffMs,
+    ...(onTerminalFailure && { onTerminalFailure }),
   });
 }
 
@@ -161,5 +166,46 @@ describe('worker', () => {
     worker.start();
     await worker.stop();
     expect(() => worker.start()).toThrow(/cannot be restarted/);
+  });
+
+  it('calls onTerminalFailure exactly once when retries are exhausted', async () => {
+    const calls: Array<{ kind: string; reason: string }> = [];
+    const handler = vi.fn(async () => {
+      throw new Error('boom');
+    });
+    const worker = harness({ score: handler }, [1, 1], (task, reason) => {
+      calls.push({ kind: task.kind, reason });
+    });
+    enqueue(db, { kind: 'score', payload: {}, max_attempts: 1 });
+
+    worker.start();
+    await vi.waitFor(() => expect(calls).toHaveLength(1), { timeout: 2_000, interval: 25 });
+    await worker.stop();
+
+    expect(calls[0]).toMatchObject({ kind: 'score' });
+    expect(calls[0]?.reason).toContain('boom');
+  });
+
+  it('calls onTerminalFailure on unhandled_kind too', async () => {
+    const calls: Array<{ kind: string; reason: string }> = [];
+    const worker = createWorker({
+      db,
+      bus: createEventBus(),
+      handlers: {
+        search: async () => undefined,
+        score: async () => undefined,
+        tailor: undefined as unknown as (payload: unknown) => Promise<void>,
+        apply: async () => undefined,
+        prepare_manual_apply: async () => undefined,
+        resume: async () => undefined,
+      },
+      pollIntervalMs: 5,
+      onTerminalFailure: (task, reason) => calls.push({ kind: task.kind, reason }),
+    });
+    enqueue(db, { kind: 'tailor', payload: {} });
+    worker.start();
+    await vi.waitFor(() => expect(calls).toHaveLength(1), { timeout: 1_000 });
+    await worker.stop();
+    expect(calls[0]?.reason).toMatch(/unhandled_kind/);
   });
 });

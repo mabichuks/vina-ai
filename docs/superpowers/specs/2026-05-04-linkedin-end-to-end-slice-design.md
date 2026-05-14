@@ -1,6 +1,6 @@
 # LinkedIn End-to-End Slice — Design
 
-**Status:** Brainstorm-approved · awaiting plan
+**Status:** Implemented (2026-05-10)
 **Date:** 2026-05-04
 **Scope:** First product-shippable cut. Real LinkedIn search pipeline + UI flow, with CV/cover-letter tailoring, auto-apply form-walker, Indeed, and Google Jobs all deferred.
 

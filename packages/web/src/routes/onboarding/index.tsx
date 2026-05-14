@@ -4,19 +4,17 @@ import { firstIncompleteStep, STEPS, useWizardCompletion, type StepId } from './
 
 const Welcome = lazy(() => import('./steps/Welcome.js').then((m) => ({ default: m.Welcome })));
 const Profile = lazy(() => import('./steps/Profile.js').then((m) => ({ default: m.Profile })));
+const Cv = lazy(() => import('./steps/Cv.js').then((m) => ({ default: m.Cv })));
 const LlmProvider = lazy(() =>
   import('./steps/LlmProvider.js').then((m) => ({ default: m.LlmProvider })),
-);
-const Cv = lazy(() => import('./steps/Cv.js').then((m) => ({ default: m.Cv })));
-const CoverLetter = lazy(() =>
-  import('./steps/CoverLetter.js').then((m) => ({ default: m.CoverLetter })),
 );
 const Preferences = lazy(() =>
   import('./steps/Preferences.js').then((m) => ({ default: m.Preferences })),
 );
-const Sources = lazy(() => import('./steps/Sources.js').then((m) => ({ default: m.Sources })));
 const Schedule = lazy(() => import('./steps/Schedule.js').then((m) => ({ default: m.Schedule })));
-const Mode = lazy(() => import('./steps/Mode.js').then((m) => ({ default: m.Mode })));
+const ConnectLinkedIn = lazy(() =>
+  import('./steps/ConnectLinkedIn.js').then((m) => ({ default: m.ConnectLinkedIn })),
+);
 const Done = lazy(() => import('./steps/Done.js').then((m) => ({ default: m.Done })));
 
 function StepFallback(): JSX.Element {
@@ -33,13 +31,12 @@ function OnboardingResume(): JSX.Element {
   if (isLoading) return <StepFallback />;
   if (!flags) return <StepFallback />;
 
-  // Fresh DB: route to Welcome. Otherwise resume at the first gap.
-  const anyDone = flags.profile || flags['llm-provider'] || flags.cv || flags.sources;
+  const anyDone =
+    flags.profile || flags['llm-provider'] || flags.cv || flags['connect-linkedin'];
   const target: StepId = anyDone ? firstIncompleteStep(flags) : 'welcome';
   return <Navigate to={`/onboarding/${target}`} replace />;
 }
 
-/** Validates the URL step segment. Unknown steps redirect to the resume gate. */
 function StepGuard({ children, step }: { children: JSX.Element; step: StepId }): JSX.Element {
   const location = useLocation();
   if (!STEPS.includes(step)) {
@@ -70,14 +67,6 @@ export function OnboardingRouter(): JSX.Element {
           }
         />
         <Route
-          path="llm-provider"
-          element={
-            <StepGuard step="llm-provider">
-              <LlmProvider />
-            </StepGuard>
-          }
-        />
-        <Route
           path="cv"
           element={
             <StepGuard step="cv">
@@ -86,10 +75,10 @@ export function OnboardingRouter(): JSX.Element {
           }
         />
         <Route
-          path="cover-letter"
+          path="llm-provider"
           element={
-            <StepGuard step="cover-letter">
-              <CoverLetter />
+            <StepGuard step="llm-provider">
+              <LlmProvider />
             </StepGuard>
           }
         />
@@ -102,14 +91,6 @@ export function OnboardingRouter(): JSX.Element {
           }
         />
         <Route
-          path="sources"
-          element={
-            <StepGuard step="sources">
-              <Sources />
-            </StepGuard>
-          }
-        />
-        <Route
           path="schedule"
           element={
             <StepGuard step="schedule">
@@ -118,10 +99,10 @@ export function OnboardingRouter(): JSX.Element {
           }
         />
         <Route
-          path="mode"
+          path="connect-linkedin"
           element={
-            <StepGuard step="mode">
-              <Mode />
+            <StepGuard step="connect-linkedin">
+              <ConnectLinkedIn />
             </StepGuard>
           }
         />

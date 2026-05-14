@@ -73,4 +73,44 @@ describe('score prompt', () => {
     expect(out).not.toContain('Locations');
     expect(out).not.toContain('Bio');
   });
+
+  it('omits the CV section when cv_text is undefined or empty', () => {
+    const base = {
+      job: { title: 't', company: 'c', location: null, description: 'd' },
+      profile: { full_name: 'x', bio: null },
+      prefs: {
+        description: '',
+        keywords: [],
+        locations: [],
+        work_models: [],
+        seniority: [],
+        excluded_companies: [],
+      },
+    };
+    expect(scoreUserPrompt(base)).not.toMatch(/## CV/);
+    expect(scoreUserPrompt({ ...base, cv_text: '' })).not.toMatch(/## CV/);
+    expect(scoreUserPrompt({ ...base, cv_text: '   ' })).not.toMatch(/## CV/);
+  });
+
+  it('renders a CV section between Profile and Search preferences when cv_text is set', () => {
+    const out = scoreUserPrompt({
+      job: { title: 't', company: 'c', location: null, description: 'd' },
+      profile: { full_name: 'Ada', bio: null },
+      cv_text: 'Worked on Postgres pipelines.',
+      prefs: {
+        description: '',
+        keywords: [],
+        locations: [],
+        work_models: [],
+        seniority: [],
+        excluded_companies: [],
+      },
+    });
+    const profileIdx = out.indexOf('## User profile');
+    const cvIdx = out.indexOf('## CV');
+    const prefsIdx = out.indexOf('## Search preferences');
+    expect(cvIdx).toBeGreaterThan(profileIdx);
+    expect(prefsIdx).toBeGreaterThan(cvIdx);
+    expect(out).toContain('Worked on Postgres pipelines.');
+  });
 });

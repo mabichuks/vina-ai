@@ -13,6 +13,14 @@ export interface RawListing {
   snippet: string | null;
   /** ISO timestamp parsed from "X days ago" listing text, or null when absent. */
   postedAt: string | null;
+  /**
+   * Card-level apply-method signal. `'auto'` when the card itself renders
+   * an "Easy Apply" badge (no detail-page navigation required to know);
+   * `'manual'` when no such badge is present; `null` when the adapter
+   * couldn't read it confidently. Callers should treat `null` as unknown
+   * and either guess a default or defer classification.
+   */
+  cardApplyMethod: 'auto' | 'manual' | null;
 }
 
 /**

@@ -4,6 +4,7 @@ import {
   externalNoUrlDetailPage,
   externalRedirectDetailPage,
   feedPage,
+  jobsHomePage,
   loginPage,
   searchResultsPage,
 } from './pages.js';
@@ -25,10 +26,16 @@ export async function startLinkedInFixture(): Promise<FixtureServerHandle> {
     app.get('/login', async (_req, reply) => reply.type('text/html').send(loginPage()));
     app.post('/login', async (_req, reply) => reply.redirect('/feed'));
     app.get('/feed', async (_req, reply) => reply.type('text/html').send(feedPage()));
-    app.get(
-      '/jobs/search',
-      async (_req, reply) => reply.type('text/html').send(searchResultsPage()),
-    );
+    // Adapter navigates here, finds the keyword input, presses Enter; the
+    // form submits to /jobs/search/ which renders the SRP cards.
+    app.get('/jobs/', async (_req, reply) => reply.type('text/html').send(jobsHomePage()));
+    app.get('/jobs', async (_req, reply) => reply.type('text/html').send(jobsHomePage()));
+    const respondWithSearchResults = async (
+      _req: unknown,
+      reply: { type: (mime: string) => { send: (body: string) => unknown } },
+    ): Promise<unknown> => reply.type('text/html').send(searchResultsPage());
+    app.get('/jobs/search', respondWithSearchResults);
+    app.get('/jobs/search/', respondWithSearchResults);
     app.get(
       '/jobs/view/easy',
       async (_req, reply) => reply.type('text/html').send(easyApplyDetailPage()),

@@ -29,6 +29,7 @@
     "@fastify/static": "^9.1.3",
     "@fastify/websocket": "^11.2.0",
     "@langchain/core": "^1.1.43",
+    "@vina/automation": "workspace:*",
     "@vina/orchestrator": "workspace:*",
     "@vina/shared": "workspace:*",
     "better-sqlite3": "^12.9.0",

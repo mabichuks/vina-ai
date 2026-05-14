@@ -12,7 +12,7 @@ A working professional or job seeker who:
 
 - Is comfortable installing a CLI tool via NPM
 - Wants to apply to many roles without doing each by hand
-- Already has a LinkedIn (and ideally Indeed) account
+- Already has a LinkedIn account
 - Has access to an LLM (Anthropic / OpenAI / local Ollama) or is willing to set one up
 - Optionally has a SerpAPI key for Google Jobs discovery
 
@@ -31,11 +31,11 @@ Non-goals: visual no-code users, mobile-only users, recruiters posting jobs.
 | **Profile**           | The user's identity: name, contact details, CVs, cover letters, default answers to common application questions                                                                                              |
 | **Search Preference** | A saved description of "what kind of jobs I want" — keywords, locations, seniority, salary range, work model, custom prose                                                                                   |
 | **Schedule**          | How often Vina searches for new jobs (e.g. every 12 hours, daily)                                                                                                                                            |
-| **Source**            | A place Vina discovers jobs from. MVP supports three: LinkedIn, Indeed, and Google Jobs (via SerpAPI). The first two support auto-apply for Easy Apply / Quick Apply listings; Google Jobs is discovery-only |
+| **Source**            | A place Vina discovers jobs from. MVP supports two: LinkedIn (via Playwright session) and Google Jobs (via SerpAPI). LinkedIn supports auto-apply for Easy Apply listings; Google Jobs is discovery-only. See ADR-019 for the rationale on skipping Indeed |
 | **Job**               | A discovered listing on a supported source, with metadata, description, source URL, and match score. Each job has an `apply_method`: `auto` (Vina submits) or `manual` (user submits externally)             |
 | **Application**       | An attempt to apply to a job. Has a status (queued / applying / awaiting_user / submitted / failed / skipped / ready_for_manual_apply / applied_manually) and links to the tailored CV used                  |
 | **Alert**             | A notification surfaced both in the chatbot and the alerts tab — e.g. "needs CAPTCHA solved", "missing salary expectation", "tailored CV ready for manual application"                                       |
-| **Session**           | A persisted Playwright browser context per job site, so the user logs in once. Not needed for Google Jobs (SerpAPI handles auth)                                                                             |
+| **Session**           | A persisted Playwright browser context for LinkedIn, so the user logs in once. Not needed for Google Jobs (SerpAPI handles auth)                                                                             |
 
 ## 5. Operating Modes
 
@@ -51,25 +51,26 @@ Independently, an **approval setting** controls per-application behaviour:
 
 These are orthogonal: a user can be in supervised mode with auto-apply, or autonomous mode with review-first, etc.
 
-For **manual-apply jobs** (Google Jobs results, plus any LinkedIn / Indeed listing that redirects externally), the approval mode is implicit — the user always reviews before they apply, because they're the one doing the submission.
+For **manual-apply jobs** (Google Jobs results, plus any LinkedIn listing that redirects externally), the approval mode is implicit — the user always reviews before they apply, because they're the one doing the submission.
 
-## 6. The Three Application Workflows
+## 6. The Two Application Workflows
 
-Vina supports three distinct workflows depending on the job source and listing type:
+Vina supports two distinct workflows depending on the job source and listing type:
 
-### 6.1 LinkedIn Easy Apply / Indeed Quick Apply (Auto-Apply)
+### 6.1 LinkedIn Easy Apply (Auto-Apply)
 
 End-to-end automation. Vina opens the listing, fills the form, uploads the tailored CV, and submits — pausing only on blockers (missing fields, CAPTCHAs, session expiry).
 
-### 6.2 LinkedIn / Indeed external redirects (Manual-Apply)
+### 6.2 LinkedIn external redirects + Google Jobs (Manual-Apply)
 
-When a LinkedIn or Indeed listing redirects to a company ATS or career page, Vina detects this during discovery, marks the job as `apply_method = 'manual'`, captures the external apply URL, and routes it through the manual-apply pipeline instead of trying to automate the unknown ATS.
+Two paths converge here:
 
-### 6.3 Google Jobs (Manual-Apply, always)
+- **LinkedIn external redirects.** When a LinkedIn listing redirects to a company ATS or career page, Vina detects this during discovery, marks the job as `apply_method = 'manual'`, captures the external apply URL, and routes it through the manual-apply pipeline rather than trying to automate the unknown ATS.
+- **Google Jobs.** Every Google Jobs listing redirects externally. Vina uses SerpAPI's Google Jobs endpoint to fetch listings (no Playwright needed) and routes them through the same manual-apply pipeline.
 
-Google Jobs aggregates listings from many sources where direct automation is impractical. Vina uses SerpAPI's Google Jobs endpoint to fetch listings (no Playwright needed), scores them, tailors the CV and cover letter, and presents everything in a "Ready to Apply" view. The user clicks through to the external site and submits manually.
+In both manual-apply paths, Vina scores the listing, tailors the CV and cover letter, and presents everything in a "Ready to Apply" view. The user clicks through to the external site and submits manually, then clicks "Mark as applied" in Vina.
 
-In all three flows, the same scoring, CV tailoring, and cover letter generation logic is reused — only the final submission step differs.
+The same scoring, CV tailoring, and cover-letter generation logic is reused across both workflows — only the final submission step differs.
 
 ## 7. End-to-End Flow
 
@@ -83,8 +84,8 @@ Install ─▶ vina start ─▶ Browser opens UI
                     - Optionally add SerpAPI key (for Google Jobs)
                     - Upload CV / cover letter
                     - Describe target jobs
-                    - Pick sources (LinkedIn, Indeed, Google Jobs)
-                    - Log in to LinkedIn / Indeed (Playwright window opens, user logs in, session saved)
+                    - Pick sources (LinkedIn, Google Jobs)
+                    - Log in to LinkedIn (Playwright window opens, user logs in, session saved)
                     - Set schedule
                               │
                               ▼
@@ -92,9 +93,9 @@ Install ─▶ vina start ─▶ Browser opens UI
                               │
                               ▼
                     For each enabled source:
-                       LinkedIn / Indeed: Playwright search ─┐
-                       Google Jobs:       SerpAPI fetch     ─┼─▶ Rank against profile ─▶ Insert into jobs table
-                                                              ┘
+                       LinkedIn:    Playwright search ─┐
+                       Google Jobs: SerpAPI fetch     ─┼─▶ Rank against profile ─▶ Insert into jobs table
+                                                       ┘
                               │
                               ▼
                     Detect apply_method per job:
@@ -165,7 +166,7 @@ Install ─▶ vina start ─▶ Browser opens UI
 ### Browser Automation
 
 - Playwright with one persistent context per site, stored on disk
-- Site adapters for LinkedIn and Indeed (interface designed for more sites later)
+- Site adapter for LinkedIn (interface designed for more sites later)
 - Early detection of Easy Apply vs external — non-Easy Apply listings route to manual-apply pipeline
 - CAPTCHA detection — never solved automatically; surface as alert and pause
 - Anti-detection: realistic timing, human-like scrolling, no fingerprint masking that violates ToS
@@ -187,7 +188,7 @@ Install ─▶ vina start ─▶ Browser opens UI
 - Mobile UI
 - Multi-user / multi-tenant
 - Cloud-hosted variant
-- Job sources beyond LinkedIn, Indeed, and Google Jobs (architecture supports adding more later)
+- Job sources beyond LinkedIn and Google Jobs (architecture supports adding more later — see ADR-019 on Indeed)
 - Automating arbitrary external ATS systems (Workday, Greenhouse, Lever, etc.) — these route through manual-apply
 - Automated CAPTCHA solving via third-party services
 - Resume/CV creation from scratch (Vina tailors existing CVs; it does not generate from nothing)
@@ -205,7 +206,7 @@ The following user stories drive acceptance for MVP. Each is testable.
 - **US-04** I can upload one or more CVs (PDF and DOCX) and label them
 - **US-05** I can upload one or more cover letters
 - **US-06** I can describe the kind of role I want in plain prose, and add structured fields (locations, salary, work model, seniority)
-- **US-07** I can enable LinkedIn, Indeed, Google Jobs, or any combination. For LinkedIn/Indeed, Vina opens a browser for me to log in, then saves the session. For Google Jobs, I provide a SerpAPI key
+- **US-07** I can enable LinkedIn, Google Jobs, or both. For LinkedIn, Vina opens a browser for me to log in, then saves the session. For Google Jobs, I provide a SerpAPI key
 - **US-08** I can set a schedule (every N hours or a specific time daily)
 
 ### Discovery
@@ -230,7 +231,7 @@ The following user stories drive acceptance for MVP. Each is testable.
 ### Application — Manual
 
 - **US-30** Google Jobs listings appear in my jobs list with a "manual" apply method indicator
-- **US-31** When a LinkedIn or Indeed listing redirects externally, Vina marks it as manual-apply rather than trying to automate the external site
+- **US-31** When a LinkedIn listing redirects externally, Vina marks it as manual-apply rather than trying to automate the external site
 - **US-32** For manual-apply jobs Vina selects (autonomous) or I select (supervised), Vina tailors the CV and cover letter the same way it does for auto-apply jobs
 - **US-33** Once tailored, the application appears in the "Ready to Apply" section with the tailored CV, cover letter, external apply URL, and download buttons
 - **US-34** I can download the tailored CV and cover letter, click through to the external site, complete the application there, and click "Mark as applied" in Vina to track it
@@ -255,7 +256,7 @@ The following user stories drive acceptance for MVP. Each is testable.
 - **US-29** I can stop everything with `vina stop`
 - **US-36** I can wipe all my data with `vina reset` after confirming
 - **US-37** I can change my LLM provider at any time without reconfiguring anything else
-- **US-38** I can add or remove my SerpAPI key without affecting LinkedIn/Indeed configuration
+- **US-38** I can add or remove my SerpAPI key without affecting LinkedIn configuration
 
 ## 11. Success Criteria for MVP
 
@@ -267,7 +268,7 @@ The following user stories drive acceptance for MVP. Each is testable.
 
 ## 12. Future Considerations (Not MVP)
 
-- Additional sources: Glassdoor, Otta, Welcome to the Jungle, company career pages
+- Additional sources: Indeed (skipped per ADR-019), Glassdoor, Otta, Welcome to the Jungle, company career pages
 - Limited automation for popular ATS systems (Workday, Greenhouse) on the manual-apply path
 - Automated cover-letter generation when none is uploaded
 - Interview tracking

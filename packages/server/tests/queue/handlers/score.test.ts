@@ -4,6 +4,7 @@ import type { ScoreMessages, StructuredScorer } from '@vina/orchestrator';
 import { ScoreSchema } from '@vina/orchestrator';
 import { NotFoundError } from '@vina/shared';
 import { findJobById, insertJob } from '../../../src/db/repositories/jobs.js';
+import { insertCv } from '../../../src/db/repositories/cvs.js';
 import { insertProfile } from '../../../src/db/repositories/profile.js';
 import { upsertSearchPreferences } from '../../../src/db/repositories/search-preferences.js';
 import { createEventBus } from '../../../src/events/bus.js';
@@ -16,6 +17,17 @@ function fakeScorer(score: number, justification = 'fake'): StructuredScorer {
       invoke: async (_messages: ScoreMessages) => {
         ScoreSchema.parse({ score, justification }); // sanity
         return { score, justification };
+      },
+    }) as never,
+  };
+}
+
+function capturingScorer(captured: { messages: ScoreMessages | null }): StructuredScorer {
+  return {
+    withStructuredOutput: () => ({
+      invoke: async (messages: ScoreMessages) => {
+        captured.messages = messages;
+        return { score: 80, justification: 'ok' };
       },
     }) as never,
   };
@@ -90,5 +102,69 @@ describe('score handler', () => {
       buildModel: async () => fakeScorer(50),
     });
     await expect(handler({ job_id: 'missing' })).rejects.toThrow(NotFoundError);
+  });
+
+  it('folds the default CV extracted_text into the prompt as the CV section', async () => {
+    insertCv(db, {
+      label: 'main',
+      original_filename: 'cv.pdf',
+      mime_type: 'application/pdf',
+      file_path: '/tmp/cv.pdf',
+      extracted_text: 'CV-FINGERPRINT-12345',
+      is_default: true,
+    });
+    const job = insertJob(db, {
+      site_id: 'linkedin',
+      external_id: 'ext3',
+      url: 'https://x',
+      apply_method: 'auto',
+      title: 'Senior Engineer',
+      company: 'Acme',
+      description: 'TS APIs.',
+    });
+
+    const captured: { messages: ScoreMessages | null } = { messages: null };
+    const handler = createScoreHandler({
+      db,
+      bus: createEventBus(),
+      buildModel: async () => capturingScorer(captured),
+    });
+    await handler({ job_id: job.id });
+
+    const userMsg = captured.messages?.find((m) => m.role === 'user');
+    expect(String(userMsg?.content)).toContain('## CV');
+    expect(String(userMsg?.content)).toContain('CV-FINGERPRINT-12345');
+  });
+
+  it('omits the CV section when no default CV is set', async () => {
+    insertCv(db, {
+      label: 'main',
+      original_filename: 'cv.pdf',
+      mime_type: 'application/pdf',
+      file_path: '/tmp/cv.pdf',
+      extracted_text: 'NOT-DEFAULT',
+      is_default: false,
+    });
+    const job = insertJob(db, {
+      site_id: 'linkedin',
+      external_id: 'ext4',
+      url: 'https://x',
+      apply_method: 'auto',
+      title: 'Senior Engineer',
+      company: 'Acme',
+      description: 'TS APIs.',
+    });
+
+    const captured: { messages: ScoreMessages | null } = { messages: null };
+    const handler = createScoreHandler({
+      db,
+      bus: createEventBus(),
+      buildModel: async () => capturingScorer(captured),
+    });
+    await handler({ job_id: job.id });
+
+    const userMsg = captured.messages?.find((m) => m.role === 'user');
+    expect(String(userMsg?.content)).not.toContain('## CV');
+    expect(String(userMsg?.content)).not.toContain('NOT-DEFAULT');
   });
 });

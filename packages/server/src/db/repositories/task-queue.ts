@@ -144,6 +144,33 @@ export function listPending(db: DatabaseType): Task[] {
   return rows.map(rowToTask);
 }
 
+/**
+ * Collect job ids that have a `score` task currently in flight (either
+ * `pending` waiting for a worker, or `running` mid-execution). Used by the
+ * search handler + boot sweep to avoid double-enqueuing scores. Includes
+ * `running` because `listPending` alone would race with the worker — a
+ * score task that just got claimed wouldn't show up as pending, so a
+ * concurrent search would re-enqueue and we'd double-score.
+ */
+export function getInFlightScoreJobIds(db: DatabaseType): Set<string> {
+  const rows = db
+    .prepare(
+      `SELECT payload FROM task_queue
+       WHERE kind = 'score' AND status IN ('pending', 'running')`,
+    )
+    .all() as { payload: string }[];
+  const ids = new Set<string>();
+  for (const row of rows) {
+    try {
+      const id = (JSON.parse(row.payload) as { job_id?: string }).job_id;
+      if (id) ids.add(id);
+    } catch {
+      // corrupt payload — leave it, fail handler will surface it elsewhere
+    }
+  }
+  return ids;
+}
+
 /** Cheap counter for status-faceted summaries (system status route, queue:updated emits). */
 export function countByStatus(db: DatabaseType, status: TaskStatus): number {
   const row = db

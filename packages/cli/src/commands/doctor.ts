@@ -1,5 +1,7 @@
 import fs from 'node:fs';
+import path from 'node:path';
 import { dataDir } from '../config.js';
+import { authedRequest } from '../lib/api.js';
 import { isProcessAlive, readPidFile } from '../lib/pid.js';
 import { readStatus } from '../lib/status.js';
 
@@ -20,19 +22,142 @@ function checkNodeVersion(): CheckResult {
       };
 }
 
-function checkPlaywright(): CheckResult {
-  try {
-    // Playwright isn't a CLI dep — only the automation package depends on it.
-    // For now we just confirm the package can be resolved from somewhere on
-    // disk; real "are browsers installed?" lives in the automation package and
-    // wires in once Phase 11 lands.
-    import.meta.resolve('playwright');
-    return { name: 'Playwright resolvable', ok: true };
-  } catch {
+interface ChromiumStatus {
+  available: boolean;
+  executable_path: string | null;
+  error?: string;
+}
+
+async function checkChromium(): Promise<CheckResult> {
+  const status = readStatus();
+  if (!status) {
     return {
-      name: 'Playwright resolvable',
+      name: 'Chromium installed',
+      ok: true,
+      remediation: 'daemon not running (skipped)',
+    };
+  }
+  try {
+    const detail = await authedRequest<ChromiumStatus>(
+      status.port,
+      'GET',
+      '/api/system/chromium',
+    );
+    if (detail.available && detail.executable_path && fs.existsSync(detail.executable_path)) {
+      return { name: `Chromium installed (${detail.executable_path})`, ok: true };
+    }
+    return {
+      name: 'Chromium installed',
       ok: false,
-      remediation: 'Run `pnpm install` and (later) `pnpm exec playwright install chromium`',
+      remediation:
+        detail.error ?? 'Run `pnpm exec playwright install chromium` in the Vina repo',
+    };
+  } catch (err) {
+    return {
+      name: 'Chromium installed',
+      ok: false,
+      remediation: (err as Error).message,
+    };
+  }
+}
+
+function checkLinkedInProfileDir(): CheckResult {
+  const profileDir = path.join(dataDir, 'sessions', 'linkedin');
+  if (fs.existsSync(profileDir)) {
+    return { name: `LinkedIn profile dir present (${profileDir})`, ok: true };
+  }
+  return {
+    name: 'LinkedIn profile dir present',
+    ok: false,
+    remediation: 'Run the wizard\'s Connect LinkedIn step (or Settings → Sites → Connect)',
+  };
+}
+
+interface SystemStatusForDoctor {
+  active_provider: { kind: string; model: string } | null;
+  schedule_paused: boolean;
+}
+
+async function checkLlmProvider(): Promise<CheckResult> {
+  const status = readStatus();
+  if (!status) return { name: 'LLM provider configured', ok: true, remediation: 'daemon not running (skipped)' };
+  try {
+    const detail = await authedRequest<SystemStatusForDoctor>(
+      status.port,
+      'GET',
+      '/api/system/status',
+    );
+    if (detail.active_provider) {
+      return {
+        name: `LLM provider configured (${detail.active_provider.kind}/${detail.active_provider.model})`,
+        ok: true,
+      };
+    }
+    return {
+      name: 'LLM provider configured',
+      ok: false,
+      remediation: 'Add a provider and select it from the LLM Provider step or Settings',
+    };
+  } catch (err) {
+    return {
+      name: 'LLM provider configured',
+      ok: false,
+      remediation: (err as Error).message,
+    };
+  }
+}
+
+async function checkSchedulePaused(): Promise<CheckResult> {
+  const status = readStatus();
+  if (!status) return { name: 'Schedule not paused', ok: true, remediation: 'daemon not running (skipped)' };
+  try {
+    const detail = await authedRequest<SystemStatusForDoctor>(
+      status.port,
+      'GET',
+      '/api/system/status',
+    );
+    return detail.schedule_paused
+      ? {
+          name: 'Schedule not paused',
+          ok: false,
+          remediation: 'Re-enable from Settings (it auto-pauses after 3 consecutive failures)',
+        }
+      : { name: 'Schedule not paused', ok: true };
+  } catch (err) {
+    return {
+      name: 'Schedule not paused',
+      ok: false,
+      remediation: (err as Error).message,
+    };
+  }
+}
+
+interface AlertsListResponse {
+  items: { id: string }[];
+}
+
+async function checkAlerts(): Promise<CheckResult> {
+  const status = readStatus();
+  if (!status) return { name: 'No unacknowledged alerts', ok: true, remediation: 'daemon not running (skipped)' };
+  try {
+    const list = await authedRequest<AlertsListResponse>(
+      status.port,
+      'GET',
+      '/api/alerts?status=open',
+    );
+    if (list.items.length === 0) {
+      return { name: 'No unacknowledged alerts', ok: true };
+    }
+    return {
+      name: `No unacknowledged alerts (${list.items.length} open)`,
+      ok: false,
+      remediation: 'Open the Alerts page to review',
+    };
+  } catch (err) {
+    return {
+      name: 'No unacknowledged alerts',
+      ok: false,
+      remediation: (err as Error).message,
     };
   }
 }
@@ -78,9 +203,13 @@ async function checkDaemonReachable(): Promise<CheckResult> {
 export async function doctorCommand(): Promise<number> {
   const checks: (CheckResult | Promise<CheckResult>)[] = [
     checkNodeVersion(),
-    checkPlaywright(),
     checkDataDir(),
     checkDaemonReachable(),
+    checkChromium(),
+    checkLinkedInProfileDir(),
+    checkLlmProvider(),
+    checkSchedulePaused(),
+    checkAlerts(),
   ];
   const results = await Promise.all(checks);
 

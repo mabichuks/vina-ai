@@ -1,3 +1,5 @@
+export type { BrowserContext, Page } from 'playwright';
+export { getChromiumInfo, type ChromiumInfo } from './browser/chromium-info.js';
 export { launchSiteContext, type LaunchSiteContextOptions } from './browser/launch.js';
 export {
   LISTING_MAX_MS,
@@ -13,4 +15,10 @@ export {
   type BrowserManagerHandle,
   type BrowserManagerOptions,
 } from './browser/manager.js';
-export { linkedInAdapter } from './adapters/linkedin/index.js';
+export {
+  linkedInAdapter,
+  iterateLinkedInCards,
+  openLinkedInListing,
+  capturePageDomSummary,
+  type DetailSelectorOverrides,
+} from './adapters/linkedin/index.js';

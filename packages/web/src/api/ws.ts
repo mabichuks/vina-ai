@@ -1,5 +1,7 @@
 import { useEffect, useRef } from 'react';
 import { useUiStore } from '../store/ui-store.js';
+import { queryClient } from '../store/query-client.js';
+import { useSearchProgressStore } from '../store/search-progress-store.js';
 
 type Handler = (payload: unknown) => void;
 
@@ -8,6 +10,73 @@ const DISCONNECTED_BANNER_AFTER_MS = 5_000;
 interface WebSocketEnvelope {
   type: string;
   payload: unknown;
+}
+
+/**
+ * Map of WS event types → query keys that should refetch when the event
+ * arrives. Centralised here so the dispatcher stays simple and so we can see
+ * the live-update wiring for the whole app in one place.
+ */
+const INVALIDATIONS: Record<string, ReadonlyArray<readonly unknown[]>> = {
+  'jobs:updated': [['jobs']],
+  'search:started': [['jobs']],
+  'search:completed': [['jobs']],
+  'search:failed': [['jobs']],
+  'linkedin:session-expired': [['linkedin-status']],
+  'site:login_status': [['sites'], ['linkedin-status']],
+  'alert:created': [['alerts']],
+  'alert:resolved': [['alerts']],
+  'alert:dismissed': [['alerts']],
+};
+
+function invalidateQueriesFor(eventType: string): void {
+  const keys = INVALIDATIONS[eventType];
+  if (!keys) return;
+  for (const key of keys) {
+    void queryClient.invalidateQueries({ queryKey: [...key] });
+  }
+}
+
+interface JobsUpdatedPayload {
+  ids: string[];
+}
+interface SearchCompletedPayload {
+  scored: number;
+}
+interface SearchFailedPayload {
+  error_kind: string;
+}
+
+/**
+ * Route lifecycle events to the search-progress store so phase-aware UI
+ * (search-now button, Dashboard activity panel) stays in sync without each
+ * component subscribing to the WS hub directly.
+ */
+function updateSearchProgressFor(eventType: string, payload: unknown): void {
+  const store = useSearchProgressStore.getState();
+  switch (eventType) {
+    case 'search:started':
+      store.beginDiscovering();
+      break;
+    case 'jobs:updated': {
+      const ids = (payload as JobsUpdatedPayload | undefined)?.ids;
+      const n = Array.isArray(ids) ? ids.length : 0;
+      if (n === 0) return;
+      if (store.phase === 'discovering') store.countDiscoveredListings(n);
+      else if (store.phase === 'scoring') store.countScored(n);
+      break;
+    }
+    case 'search:completed': {
+      const scored = (payload as SearchCompletedPayload | undefined)?.scored ?? 0;
+      store.beginScoring(scored);
+      break;
+    }
+    case 'search:failed': {
+      const errorKind = (payload as SearchFailedPayload | undefined)?.error_kind ?? 'unknown';
+      store.markError(errorKind);
+      break;
+    }
+  }
 }
 
 interface UseWebSocketController {
@@ -71,6 +140,8 @@ export function useWebSocket(token: string | null): UseWebSocketController {
           return;
         }
         if (!envelope.type) return;
+        invalidateQueriesFor(envelope.type);
+        updateSearchProgressFor(envelope.type, envelope.payload);
         const set = handlers.current.get(envelope.type);
         if (set) {
           for (const h of set) h(envelope.payload);

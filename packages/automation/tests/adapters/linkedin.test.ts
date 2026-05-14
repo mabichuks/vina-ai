@@ -110,6 +110,7 @@ describe('linkedInAdapter.openListing', () => {
       url: `${fixture.url}/jobs/view/easy`,
       snippet: null,
       postedAt: null,
+      cardApplyMethod: null,
     });
     expect(detail.description).toContain('Full description');
     expect(detail.salaryText).toBe('$180k – $220k');
@@ -127,6 +128,7 @@ describe('linkedInAdapter.detectApplyMethod', () => {
       url: `${fixture.url}/jobs/view/easy`,
       snippet: null,
       postedAt: null,
+      cardApplyMethod: null,
     });
     expect(result).toEqual({ method: 'auto' });
   }, 30_000);
@@ -141,6 +143,7 @@ describe('linkedInAdapter.detectApplyMethod', () => {
       url: `${fixture.url}/jobs/view/ext`,
       snippet: null,
       postedAt: null,
+      cardApplyMethod: null,
     });
     expect(result).toEqual({
       method: 'manual',
@@ -158,6 +161,7 @@ describe('linkedInAdapter.detectApplyMethod', () => {
       url: `${fixture.url}/jobs/view/ndi`,
       snippet: null,
       postedAt: null,
+      cardApplyMethod: null,
     });
     expect(result).toEqual({ method: 'manual', externalApplyUrl: null });
   }, 30_000);

@@ -8,11 +8,12 @@ export function Done(): JSX.Element {
   const qc = useQueryClient();
   const { allRequiredDone } = useWizardCompletion();
 
-  const onOpenDashboard = (): void => {
+  const onFindJobs = (): void => {
     // Refresh bootstrap so the BootstrapGate sees `onboarded: true` and routes
-    // future visits straight to `/`.
+    // future visits past the wizard. Land on /jobs (not /) — the user just
+    // connected LinkedIn, the next thing they want is the Search-now button.
     void qc.invalidateQueries({ queryKey: ['bootstrap'] });
-    void navigate('/');
+    void navigate('/jobs');
   };
 
   return (
@@ -21,14 +22,14 @@ export function Done(): JSX.Element {
       title="You're all set"
       subtitle={
         allRequiredDone
-          ? 'Vina has everything it needs to start finding and applying. The Topbar will nudge you if any optional pieces (cover letter, search preferences, schedule, mode) are still at their defaults.'
+          ? "Vina has everything it needs. Click below to open Jobs and run your first search."
           : 'A few required pieces are still missing. Use the Back button to finish them up.'
       }
       footer={
         <WizardFooter
           primary={
-            <PrimaryButton onClick={onOpenDashboard} disabled={!allRequiredDone}>
-              Open dashboard
+            <PrimaryButton onClick={onFindJobs} disabled={!allRequiredDone}>
+              Find jobs
             </PrimaryButton>
           }
         />
@@ -37,15 +38,15 @@ export function Done(): JSX.Element {
       <div className="space-y-3 text-sm text-ink-secondary">
         <p>What happens next:</p>
         <ul className="list-inside list-disc space-y-1">
-          <li>The scheduler runs your first job search</li>
-          <li>Matches above your score threshold get queued</li>
           <li>
-            <span className="font-medium text-ink-primary">Auto-apply</span> jobs flow through
-            tailoring → submission
+            On the Jobs page, click <span className="font-medium text-ink-primary">Search now</span>{' '}
+            to discover listings on demand — or wait for the scheduler.
           </li>
+          <li>Matches above your score threshold appear in the New tab.</li>
           <li>
-            <span className="font-medium text-ink-primary">Manual-apply</span> jobs land in the
-            &ldquo;Ready to Apply&rdquo; tab with a tailored CV waiting for you
+            Click <span className="font-medium text-ink-primary">Apply on LinkedIn</span> to open the
+            listing, then <span className="font-medium text-ink-primary">Mark applied</span> back in
+            Vina to keep your worklist tidy.
           </li>
         </ul>
       </div>

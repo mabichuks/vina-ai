@@ -1,7 +1,10 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type {
+  Alert,
   CoverLetter,
   Cv,
+  Job,
+  JobStatus,
   LlmProvider,
   LlmProviderInput,
   Profile,
@@ -313,4 +316,172 @@ export function useLoginSite(): {
     onSuccess: () => qc.invalidateQueries({ queryKey: ['sites'] }),
   });
   return { mutate: (id) => mut.mutateAsync(id), isPending: mut.isPending };
+}
+
+/* ------------------------------------------------------------------ */
+/* LinkedIn connect                                                     */
+/* ------------------------------------------------------------------ */
+
+export interface LinkedInStatus {
+  connected: boolean;
+  attempting: boolean;
+  last_success_at: string | null;
+  error: string | null;
+}
+
+export function useLinkedInStatus(opts: { pollMs?: number } = {}): {
+  data: LinkedInStatus | null;
+  isLoading: boolean;
+} {
+  const q = useQuery<LinkedInStatus>({
+    queryKey: ['linkedin-status'],
+    queryFn: () => api<LinkedInStatus>('/api/sites/linkedin/status'),
+    refetchInterval: opts.pollMs ?? false,
+  });
+  return { data: q.data ?? null, isLoading: q.isLoading };
+}
+
+export function useStartLinkedInConnect(): {
+  mutate: () => Promise<void>;
+  isPending: boolean;
+} {
+  const qc = useQueryClient();
+  const mut = useMutation<void, Error, void>({
+    mutationFn: async () => {
+      await api('/api/sites/linkedin/connect', { method: 'POST', body: {} });
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['linkedin-status'] }),
+  });
+  return { mutate: () => mut.mutateAsync(), isPending: mut.isPending };
+}
+
+export function useCancelLinkedInConnect(): {
+  mutate: () => Promise<void>;
+  isPending: boolean;
+} {
+  const qc = useQueryClient();
+  const mut = useMutation<void, Error, void>({
+    mutationFn: async () => {
+      await api('/api/sites/linkedin/connect', { method: 'DELETE' });
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['linkedin-status'] }),
+  });
+  return { mutate: () => mut.mutateAsync(), isPending: mut.isPending };
+}
+
+export function useDisconnectLinkedIn(): {
+  mutate: () => Promise<void>;
+  isPending: boolean;
+} {
+  const qc = useQueryClient();
+  const mut = useMutation<void, Error, void>({
+    mutationFn: async () => {
+      await api('/api/sites/linkedin', { method: 'DELETE' });
+    },
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ['linkedin-status'] });
+      void qc.invalidateQueries({ queryKey: ['sites'] });
+    },
+  });
+  return { mutate: () => mut.mutateAsync(), isPending: mut.isPending };
+}
+
+/* ------------------------------------------------------------------ */
+/* Jobs                                                                 */
+/* ------------------------------------------------------------------ */
+
+export interface JobsListResponse {
+  items: Job[];
+  page: number;
+  page_size: number;
+}
+
+export interface JobsFilters {
+  /** Single status or array (joined comma-separated for the backend). */
+  status?: JobStatus | JobStatus[];
+  min_score?: number;
+  page?: number;
+  page_size?: number;
+}
+
+export function useJobs(filters: JobsFilters): { data: Job[]; isLoading: boolean } {
+  const qs = new URLSearchParams();
+  if (filters.status) {
+    qs.set(
+      'status',
+      Array.isArray(filters.status) ? filters.status.join(',') : filters.status,
+    );
+  }
+  if (filters.min_score !== undefined) qs.set('min_score', String(filters.min_score));
+  if (filters.page) qs.set('page', String(filters.page));
+  if (filters.page_size) qs.set('page_size', String(filters.page_size));
+  const q = useQuery<JobsListResponse>({
+    queryKey: ['jobs', filters],
+    queryFn: () => api<JobsListResponse>(`/api/jobs?${qs.toString()}`),
+  });
+  return { data: q.data?.items ?? [], isLoading: q.isLoading };
+}
+
+function useJobStatusMutation(suffix: 'applied' | 'skip' | 'scored'): {
+  mutate: (id: string) => Promise<Job>;
+  isPending: boolean;
+} {
+  const qc = useQueryClient();
+  const mut = useMutation<Job, Error, string>({
+    mutationFn: (id) => api<Job>(`/api/jobs/${id}/${suffix}`, { method: 'POST', body: {} }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['jobs'] }),
+  });
+  return { mutate: (id) => mut.mutateAsync(id), isPending: mut.isPending };
+}
+
+export const useMarkApplied = (): ReturnType<typeof useJobStatusMutation> =>
+  useJobStatusMutation('applied');
+export const useSkipJob = (): ReturnType<typeof useJobStatusMutation> =>
+  useJobStatusMutation('skip');
+export const useReopenJob = (): ReturnType<typeof useJobStatusMutation> =>
+  useJobStatusMutation('scored');
+
+export function useRunSearchNow(): {
+  mutate: (siteId: string) => Promise<{ task_id: string; deduped: boolean }>;
+  isPending: boolean;
+} {
+  const mut = useMutation<{ task_id: string; deduped: boolean }, Error, string>({
+    mutationFn: (siteId) =>
+      api(`/api/searches/run-now`, { method: 'POST', body: { site_id: siteId } }),
+  });
+  return { mutate: (siteId) => mut.mutateAsync(siteId), isPending: mut.isPending };
+}
+
+/* ------------------------------------------------------------------ */
+/* Alerts                                                               */
+/* ------------------------------------------------------------------ */
+
+export function useAlerts(): { data: Alert[]; isLoading: boolean } {
+  const q = useQuery<{ items: Alert[] }>({
+    queryKey: ['alerts'],
+    queryFn: () => api<{ items: Alert[] }>('/api/alerts?status=open'),
+  });
+  return { data: q.data?.items ?? [], isLoading: q.isLoading };
+}
+
+export function useResolveAlert(): { mutate: (id: string) => Promise<void> } {
+  const qc = useQueryClient();
+  const mut = useMutation<void, Error, string>({
+    mutationFn: async (id) => {
+      await api(`/api/alerts/${id}/resolve`, { method: 'POST', body: {} });
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['alerts'] }),
+  });
+  return { mutate: (id) => mut.mutateAsync(id) };
+}
+
+export function useDismissAlert(): { mutate: (id: string) => Promise<void> } {
+  const qc = useQueryClient();
+  const mut = useMutation<void, Error, string>({
+    mutationFn: async (id) => {
+      await api(`/api/alerts/${id}/dismiss`, { method: 'POST', body: {} });
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['alerts'] }),
+  });
+  return { mutate: (id) => mut.mutateAsync(id) };
 }

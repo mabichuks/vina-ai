@@ -35,6 +35,34 @@ export function feedPage(): string {
   `);
 }
 
+/**
+ * Jobs landing page with a real search form. The adapter's `search` method
+ * simulates a user typing into the keywords input and pressing Enter; this
+ * page renders inputs whose id-prefixes match `KEYWORDS_INPUT_SELECTORS` /
+ * `LOCATION_INPUT_SELECTORS` in the adapter so the same code path runs in
+ * tests as in production.
+ */
+export function jobsHomePage(): string {
+  return html(`
+    <h1>Jobs</h1>
+    <form action="/jobs/search/" method="GET">
+      <input
+        id="jobs-search-box-keyword-id-fixture"
+        name="keywords"
+        aria-label="Search by title, skill, or company"
+        placeholder="Title, skill or company"
+      />
+      <input
+        id="jobs-search-box-location-id-fixture"
+        name="location"
+        aria-label="City, state, or zip code"
+        placeholder="City, state, or zip code"
+      />
+      <button type="submit">Search</button>
+    </form>
+  `);
+}
+
 type FixtureListingId = 'easy' | 'ext' | 'ndi';
 
 interface FixtureListing {

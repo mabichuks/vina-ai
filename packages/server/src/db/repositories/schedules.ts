@@ -7,6 +7,8 @@ export interface Schedule {
   enabled: boolean;
   last_run_at: string | null;
   next_run_at: string | null;
+  consecutive_failures: number;
+  paused: boolean;
   created_at: string;
 }
 
@@ -16,11 +18,17 @@ interface ScheduleRow {
   enabled: number;
   last_run_at: string | null;
   next_run_at: string | null;
+  consecutive_failures: number;
+  paused: number;
   created_at: string;
 }
 
 function rowToSchedule(row: ScheduleRow): Schedule {
-  return { ...row, enabled: row.enabled === 1 };
+  return {
+    ...row,
+    enabled: row.enabled === 1,
+    paused: row.paused === 1,
+  };
 }
 
 export function listSchedules(db: DatabaseType): Schedule[] {
@@ -49,6 +57,8 @@ export function insertSchedule(
     enabled: input.enabled !== false,
     last_run_at: null,
     next_run_at: null,
+    consecutive_failures: 0,
+    paused: false,
     created_at: now,
   };
 }
@@ -86,4 +96,18 @@ export function updateSchedule(db: DatabaseType, id: string, patch: ScheduleUpda
 export function deleteSchedule(db: DatabaseType, id: string): void {
   const result = db.prepare(`DELETE FROM schedules WHERE id = ?`).run(id);
   if (result.changes === 0) throw new NotFoundError(`Schedule ${id} not found`);
+}
+
+export function incrementScheduleFailures(db: DatabaseType, id: string): void {
+  db.prepare(
+    `UPDATE schedules SET consecutive_failures = consecutive_failures + 1 WHERE id = ?`,
+  ).run(id);
+}
+
+export function resetScheduleFailures(db: DatabaseType, id: string): void {
+  db.prepare(`UPDATE schedules SET consecutive_failures = 0 WHERE id = ?`).run(id);
+}
+
+export function setSchedulePaused(db: DatabaseType, id: string, paused: boolean): void {
+  db.prepare(`UPDATE schedules SET paused = ? WHERE id = ?`).run(paused ? 1 : 0, id);
 }

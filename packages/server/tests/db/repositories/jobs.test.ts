@@ -53,8 +53,12 @@ describe('jobs repository', () => {
     expect(listJobs(db, { apply_method: 'manual' })).toHaveLength(1);
 
     updateJobScore(db, linkedinAuto.id, 90, 'Strong');
+    // `min_score` keeps unscored rows (NULL match_score) in the worklist as
+    // "Scoring…" placeholders; only already-scored rows are filtered against
+    // the threshold. See jobs.ts:64-66.
     const highScores = listJobs(db, { min_score: 80 });
-    expect(highScores.map((j) => j.id)).toEqual([linkedinAuto.id]);
+    const scoredIds = highScores.filter((j) => j.match_score !== null).map((j) => j.id);
+    expect(scoredIds).toEqual([linkedinAuto.id]);
 
     expect(listJobs(db, { search: 'kafka' }).map((j) => j.external_id)).toEqual(['b']);
     db.close();

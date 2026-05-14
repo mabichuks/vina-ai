@@ -4,6 +4,7 @@ import { runScoreJob, type ScoreInput, type StructuredScorer } from '@vina/orche
 import { ConflictError, createLogger, NotFoundError } from '@vina/shared';
 import { findJobById, updateJobScore, updateJobStatus } from '../../db/repositories/jobs.js';
 import { findProfile } from '../../db/repositories/profile.js';
+import { listCvs } from '../../db/repositories/cvs.js';
 import { getOrInitSearchPreferences } from '../../db/repositories/search-preferences.js';
 import type { EventBus } from '../../events/bus.js';
 
@@ -34,6 +35,7 @@ export function createScoreHandler(
     if (!profile) throw new ConflictError('Profile not configured — cannot score');
 
     const prefs = getOrInitSearchPreferences(deps.db);
+    const defaultCv = listCvs(deps.db).find((c) => c.is_default) ?? null;
 
     const input: ScoreInput = {
       job: {
@@ -46,6 +48,7 @@ export function createScoreHandler(
         full_name: profile.full_name,
         bio: profile.bio,
       },
+      cv_text: defaultCv?.extracted_text ?? null,
       prefs: {
         description: prefs.description,
         keywords: prefs.keywords,

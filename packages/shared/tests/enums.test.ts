@@ -16,6 +16,18 @@ import {
   TASK_STATUSES,
 } from '../src/enums.js';
 
+describe('ALERT_KINDS — linkedin slice additions', () => {
+  it.each([
+    'linkedin_session_expired',
+    'search_failed',
+    'score_failed',
+    'schedule_paused',
+    'provider_failed',
+  ])('includes %s', (kind) => {
+    expect(ALERT_KINDS as readonly string[]).toContain(kind);
+  });
+});
+
 describe('enum constants', () => {
   it('match the database CHECK constraint snapshot', () => {
     expect({
@@ -43,6 +55,11 @@ describe('enum constants', () => {
           "apply_failed",
           "ready_for_manual_apply",
           "general",
+          "linkedin_session_expired",
+          "search_failed",
+          "score_failed",
+          "schedule_paused",
+          "provider_failed",
         ],
         "ALERT_SEVERITIES": [
           "info",
