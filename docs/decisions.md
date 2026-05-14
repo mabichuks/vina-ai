@@ -467,3 +467,33 @@ The five decisions: (1) Playwright version pin, (2) browser channel (bundled Chr
 - M11 Task 7 (`/api/sites/linkedin/login`) launches headful by default for the interactive login. Production headless/headful is wired from `settings.browser_headful`
 - This ADR locks the M10 deferred item from `docs/cli-spec.md` §14 ("Playwright browser binaries" check). Doctor's actual implementation lands in M11 Task 10 — the decision is captured here so the implementation is mechanical
 - The `@playwright/test` package is a dev dep used only by the e2e harness (M11 Task 6) against the LinkedIn fixture site; unit tests stay on Vitest with `playwright` directly
+
+## ADR-019: Skip Indeed as a source
+
+**Status:** Accepted (2026-05-13).
+
+**Context.** Original scope (`SPEC.md` §4 pre-ADR-019, `build-order.md` M12 + M17) included Indeed alongside LinkedIn as a second browser-kind source. As the LinkedIn end-to-end slice landed (2026-05-10), three things became clear:
+
+1. **Indeed's anti-bot posture is more hostile to Playwright than LinkedIn's.** Repeat visits from the same persistent context trigger CAPTCHA gates and 403s faster than they do on LinkedIn. Maintaining a second browser-kind adapter against a more adversarial target was an open-ended cost.
+2. **Coverage overlap with Google Jobs is high.** SerpAPI's Google Jobs endpoint aggregates listings posted to Indeed (Indeed is a major Google-Jobs feeder), so most Indeed listings reach the user via the Google Jobs path anyway — without a second browser session, without per-search CAPTCHA risk, and without a second selector-drift surface to babysit.
+3. **The marginal Indeed-only listings aren't worth a second adapter's weight.** Two adapters means two selectors files, two fixture sites, two session-recovery flows, two doctor checks, two "Coming soon" tiles to keep current. The pattern is fine for browser-kind sources we genuinely need; it's not justified for a source that overlaps with one we already pay for.
+
+We considered: (1) keep Indeed as planned, (2) cloud-browser the Indeed flow via Steel.dev or similar, (3) skip Indeed entirely. Option 2 doesn't fix the architectural cost (still a second adapter to maintain); it just trades local detection for cloud detection.
+
+**Decision.** Skip Indeed entirely. Indeed is removed from the source list in `SPEC.md`. The two MVP sources are LinkedIn (browser-kind via Playwright) and Google Jobs (api-kind via SerpAPI). Coverage of Indeed-originated listings comes through the Google Jobs feeder, not through a dedicated adapter.
+
+**Reasons.**
+
+- Eliminates a second adapter's perpetual maintenance cost (selector drift, fixture upkeep, session recovery, doctor checks)
+- Removes a CAPTCHA-prone path that would have been a recurring source of user-visible failures
+- Concentrates browser-kind investment on LinkedIn, where Easy Apply (a future M15) gives the auto-apply pipeline its highest-value site
+- Keeps the architectural pattern clean: two clearly distinct source kinds (browser, api), one source per kind in MVP
+- Frees the next slice's effort for Google Jobs + the manual-apply pipeline (the two manual-apply paths now share the same UI surface)
+
+**Consequences.**
+
+- `packages/automation/src/adapters/indeed.ts` is **not built**. Build-order M12 and M17 are removed; downstream milestones renumber.
+- The `sites` table still seeds an `indeed` row from migration 001 (removing it requires a forward-only migration that no caller needs). The row is dormant — no schedule references it, no UI surfaces it. A future migration can drop it if convenient; it's harmless to leave.
+- The Settings → Sites tile lists LinkedIn and Google Jobs only. Indeed does **not** appear as "Coming soon" — it's not planned.
+- Existing references to Indeed in `docs/architecture.md`, `docs/api-spec.md`, `docs/browser-automation.md`, `docs/frontend-designer.md`, and `docs/database-schema.md` are stale; they document historical scope. This ADR supersedes them. Per-doc sweeps to remove Indeed verbiage land in the Google Jobs slice (next phase A).
+- If the cost calculus changes later (e.g. SerpAPI prices out, or a critical user segment is Indeed-heavy), reversing this ADR means writing the Indeed adapter and the Indeed fixture site. The `SiteAdapter` interface is already designed to accommodate it — the decision is operational, not architectural.

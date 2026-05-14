@@ -1,5 +1,5 @@
 import { AuthError, ConflictError, NotFoundError, ValidationError, VinaError } from '@vina/shared';
-import { getToken } from '../store/auth-store.js';
+import { getToken, useAuthStore } from '../store/auth-store.js';
 import { useUiStore } from '../store/ui-store.js';
 
 interface ErrorEnvelope {
@@ -44,7 +44,45 @@ async function parseErrorAndThrow(res: Response): Promise<never> {
   throw err;
 }
 
+interface BootstrapShape {
+  version: string;
+  token: string;
+  onboarded: boolean;
+}
+
+/**
+ * Refresh the bearer token from `/api/bootstrap`. Used when an API call gets
+ * 401 — the daemon may have restarted with a new token while the page stayed
+ * open. Returns the fresh token, or null if bootstrap itself fails.
+ */
+let inflightBootstrap: Promise<string | null> | null = null;
+async function refreshTokenViaBootstrap(): Promise<string | null> {
+  if (inflightBootstrap) return inflightBootstrap;
+  inflightBootstrap = (async () => {
+    try {
+      const res = await fetch('/api/bootstrap', { headers: { accept: 'application/json' } });
+      if (!res.ok) return null;
+      const data = (await res.json()) as BootstrapShape;
+      useAuthStore.getState().setToken(data.token);
+      return data.token;
+    } catch {
+      return null;
+    } finally {
+      inflightBootstrap = null;
+    }
+  })();
+  return inflightBootstrap;
+}
+
 export async function api<T = unknown>(path: string, init: RequestInitWithBody = {}): Promise<T> {
+  return apiOnce<T>(path, init, true);
+}
+
+async function apiOnce<T>(
+  path: string,
+  init: RequestInitWithBody,
+  allowReauth: boolean,
+): Promise<T> {
   const token = getToken();
   const headers: Record<string, string> = {
     accept: 'application/json',
@@ -69,13 +107,18 @@ export async function api<T = unknown>(path: string, init: RequestInitWithBody =
     throw err;
   }
 
+  // 401 on a non-bootstrap request usually means the daemon restarted and
+  // issued a fresh token. Try one silent re-bootstrap, then retry the call.
+  if (res.status === 401 && allowReauth && !path.startsWith('/api/bootstrap')) {
+    const fresh = await refreshTokenViaBootstrap();
+    if (fresh) return apiOnce<T>(path, init, false);
+  }
+
   if (!res.ok) {
     await parseErrorAndThrow(res);
   }
 
   if (res.status === 204) return undefined as T;
 
-  // We always expect JSON from /api/* — if a non-JSON body sneaks through it's
-  // a server bug, let the JSON parse throw.
   return (await res.json()) as T;
 }

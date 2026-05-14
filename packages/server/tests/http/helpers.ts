@@ -50,6 +50,8 @@ export async function buildTestApp(): Promise<TestAppHandle> {
     bus,
     browserManager,
     adapter: linkedInAdapter,
+    dataDir,
+    useManagerForLaunch: true,
     pollIntervalMs: 50,
     timeoutMs: 5_000,
   });

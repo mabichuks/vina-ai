@@ -9,7 +9,6 @@ const ITEMS: NavItem[] = [
   { to: '/', label: 'Dashboard' },
   { to: '/jobs', label: 'Jobs' },
   { to: '/applications', label: 'Applications' },
-  { to: '/ready', label: 'Ready to Apply' },
   { to: '/alerts', label: 'Alerts' },
   { to: '/profile', label: 'Profile' },
   { to: '/settings', label: 'Settings' },

@@ -6,6 +6,23 @@ This is a recommendation, not a contract. If a milestone's scope changes, update
 
 ---
 
+## Current status (2026-05-13)
+
+The milestones below were planned before the LinkedIn end-to-end slice landed and ADR-019 was accepted. They remain as the long-form reference, but the active sequence is now:
+
+| State | Milestones |
+|---|---|
+| **Shipped** | M0 – M10 in their original form; M11 in a form that overlaps with the LinkedIn end-to-end slice (see `docs/superpowers/specs/2026-05-04-linkedin-end-to-end-slice-design.md`, marked Implemented 2026-05-10) |
+| **Skipped (ADR-019)** | ~~M12 (Indeed adapter)~~, ~~M17 (Apply graph for Indeed)~~. Removed from scope. |
+| **Active queue** | **Phase A — Google Jobs via SerpAPI.** Replaces and supersedes the original M13. Spec: `docs/superpowers/specs/2026-05-13-google-jobs-source-design.md`. Plan: `docs/superpowers/plans/2026-05-13-google-jobs-source.md`. |
+| | **Phase B — Manual-apply pipeline.** Wakes the dormant tailor-cv / tailor-cover-letter / prepare-manual-apply graphs and adds the Ready-to-Apply surface. Folds in the original M14, M16, and M19. Spec: `docs/superpowers/specs/2026-05-13-manual-apply-pipeline-design.md`. Plan: `docs/superpowers/plans/2026-05-13-manual-apply-pipeline.md`. |
+| **Deferred (Phase C)** | M15 — Apply graph and form-walker (LinkedIn Easy Apply auto-submit). Code stays dormant; spec and plan come later. |
+| **Unchanged downstream** | M18 (Alerts UI — partially shipped by the LinkedIn slice, balance lands during Phase B), M20 (Chatbot), M21 (Application detail), M22 (Polish, dashboards), M23 (Hardening) |
+
+The milestone sections below remain as written. Where a milestone is superseded by a Phase A/B/C above, a one-line annotation at the top of the milestone records the supersession.
+
+---
+
 ## Milestone 0 — Repo bootstrap
 
 **Goal:** A working pnpm monorepo with empty packages and a green CI pipeline.
@@ -220,6 +237,8 @@ This is a recommendation, not a contract. If a milestone's scope changes, update
 
 ## Milestone 12 — Indeed adapter
 
+**Status:** **Skipped per ADR-019** (2026-05-13). Section retained for historical context only — do not implement.
+
 **Goal:** Same as M11 but for Indeed, including apply-method detection.
 
 **Tasks.**
@@ -234,6 +253,8 @@ This is a recommendation, not a contract. If a milestone's scope changes, update
 ---
 
 ## Milestone 13 — Google Jobs source via SerpAPI
+
+**Status:** Superseded by **Phase A** (`docs/superpowers/specs/2026-05-13-google-jobs-source-design.md`). Phase A absorbs this milestone and refines its scope against the current codebase.
 
 **Goal:** Vina discovers jobs from Google Jobs and stores them with `apply_method='manual'`.
 
@@ -251,6 +272,8 @@ This is a recommendation, not a contract. If a milestone's scope changes, update
 
 ## Milestone 14 — Tailor CV graph (and cover letter)
 
+**Status:** Folded into **Phase B** (`docs/superpowers/specs/2026-05-13-manual-apply-pipeline-design.md`). Phase B bundles M14, M16, and M19 into one slice since they all serve the same manual-apply surface.
+
 **Goal:** For a given job and source CV, produce a tailored DOCX. Same for cover letters.
 
 **Tasks.**
@@ -266,6 +289,8 @@ This is a recommendation, not a contract. If a milestone's scope changes, update
 ---
 
 ## Milestone 15 — Apply graph and form walker (LinkedIn, auto-apply only)
+
+**Status:** **Deferred (Phase C).** Not in the current build queue. Spec and plan land after Phase B ships.
 
 **Goal:** End-to-end auto-apply works against the LinkedIn fixture for `apply_method='auto'` jobs.
 
@@ -285,7 +310,9 @@ This is a recommendation, not a contract. If a milestone's scope changes, update
 
 ## Milestone 16 — Prepare-manual-apply graph
 
-**Goal:** Manual-apply jobs (Google Jobs and external-redirect LinkedIn / Indeed listings) get tailored CVs and cover letters and reach `ready_for_manual_apply`.
+**Status:** Folded into **Phase B**. See M14 supersession note.
+
+**Goal:** Manual-apply jobs (Google Jobs and external-redirect LinkedIn listings) get tailored CVs and cover letters and reach `ready_for_manual_apply`.
 
 **Tasks.**
 
@@ -299,6 +326,8 @@ This is a recommendation, not a contract. If a milestone's scope changes, update
 ---
 
 ## Milestone 17 — Apply graph for Indeed
+
+**Status:** **Skipped per ADR-019** (2026-05-13). Section retained for historical context only — do not implement.
 
 **Goal:** Same as M15 but for Indeed.
 
@@ -328,6 +357,8 @@ This is a recommendation, not a contract. If a milestone's scope changes, update
 ---
 
 ## Milestone 19 — Ready to Apply UI
+
+**Status:** Folded into **Phase B**. See M14 supersession note.
 
 **Goal:** The Ready to Apply page from `frontend-designer.md` §7.4 is fully wired.
 

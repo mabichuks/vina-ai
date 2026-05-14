@@ -14,11 +14,17 @@ import { closeDb, getDb } from './db/client.js';
 import { migrate } from './db/migrate.js';
 import { initVault } from './secrets/vault.js';
 import { insertAlert } from './db/repositories/alerts.js';
-import { resetStaleRunning } from './db/repositories/task-queue.js';
+import { listJobs } from './db/repositories/jobs.js';
+import {
+  enqueue,
+  getInFlightScoreJobIds,
+  resetStaleRunning,
+} from './db/repositories/task-queue.js';
 import { createEventBus } from './events/bus.js';
 import { createSearchHandler } from './queue/handlers/search.js';
 import { createScoreHandler } from './queue/handlers/score.js';
 import { createWorker, type TaskHandler, type TaskHandlers } from './queue/worker.js';
+import { runResolveSelector, type StructuredScorer } from '@vina/orchestrator';
 import { createScheduler } from './scheduler/scheduler.js';
 import { createLinkedInConnectService } from './services/linkedin-connect-service.js';
 import { getActiveChatModel } from './services/llm-service.js';
@@ -81,6 +87,26 @@ export async function bootServer(overrides: Partial<ServerConfig> = {}): Promise
   const stale = resetStaleRunning(db);
   if (stale > 0) log.warn({ count: stale }, 'reset stale running tasks at boot');
 
+  // Rescore-stranded sweep: any job left at `status='new'` from a prior run
+  // where the search task crashed before enqueueing its score never gets
+  // picked up otherwise (the score handler only runs for explicitly-enqueued
+  // tasks). At boot, enqueue a score for each such job that doesn't already
+  // have one in flight. Idempotent: re-running the sweep does nothing if
+  // scores are still pending or running.
+  const inFlightScoreIds = getInFlightScoreJobIds(db);
+  const strandedJobs = listJobs(db, { status: 'new', limit: 1_000 }).filter(
+    (job) => !inFlightScoreIds.has(job.id),
+  );
+  for (const job of strandedJobs) {
+    enqueue(db, { kind: 'score', payload: { job_id: job.id } });
+  }
+  if (strandedJobs.length > 0) {
+    log.info(
+      { count: strandedJobs.length },
+      'enqueued score tasks for jobs stranded at status=new from a prior run',
+    );
+  }
+
   const bus = createEventBus();
 
   const browserManager = createBrowserManager({
@@ -93,6 +119,7 @@ export async function bootServer(overrides: Partial<ServerConfig> = {}): Promise
     bus,
     browserManager,
     adapter: linkedInAdapter,
+    dataDir: config.dataDir,
   });
 
   // M10 ships `search` and `score`. Other TaskKinds (tailor, apply,
@@ -109,6 +136,14 @@ export async function bootServer(overrides: Partial<ServerConfig> = {}): Promise
         bus,
         browserManager,
         adapters: { linkedin: linkedInAdapter },
+        dataDir: config.dataDir,
+        selectorResolver: async (input) => {
+          const model = await getActiveChatModel(db);
+          // Same StructuredScorer-shaped narrowing the score handler does;
+          // LangChain's BaseChatModel#withStructuredOutput is shape-compatible
+          // but the typed signature differs (M10 review note M-1).
+          return runResolveSelector(input, model as unknown as StructuredScorer);
+        },
       }),
     ),
     score: adapt(

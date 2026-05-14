@@ -12,17 +12,20 @@ import { OnboardingRouter } from './routes/onboarding/index.js';
 
 // Lazy-load page components so each route ships its own chunk (PRD-096).
 const Dashboard = lazy(() => import('./routes/pages.js'));
-const Jobs = lazy(() => import('./routes/pages.js').then((m) => ({ default: m.Jobs })));
+const Jobs = lazy(() =>
+  import('./routes/jobs/JobsPage.js').then((m) => ({ default: m.JobsPage })),
+);
 const Applications = lazy(() =>
   import('./routes/pages.js').then((m) => ({ default: m.Applications })),
 );
-const ReadyToApply = lazy(() =>
-  import('./routes/pages.js').then((m) => ({ default: m.ReadyToApply })),
+const Alerts = lazy(() =>
+  import('./routes/alerts/AlertsPage.js').then((m) => ({ default: m.AlertsPage })),
 );
-const Alerts = lazy(() => import('./routes/pages.js').then((m) => ({ default: m.Alerts })));
 const Chat = lazy(() => import('./routes/pages.js').then((m) => ({ default: m.Chat })));
 const Profile = lazy(() => import('./routes/pages.js').then((m) => ({ default: m.Profile })));
-const Settings = lazy(() => import('./routes/pages.js').then((m) => ({ default: m.Settings })));
+const Settings = lazy(() =>
+  import('./routes/settings/SettingsPage.js').then((m) => ({ default: m.SettingsPage })),
+);
 const NotFound = lazy(() => import('./routes/pages.js').then((m) => ({ default: m.NotFound })));
 
 function PageFallback(): JSX.Element {
@@ -102,11 +105,7 @@ export const router = createBrowserRouter([
           },
           {
             path: '/ready',
-            element: (
-              <Suspense fallback={<PageFallback />}>
-                <ReadyToApply />
-              </Suspense>
-            ),
+            element: <Navigate to="/jobs" replace />,
           },
           {
             path: '/alerts',

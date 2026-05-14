@@ -44,11 +44,33 @@ describe('linkedin-connect-service', () => {
       bus: createEventBus(),
       browserManager: bm,
       adapter: linkedInAdapter,
+      dataDir,
+      useManagerForLaunch: true,
     });
     expect(svc.getStatus()).toMatchObject({
       connected: false,
       attempting: false,
       last_success_at: null,
+    });
+  });
+
+  it('hydrates last_success_at from the persisted site session on creation', () => {
+    const ts = '2026-05-09T12:00:00.000Z';
+    db.prepare(
+      `UPDATE sites SET session_path = ?, session_valid_at = ?, enabled = 1 WHERE id = 'linkedin'`,
+    ).run('linkedin', ts);
+    const svc = createLinkedInConnectService({
+      db,
+      bus: createEventBus(),
+      browserManager: bm,
+      adapter: linkedInAdapter,
+      dataDir,
+      useManagerForLaunch: true,
+    });
+    expect(svc.getStatus()).toMatchObject({
+      connected: true,
+      attempting: false,
+      last_success_at: ts,
     });
   });
 
@@ -58,6 +80,8 @@ describe('linkedin-connect-service', () => {
       bus: createEventBus(),
       browserManager: bm,
       adapter: linkedInAdapter,
+      dataDir,
+      useManagerForLaunch: true,
       loginUrlOverride: `${fixture.url}/login`,
       onLoginSuccessNavigationOverride: `${fixture.url}/feed`,
       pollIntervalMs: 50,
@@ -79,6 +103,8 @@ describe('linkedin-connect-service', () => {
       bus: createEventBus(),
       browserManager: bm,
       adapter: linkedInAdapter,
+      dataDir,
+      useManagerForLaunch: true,
       loginUrlOverride: `${fixture.url}/login`,
       pollIntervalMs: 5_000,
       timeoutMs: 60_000,
@@ -96,6 +122,8 @@ describe('linkedin-connect-service', () => {
       bus: createEventBus(),
       browserManager: bm,
       adapter: linkedInAdapter,
+      dataDir,
+      useManagerForLaunch: true,
       loginUrlOverride: `${fixture.url}/login`,
       onLoginSuccessNavigationOverride: `${fixture.url}/feed`,
       pollIntervalMs: 50,

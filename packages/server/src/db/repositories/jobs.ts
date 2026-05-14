@@ -61,7 +61,10 @@ export function listJobs(db: DatabaseType, filters: JobFilters = {}): Job[] {
     params['apply_method'] = filters.apply_method;
   }
   if (filters.min_score !== undefined) {
-    where.push(`match_score IS NOT NULL AND match_score >= @min_score`);
+    // Unscored rows (`match_score IS NULL`) are kept in the worklist while
+    // they're still being processed — they show up as "Scoring…" placeholders
+    // in the UI. Only fully-scored rows are filtered against the threshold.
+    where.push(`(match_score IS NULL OR match_score >= @min_score)`);
     params['min_score'] = filters.min_score;
   }
   if (filters.search) {
@@ -73,10 +76,12 @@ export function listJobs(db: DatabaseType, filters: JobFilters = {}): Job[] {
     params['search'] = `%${filters.search}%`;
   }
 
+  // Best matches first (score DESC), unscored rows pinned to the bottom so
+  // the worklist stays stable while scores stream in. Ties broken by recency.
   const sql = `
     SELECT * FROM jobs
     ${where.length ? `WHERE ${where.join(' AND ')}` : ''}
-    ORDER BY discovered_at DESC, id DESC
+    ORDER BY match_score DESC NULLS LAST, discovered_at DESC, id DESC
     LIMIT @limit OFFSET @offset
   `;
   params['limit'] = filters.limit ?? 100;

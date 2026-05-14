@@ -8,6 +8,9 @@ interface SystemStatus {
   scheduler: { running: boolean };
   queue: { pending: number; running: number };
   active_provider: { kind: string; model: string } | null;
+  linkedin_connected: boolean;
+  linkedin_last_search_at: string | null;
+  schedule_paused: boolean;
 }
 
 export async function statusCommand(): Promise<number> {
@@ -32,6 +35,15 @@ export async function statusCommand(): Promise<number> {
     process.stdout.write(
       `Provider: ${detail.active_provider ? `${detail.active_provider.kind}/${detail.active_provider.model}` : 'none configured'}\n`,
     );
+    process.stdout.write(
+      `LinkedIn: ${detail.linkedin_connected ? 'connected' : 'not connected'}\n`,
+    );
+    process.stdout.write(
+      `Last search: ${detail.linkedin_last_search_at ?? 'never'}\n`,
+    );
+    if (detail.schedule_paused) {
+      process.stdout.write('⚠ Schedule is paused\n');
+    }
   } catch (err) {
     process.stderr.write(`Could not reach daemon: ${(err as Error).message}\n`);
   }

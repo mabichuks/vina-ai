@@ -7,3 +7,11 @@ export {
   type StructuredScorer,
   type ScoreMessages,
 } from './graphs/score-job.js';
+export {
+  runResolveSelector,
+  SelectorResultSchema,
+  RESOLVE_SELECTOR_SYSTEM,
+  buildResolveSelectorPrompt,
+  type SelectorResult,
+  type ResolveSelectorInput,
+} from './graphs/resolve-selector.js';
