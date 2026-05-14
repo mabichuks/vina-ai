@@ -14,17 +14,20 @@ describe('migrate', () => {
     migrationsDir = path.join(tmpDir, 'migrations');
     fs.mkdirSync(migrationsDir);
   });
+
   afterEach(() => {
     fs.rmSync(tmpDir, { recursive: true, force: true });
   });
 
-  it('applies SQL files in lexical order, records them, and is idempotent', () => {
-    fs.writeFileSync(path.join(migrationsDir, '001.sql'), `CREATE TABLE t1 (id INTEGER);`);
-    fs.writeFileSync(path.join(migrationsDir, '002.sql'), `CREATE TABLE t2 (id INTEGER);`);
+  it('applies SQL files in lexical order and records them', () => {
+    fs.writeFileSync(path.join(migrationsDir, '001_first.sql'), `CREATE TABLE t1 (id INTEGER);`);
+    fs.writeFileSync(path.join(migrationsDir, '002_second.sql'), `CREATE TABLE t2 (id INTEGER);`);
 
     const db = openDbDirect({ filename: ':memory:' });
-    expect(migrate(db, { migrationsDir }).applied).toEqual(['001.sql', '002.sql']);
-    expect(migrate(db, { migrationsDir }).applied).toEqual([]); // idempotent
+    const result = migrate(db, { migrationsDir });
+
+    expect(result.applied).toEqual(['001_first.sql', '002_second.sql']);
+    expect(result.skipped).toEqual([]);
 
     const tables = db
       .prepare(`SELECT name FROM sqlite_master WHERE type='table' ORDER BY name`)
@@ -33,26 +36,48 @@ describe('migrate', () => {
     db.close();
   });
 
-  it('rolls back on failure, leaving the DB in its pre-migration state', () => {
-    fs.writeFileSync(path.join(migrationsDir, '001.sql'), `CREATE TABLE t1 (id INTEGER);`);
+  it('is idempotent — running twice applies each migration once', () => {
+    fs.writeFileSync(path.join(migrationsDir, '001_first.sql'), `CREATE TABLE t1 (id INTEGER);`);
+
+    const db = openDbDirect({ filename: ':memory:' });
+    const first = migrate(db, { migrationsDir });
+    const second = migrate(db, { migrationsDir });
+
+    expect(first.applied).toEqual(['001_first.sql']);
+    expect(second.applied).toEqual([]);
+    expect(second.skipped).toEqual(['001_first.sql']);
+    db.close();
+  });
+
+  it('rolls back on failure, leaving DB in pre-migration state', () => {
+    fs.writeFileSync(path.join(migrationsDir, '001_first.sql'), `CREATE TABLE t1 (id INTEGER);`);
     fs.writeFileSync(
-      path.join(migrationsDir, '002.sql'),
+      path.join(migrationsDir, '002_broken.sql'),
       `CREATE TABLE t2 (id INTEGER); THIS IS NOT VALID SQL;`,
     );
 
     const db = openDbDirect({ filename: ':memory:' });
     expect(() => migrate(db, { migrationsDir })).toThrow();
 
-    const names = (
-      db.prepare(`SELECT name FROM sqlite_master WHERE type='table'`).all() as {
-        name: string;
-      }[]
-    ).map((r) => r.name);
+    // 001 should have been applied successfully (separate transaction).
+    // 002 should have been rolled back — t2 must not exist.
+    const tables = db
+      .prepare(`SELECT name FROM sqlite_master WHERE type='table' ORDER BY name`)
+      .all() as { name: string }[];
+    const names = tables.map((r) => r.name);
     expect(names).toContain('t1');
     expect(names).not.toContain('t2');
-    expect(
-      (db.prepare(`SELECT id FROM _migrations`).all() as { id: string }[]).map((r) => r.id),
-    ).toEqual(['001.sql']);
+
+    // _migrations should record only 001.
+    const migRecords = db.prepare(`SELECT id FROM _migrations`).all() as { id: string }[];
+    expect(migRecords.map((r) => r.id)).toEqual(['001_first.sql']);
+    db.close();
+  });
+
+  it('returns empty result when migrations dir does not exist', () => {
+    const db = openDbDirect({ filename: ':memory:' });
+    const result = migrate(db, { migrationsDir: path.join(tmpDir, 'absent') });
+    expect(result).toEqual({ applied: [], skipped: [] });
     db.close();
   });
 });
