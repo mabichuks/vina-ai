@@ -152,6 +152,7 @@ describe('search handler — google branch', () => {
       browserManager: FAKE_BM,
       adapters: {},
       serpapiSearch: () => {
+        // eslint-disable-next-line require-yield
         async function* boom(): AsyncIterable<GoogleJobsListing> {
           throw new SerpapiQuotaExhaustedError();
         }
