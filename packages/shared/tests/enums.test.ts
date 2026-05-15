@@ -16,6 +16,16 @@ import {
   TASK_STATUSES,
 } from '../src/enums.js';
 
+describe('ALERT_KINDS — google jobs slice additions', () => {
+  it.each([
+    'serpapi_key_missing',
+    'serpapi_key_invalid',
+    'serpapi_quota_exhausted',
+  ])('includes %s', (kind) => {
+    expect(ALERT_KINDS as readonly string[]).toContain(kind);
+  });
+});
+
 describe('ALERT_KINDS — linkedin slice additions', () => {
   it.each([
     'linkedin_session_expired',
@@ -60,6 +70,9 @@ describe('enum constants', () => {
           "score_failed",
           "schedule_paused",
           "provider_failed",
+          "serpapi_key_missing",
+          "serpapi_key_invalid",
+          "serpapi_quota_exhausted",
         ],
         "ALERT_SEVERITIES": [
           "info",
