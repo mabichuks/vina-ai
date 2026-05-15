@@ -58,3 +58,25 @@ describe('POST /api/sites/google/test', () => {
     expect(res.json()).toMatchObject({ ok: false, reason: 'no_key_configured' });
   });
 });
+
+describe('DELETE /api/sites/google', () => {
+  it('clears the stored key and disables the site', async () => {
+    vi.spyOn(serpapiService, 'validateSerpApiKey').mockResolvedValue({ ok: true, latency_ms: 1 });
+    await h.app.inject({
+      method: 'POST',
+      url: '/api/sites/google/test',
+      headers: auth(h.token),
+      payload: { key: 'live' },
+    });
+    expect(hasSerpApiKey(h.db)).toBe(true);
+
+    const res = await h.app.inject({
+      method: 'DELETE',
+      url: '/api/sites/google',
+      headers: auth(h.token),
+    });
+    expect(res.statusCode).toBe(204);
+    expect(hasSerpApiKey(h.db)).toBe(false);
+    expect(findSiteById(h.db, 'google')?.enabled).toBe(false);
+  });
+});

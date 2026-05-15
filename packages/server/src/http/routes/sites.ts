@@ -10,6 +10,7 @@ import {
   updateSiteSession,
 } from '../../db/repositories/sites.js';
 import {
+  clearSerpApiKey,
   getDecryptedSerpApiKey,
   hasSerpApiKey,
   setSerpApiKey,
@@ -140,6 +141,13 @@ export async function siteRoutes(
 
   app.delete('/api/sites/linkedin', async (_req, reply) => {
     await linkedInConnectService.disconnect();
+    return reply.status(204).send();
+  });
+
+  app.delete('/api/sites/google', async (_req, reply) => {
+    clearSerpApiKey(db);
+    updateSiteEnabled(db, 'google', false);
+    updateSiteSession(db, 'google', { session_path: null, session_valid_at: null });
     return reply.status(204).send();
   });
 

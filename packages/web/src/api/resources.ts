@@ -575,8 +575,7 @@ export function useDisconnectGoogleJobs(): {
   const qc = useQueryClient();
   const mut = useMutation<unknown, Error, void>({
     mutationFn: async () => {
-      await api(`/api/sites/google`, { method: 'PATCH', body: { enabled: false } });
-      // reason: clearing the key is a separate explicit action (DELETE /api/settings/serpapi-key, Task 7).
+      await api(`/api/sites/google`, { method: 'DELETE' });
       return null;
     },
     onSuccess: () => {
