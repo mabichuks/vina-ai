@@ -485,3 +485,106 @@ export function useDismissAlert(): { mutate: (id: string) => Promise<void> } {
   });
   return { mutate: (id) => mut.mutateAsync(id) };
 }
+
+/* ------------------------------------------------------------------ */
+/* Google Jobs                                                          */
+/* ------------------------------------------------------------------ */
+
+export interface SerpapiValidateResult {
+  ok: boolean;
+  reason?: 'auth_failed' | 'rate_limited' | 'network' | 'other' | 'no_key_configured';
+  detail?: string;
+  latency_ms?: number;
+}
+
+export function useValidateSerpapiKey(): {
+  mutate: (key: string) => Promise<SerpapiValidateResult>;
+  isPending: boolean;
+} {
+  const qc = useQueryClient();
+  const mut = useMutation<SerpapiValidateResult, Error, string>({
+    mutationFn: (key) =>
+      api<SerpapiValidateResult>('/api/sites/google/test', { method: 'POST', body: { key } }),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ['sites'] });
+      void qc.invalidateQueries({ queryKey: ['google-status'] });
+    },
+  });
+  return { mutate: (key) => mut.mutateAsync(key), isPending: mut.isPending };
+}
+
+export type GoogleJobsState = 'not_configured' | 'connected' | 'key_invalid' | 'quota_exhausted';
+export interface GoogleJobsStatus {
+  state: GoogleJobsState;
+  enabled: boolean;
+  last_search_at: string | null;
+}
+
+export function useGoogleJobsStatus(opts: { pollMs?: number } = {}): {
+  data: GoogleJobsStatus | null;
+  isLoading: boolean;
+} {
+  const sites = useSites();
+  const alerts = useAlerts();
+  if (sites.isLoading) return { data: null, isLoading: true };
+  const row = sites.data.find((s) => s.id === 'google') ?? null;
+  if (!row) return { data: null, isLoading: false };
+
+  const hasInvalid = alerts.data.some(
+    (a) => a.site_id === 'google' && a.kind === 'serpapi_key_invalid' && a.status === 'open',
+  );
+  const hasQuota = alerts.data.some(
+    (a) => a.site_id === 'google' && a.kind === 'serpapi_quota_exhausted' && a.status === 'open',
+  );
+
+  const state: GoogleJobsState = hasInvalid
+    ? 'key_invalid'
+    : hasQuota
+      ? 'quota_exhausted'
+      : row.session_valid_at || row.enabled
+        ? 'connected'
+        : 'not_configured';
+
+  // reason: pollMs is reserved for future per-hook polling tuning; both
+  // underlying queries already have their own intervals configured.
+  void opts.pollMs;
+
+  return {
+    data: { state, enabled: row.enabled, last_search_at: row.last_search_at },
+    isLoading: false,
+  };
+}
+
+export function useEnableGoogleJobs(): {
+  mutate: () => Promise<unknown>;
+  isPending: boolean;
+} {
+  const qc = useQueryClient();
+  const mut = useMutation<unknown, Error, void>({
+    mutationFn: () => api(`/api/sites/google`, { method: 'PATCH', body: { enabled: true } }),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ['sites'] });
+      void qc.invalidateQueries({ queryKey: ['google-status'] });
+    },
+  });
+  return { mutate: () => mut.mutateAsync(), isPending: mut.isPending };
+}
+
+export function useDisconnectGoogleJobs(): {
+  mutate: () => Promise<unknown>;
+  isPending: boolean;
+} {
+  const qc = useQueryClient();
+  const mut = useMutation<unknown, Error, void>({
+    mutationFn: async () => {
+      await api(`/api/sites/google`, { method: 'PATCH', body: { enabled: false } });
+      // reason: clearing the key is a separate explicit action (DELETE /api/settings/serpapi-key, Task 7).
+      return null;
+    },
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ['sites'] });
+      void qc.invalidateQueries({ queryKey: ['google-status'] });
+    },
+  });
+  return { mutate: () => mut.mutateAsync(), isPending: mut.isPending };
+}
