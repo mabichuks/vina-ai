@@ -9,7 +9,11 @@ import {
   updateSiteEnabled,
   updateSiteSession,
 } from '../../db/repositories/sites.js';
-import { getDecryptedSerpApiKey, hasSerpApiKey } from '../../services/settings-service.js';
+import {
+  getDecryptedSerpApiKey,
+  hasSerpApiKey,
+  setSerpApiKey,
+} from '../../services/settings-service.js';
 import { validateSerpApiKey } from '../../services/serpapi-service.js';
 import type { LinkedInConnectService } from '../../services/linkedin-connect-service.js';
 import type { ServerConfig } from '../../config.js';
@@ -88,7 +92,14 @@ export async function siteRoutes(
     return { status: 'pending' as const, login_id };
   });
 
+  const TestKeyBodySchema = z
+    .object({ key: z.string().min(1).optional() })
+    .optional();
+
   // PRD-086: SerpAPI test for the google site, 405 for browser-kind.
+  // When a `{ key }` body is provided, validates the candidate key and
+  // persists+enables on success (no mutation on failure). When no key is in
+  // the body, validates the already-stored key without any mutation.
   app.post('/api/sites/:id/test', async (req, reply) => {
     const { id } = parse(IdParamsSchema, req.params, 'route params');
     const site = findSiteById(db, id);
@@ -99,9 +110,20 @@ export async function siteRoutes(
         message: 'Browser-kind sites authenticate via /login, not /test',
       });
     }
-    const key = getDecryptedSerpApiKey(db);
-    if (!key) return { ok: false as const, reason: 'no_key_configured' as const };
-    return validateSerpApiKey(key);
+
+    const body = parse(TestKeyBodySchema, req.body ?? {}, 'request body');
+    if (body?.key) {
+      const result = await validateSerpApiKey(body.key);
+      if (result.ok) {
+        setSerpApiKey(db, body.key);
+        updateSiteEnabled(db, id, true);
+      }
+      return result;
+    }
+
+    const stored = getDecryptedSerpApiKey(db);
+    if (!stored) return { ok: false as const, reason: 'no_key_configured' as const };
+    return validateSerpApiKey(stored);
   });
 
   app.get('/api/sites/linkedin/status', async () => linkedInConnectService.getStatus());
