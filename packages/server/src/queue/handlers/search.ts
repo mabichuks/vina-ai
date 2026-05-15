@@ -10,7 +10,7 @@ import {
   type SiteAdapter,
 } from '@vina/automation';
 import type { ResolveSelectorInput, SelectorResult } from '@vina/orchestrator';
-import { findSiteById, updateSiteSession } from '../../db/repositories/sites.js';
+import { findSiteById, updateSiteSession, type SiteRow } from '../../db/repositories/sites.js';
 import { insertJob } from '../../db/repositories/jobs.js';
 import { enqueue, getInFlightScoreJobIds } from '../../db/repositories/task-queue.js';
 import { insertAlert } from '../../db/repositories/alerts.js';
@@ -23,6 +23,14 @@ import {
 import { getOrInitSearchPreferences } from '../../db/repositories/search-preferences.js';
 import type { EventBus } from '../../events/bus.js';
 import { LinkedInSessionExpiredError } from './errors.js';
+import {
+  searchGoogleJobs,
+  SerpapiKeyInvalidError,
+  SerpapiQuotaExhaustedError,
+  type GoogleJobsListing,
+  type GoogleJobsSearchInput,
+} from '../../services/serpapi-service.js';
+import { getDecryptedSerpApiKey } from '../../services/settings-service.js';
 
 const log = createLogger('handler.search');
 
@@ -45,6 +53,14 @@ export interface SearchHandlerDeps {
   selectorResolver?: (input: ResolveSelectorInput) => Promise<SelectorResult>;
   /** Test seam: overrides the navigation target before the session check. */
   feedUrlOverride?: string;
+  /**
+   * Test seam for the SerpAPI search iterator. Defaults to `searchGoogleJobs`
+   * from `serpapi-service.ts` at runtime.
+   */
+  serpapiSearch?: (
+    input: GoogleJobsSearchInput,
+    opts: { apiKey: string; signal?: AbortSignal },
+  ) => AsyncIterable<GoogleJobsListing>;
 }
 
 interface SelectorCacheFile {
@@ -204,322 +220,461 @@ export function createSearchHandler(
     const site = findSiteById(deps.db, payload.site_id);
     if (!site) throw new ValidationError(`Unknown site_id: ${payload.site_id}`);
 
+    if (site.kind === 'api') return runApiSearch(deps, site, payload);
+
     const adapter = deps.adapters[site.id];
     if (!adapter) throw new ValidationError(`No adapter registered for site: ${site.id}`);
+    return runBrowserSearch(deps, site, adapter, payload);
+  };
+}
 
-    const prefs = getOrInitSearchPreferences(deps.db);
-    deps.bus.emit('search:started', {
-      task_id: payload.task_id ?? 'unknown',
-      site_id: site.id,
-    });
+// ---------------------------------------------------------------------------
+// Browser-kind sites (LinkedIn, Indeed)
+// ---------------------------------------------------------------------------
 
-    let listingsAdded = 0;
-    let scoredEnqueued = 0;
-    let snapshotForFailure: string | null = null;
-    let zeroListingsDiagnostics: Awaited<ReturnType<typeof probeSearchPage>> | null = null;
-    let zeroListingsScreenshot: string | null = null;
+async function runBrowserSearch(
+  deps: SearchHandlerDeps,
+  site: SiteRow,
+  adapter: SiteAdapter,
+  payload: SearchPayload,
+): Promise<void> {
+  const prefs = getOrInitSearchPreferences(deps.db);
+  deps.bus.emit('search:started', {
+    task_id: payload.task_id ?? 'unknown',
+    site_id: site.id,
+  });
 
+  let listingsAdded = 0;
+  let scoredEnqueued = 0;
+  let snapshotForFailure: string | null = null;
+  let zeroListingsDiagnostics: Awaited<ReturnType<typeof probeSearchPage>> | null = null;
+  let zeroListingsScreenshot: string | null = null;
+
+  try {
+    const ctx = await deps.browserManager.getContext(site.id);
+    const page = await ctx.newPage();
     try {
-      const ctx = await deps.browserManager.getContext(site.id);
-      const page = await ctx.newPage();
-      try {
-        await page.goto(deps.feedUrlOverride ?? FEED_URL);
+      await page.goto(deps.feedUrlOverride ?? FEED_URL);
 
+      if (await adapter.onSessionExpired(page)) {
+        throw new LinkedInSessionExpiredError();
+      }
+
+      // Buffer the listings before opening detail pages — the search
+      // iterator's Locators live on the search-results page, and openListing
+      // navigates the same Page away, which would detach later iterations.
+      let listings: import('@vina/automation').RawListing[] = [];
+
+      /**
+       * Try cached selector → LLM resolver → fresh cache write. Returns
+       * the extracted listings, or [] if neither path produced any.
+       * Inline-defined so it captures `page`, `site`, `deps`.
+       */
+      const recoverViaSelectorResolver = async (): Promise<
+        import('@vina/automation').RawListing[]
+      > => {
+        if (site.id !== 'linkedin' || !deps.dataDir) return [];
+        const cache = await loadSelectorCache(deps.dataDir);
+        const cached = cache.intents?.[SEARCH_CARD_INTENT_KEY]?.selector;
+
+        if (cached) {
+          const cachedTry = await tryCardSelector(page, cached);
+          if (cachedTry.listings.length > 0) {
+            log.info(
+              { selector: cached, count: cachedTry.listings.length },
+              'selector-drift recovery: cached selector matched',
+            );
+            return cachedTry.listings;
+          }
+        }
+
+        if (!deps.selectorResolver) return [];
+        try {
+          const domSummary = await capturePageDomSummary(page);
+          const resolved = await deps.selectorResolver({
+            intent:
+              'job-listing cards on the LinkedIn search-results page — each card represents one listing the user can click to view',
+            pageUrl: page.url(),
+            pageTitle: await page.title().catch(() => ''),
+            domSummary,
+          });
+          log.info(
+            { selector: resolved.selector, confidence: resolved.confidence },
+            'selector-drift recovery: LLM proposed selector',
+          );
+          const llmTry = await tryCardSelector(page, resolved.selector);
+          if (llmTry.listings.length > 0) {
+            await saveSelectorCache(
+              deps.dataDir,
+              SEARCH_CARD_INTENT_KEY,
+              resolved.selector,
+              resolved.confidence,
+            );
+            return llmTry.listings;
+          }
+          log.warn(
+            { selector: resolved.selector },
+            'LLM selector matched nothing on retry',
+          );
+        } catch (llmErr) {
+          log.warn({ err: llmErr }, 'LLM selector resolution failed');
+        }
+        return [];
+      };
+
+      try {
+        for await (const raw of adapter.search(page, prefs)) {
+          listings.push(raw);
+        }
+        // SUCCESS PATH but yielded nothing — common when the static selector
+        // matched something visually card-shaped but `extractRawListing`
+        // couldn't extract a usable id/title (e.g. the bare anchor on the
+        // 2026 AI-search SRP). Run the same recovery flow.
+        if (listings.length === 0) {
+          const recovered = await recoverViaSelectorResolver();
+          if (recovered.length > 0) listings = recovered;
+        }
+      } catch (err) {
         if (await adapter.onSessionExpired(page)) {
           throw new LinkedInSessionExpiredError();
         }
-
-        // Buffer the listings before opening detail pages — the search
-        // iterator's Locators live on the search-results page, and openListing
-        // navigates the same Page away, which would detach later iterations.
-        let listings: import('@vina/automation').RawListing[] = [];
-
-        /**
-         * Try cached selector → LLM resolver → fresh cache write. Returns
-         * the extracted listings, or [] if neither path produced any.
-         * Inline-defined so it captures `page`, `site`, `deps`.
-         */
-        const recoverViaSelectorResolver = async (): Promise<
-          import('@vina/automation').RawListing[]
-        > => {
-          if (site.id !== 'linkedin' || !deps.dataDir) return [];
-          const cache = await loadSelectorCache(deps.dataDir);
-          const cached = cache.intents?.[SEARCH_CARD_INTENT_KEY]?.selector;
-
-          if (cached) {
-            const cachedTry = await tryCardSelector(page, cached);
-            if (cachedTry.listings.length > 0) {
-              log.info(
-                { selector: cached, count: cachedTry.listings.length },
-                'selector-drift recovery: cached selector matched',
-              );
-              return cachedTry.listings;
-            }
-          }
-
-          if (!deps.selectorResolver) return [];
-          try {
-            const domSummary = await capturePageDomSummary(page);
-            const resolved = await deps.selectorResolver({
-              intent:
-                'job-listing cards on the LinkedIn search-results page — each card represents one listing the user can click to view',
-              pageUrl: page.url(),
-              pageTitle: await page.title().catch(() => ''),
-              domSummary,
-            });
-            log.info(
-              { selector: resolved.selector, confidence: resolved.confidence },
-              'selector-drift recovery: LLM proposed selector',
-            );
-            const llmTry = await tryCardSelector(page, resolved.selector);
-            if (llmTry.listings.length > 0) {
-              await saveSelectorCache(
-                deps.dataDir,
-                SEARCH_CARD_INTENT_KEY,
-                resolved.selector,
-                resolved.confidence,
-              );
-              return llmTry.listings;
-            }
-            log.warn(
-              { selector: resolved.selector },
-              'LLM selector matched nothing on retry',
-            );
-          } catch (llmErr) {
-            log.warn({ err: llmErr }, 'LLM selector resolution failed');
-          }
-          return [];
-        };
-
-        try {
-          for await (const raw of adapter.search(page, prefs)) {
-            listings.push(raw);
-          }
-          // SUCCESS PATH but yielded nothing — common when the static selector
-          // matched something visually card-shaped but `extractRawListing`
-          // couldn't extract a usable id/title (e.g. the bare anchor on the
-          // 2026 AI-search SRP). Run the same recovery flow.
-          if (listings.length === 0) {
-            const recovered = await recoverViaSelectorResolver();
-            if (recovered.length > 0) listings = recovered;
-          }
-        } catch (err) {
-          if (await adapter.onSessionExpired(page)) {
-            throw new LinkedInSessionExpiredError();
-          }
-          const recovered = await recoverViaSelectorResolver();
-          if (recovered.length > 0) {
-            listings = recovered;
-          } else {
-            snapshotForFailure = await captureFailureSnapshot(page, deps.dataDir, site.id);
-            zeroListingsDiagnostics = await probeSearchPage(page);
-            zeroListingsScreenshot = snapshotForFailure;
-            throw err;
-          }
-        }
-
-        // Snapshot the in-flight score-task set before iterating. We use
-        // this to skip enqueueing a duplicate score for any job that already
-        // has one pending or running. Tracked locally so concurrent insertJob
-        // calls in this loop also dedupe against each other.
-        const inFlightScoreIds = getInFlightScoreJobIds(deps.db);
-        const updatedJobIds: string[] = [];
-
-        for (const raw of listings) {
-          // Search-pass keeps it cheap: insertJob with card-level data, then
-          // enqueue score. No detail-page navigation, no apply-method
-          // classification here — both burn 5–15s per listing of strict
-          // selector waits that don't matter at score time. Apply-method
-          // classification matters at apply-time (M14/M15); it can run as a
-          // separate task when the user actually picks a job.
-          //
-          // `apply_method` comes from the card itself when present;
-          // otherwise default to 'manual' (most LinkedIn jobs redirect
-          // externally, so 'manual' produces fewer visible mislabels than
-          // a blanket 'auto' default).
-          const applyMethod = raw.cardApplyMethod ?? 'manual';
-          let job;
-          try {
-            job = insertJob(deps.db, {
-              site_id: site.id,
-              external_id: raw.externalId,
-              url: raw.url,
-              apply_method: applyMethod,
-              title: raw.title,
-              company: raw.company,
-              location: raw.location,
-              description: raw.snippet ?? '',
-              posted_at: raw.postedAt,
-            });
-          } catch (err) {
-            log.warn(
-              { err, externalId: raw.externalId },
-              'insertJob failed; skipping listing',
-            );
-            continue;
-          }
-
-          // Idempotent score enqueue. Skip when:
-          //   - job already has a score task in flight (pending/running), OR
-          //   - job has already been scored (status !== 'new') — the search
-          //     just re-encountered an existing listing and re-scoring would
-          //     overwrite a valid score with a fresh LLM call for no gain.
-          // The `listingsAdded` counter still increments so the "Search
-          // returned 0 listings" alert doesn't fire when the search worked
-          // but everything is up to date.
-          listingsAdded += 1;
-          updatedJobIds.push(job.id);
-          if (job.status !== 'new') continue;
-          if (inFlightScoreIds.has(job.id)) continue;
-          enqueue(deps.db, { kind: 'score', payload: { job_id: job.id } });
-          inFlightScoreIds.add(job.id);
-          scoredEnqueued += 1;
-        }
-
-        // Single batched event — emitting per-listing caused each connected
-        // client to refetch /api/jobs once per discovery (25× per SRP).
-        if (updatedJobIds.length > 0) {
-          deps.bus.emit('jobs:updated', { ids: updatedJobIds });
-        }
-
-        // Capture diagnostics BEFORE the page closes if extraction yielded
-        // nothing — selectors drifted, or LinkedIn served a non-search page.
-        if (listingsAdded === 0) {
+        const recovered = await recoverViaSelectorResolver();
+        if (recovered.length > 0) {
+          listings = recovered;
+        } else {
+          snapshotForFailure = await captureFailureSnapshot(page, deps.dataDir, site.id);
           zeroListingsDiagnostics = await probeSearchPage(page);
-          zeroListingsScreenshot = await captureFailureSnapshot(
-            page,
-            deps.dataDir,
-            site.id,
-          );
-          log.warn(
-            {
-              url: zeroListingsDiagnostics.url,
-              title: zeroListingsDiagnostics.title,
-              counts: zeroListingsDiagnostics.selectorCounts,
-              firstCardHtmlLength: zeroListingsDiagnostics.firstCardHtml?.length ?? 0,
-              screenshot: zeroListingsScreenshot,
-            },
-            'search returned 0 listings — selector probe',
-          );
+          zeroListingsScreenshot = snapshotForFailure;
+          throw err;
         }
-      } finally {
-        await page.close().catch(() => undefined);
       }
 
-      if (payload.schedule_id) resetScheduleFailures(deps.db, payload.schedule_id);
+      // Snapshot the in-flight score-task set before iterating. We use
+      // this to skip enqueueing a duplicate score for any job that already
+      // has one pending or running. Tracked locally so concurrent insertJob
+      // calls in this loop also dedupe against each other.
+      const inFlightScoreIds = getInFlightScoreJobIds(deps.db);
+      const updatedJobIds: string[] = [];
 
-      updateSiteSession(deps.db, site.id, {
-        session_path: site.session_path ?? site.id,
-        session_valid_at: new Date().toISOString(),
-        last_search_at: new Date().toISOString(),
-      });
+      for (const raw of listings) {
+        // Search-pass keeps it cheap: insertJob with card-level data, then
+        // enqueue score. No detail-page navigation, no apply-method
+        // classification here — both burn 5–15s per listing of strict
+        // selector waits that don't matter at score time. Apply-method
+        // classification matters at apply-time (M14/M15); it can run as a
+        // separate task when the user actually picks a job.
+        //
+        // `apply_method` comes from the card itself when present;
+        // otherwise default to 'manual' (most LinkedIn jobs redirect
+        // externally, so 'manual' produces fewer visible mislabels than
+        // a blanket 'auto' default).
+        const applyMethod = raw.cardApplyMethod ?? 'manual';
+        let job;
+        try {
+          job = insertJob(deps.db, {
+            site_id: site.id,
+            external_id: raw.externalId,
+            url: raw.url,
+            apply_method: applyMethod,
+            title: raw.title,
+            company: raw.company,
+            location: raw.location,
+            description: raw.snippet ?? '',
+            posted_at: raw.postedAt,
+          });
+        } catch (err) {
+          log.warn(
+            { err, externalId: raw.externalId },
+            'insertJob failed; skipping listing',
+          );
+          continue;
+        }
 
+        // Idempotent score enqueue. Skip when:
+        //   - job already has a score task in flight (pending/running), OR
+        //   - job has already been scored (status !== 'new') — the search
+        //     just re-encountered an existing listing and re-scoring would
+        //     overwrite a valid score with a fresh LLM call for no gain.
+        // The `listingsAdded` counter still increments so the "Search
+        // returned 0 listings" alert doesn't fire when the search worked
+        // but everything is up to date.
+        listingsAdded += 1;
+        updatedJobIds.push(job.id);
+        if (job.status !== 'new') continue;
+        if (inFlightScoreIds.has(job.id)) continue;
+        enqueue(deps.db, { kind: 'score', payload: { job_id: job.id } });
+        inFlightScoreIds.add(job.id);
+        scoredEnqueued += 1;
+      }
+
+      // Single batched event — emitting per-listing caused each connected
+      // client to refetch /api/jobs once per discovery (25× per SRP).
+      if (updatedJobIds.length > 0) {
+        deps.bus.emit('jobs:updated', { ids: updatedJobIds });
+      }
+
+      // Capture diagnostics BEFORE the page closes if extraction yielded
+      // nothing — selectors drifted, or LinkedIn served a non-search page.
       if (listingsAdded === 0) {
-        const counts = zeroListingsDiagnostics?.selectorCounts ?? {};
-        const summary = Object.entries(counts)
-          .map(([sel, n]) => `${sel}: ${n}`)
-          .join('  |  ');
-        const description = [
-          'LinkedIn loaded but no job cards were extracted.',
-          zeroListingsDiagnostics?.url ? `URL: ${zeroListingsDiagnostics.url}` : '',
-          zeroListingsDiagnostics?.title ? `Page title: ${zeroListingsDiagnostics.title}` : '',
-          summary ? `Selector probe — ${summary}` : '',
-          zeroListingsScreenshot ? `Screenshot: ${zeroListingsScreenshot}` : '',
-          'Open the screenshot or share the daemon log block tagged "search returned 0 listings — selector probe" to update selectors.',
-        ]
-          .filter(Boolean)
-          .join('\n');
-        insertAlert(deps.db, {
-          kind: 'search_failed',
-          severity: 'action_required',
-          title: 'Search returned 0 listings',
-          description,
-          site_id: site.id,
-          payload: {
-            url: zeroListingsDiagnostics?.url ?? null,
-            page_title: zeroListingsDiagnostics?.title ?? null,
-            selector_counts: counts,
-            first_card_html: zeroListingsDiagnostics?.firstCardHtml ?? null,
+        zeroListingsDiagnostics = await probeSearchPage(page);
+        zeroListingsScreenshot = await captureFailureSnapshot(
+          page,
+          deps.dataDir,
+          site.id,
+        );
+        log.warn(
+          {
+            url: zeroListingsDiagnostics.url,
+            title: zeroListingsDiagnostics.title,
+            counts: zeroListingsDiagnostics.selectorCounts,
+            firstCardHtmlLength: zeroListingsDiagnostics.firstCardHtml?.length ?? 0,
             screenshot: zeroListingsScreenshot,
           },
-        });
+          'search returned 0 listings — selector probe',
+        );
       }
-
-      deps.bus.emit('search:completed', {
-        task_id: payload.task_id ?? 'unknown',
-        site_id: site.id,
-        listings_added: listingsAdded,
-        scored: scoredEnqueued,
-      });
-    } catch (err) {
-      const isSessionExpired = err instanceof LinkedInSessionExpiredError;
-      const errorKind = isSessionExpired ? 'session_expired' : 'unknown';
-      deps.bus.emit('search:failed', {
-        task_id: payload.task_id ?? 'unknown',
-        site_id: site.id,
-        error_kind: errorKind,
-      });
-
-      if (isSessionExpired) {
-        insertAlert(deps.db, {
-          kind: 'linkedin_session_expired',
-          severity: 'action_required',
-          title: 'LinkedIn session expired',
-          description: 'Re-connect LinkedIn from Settings to resume searches.',
-          site_id: site.id,
-        });
-        deps.bus.emit('linkedin:session-expired', { at: new Date().toISOString() });
-      } else {
-        const raw = err instanceof Error ? err.message : String(err);
-        const isTimeout = /timeout|Timeout|waitForSelector/.test(raw);
-        const counts = zeroListingsDiagnostics?.selectorCounts ?? {};
-        const summary = Object.entries(counts)
-          .map(([sel, n]) => `${sel}: ${n}`)
-          .join('  |  ');
-        const description = [
-          isTimeout
-            ? 'LinkedIn took too long to render results. This usually means the headless browser got blocked, your session is stale, or LinkedIn changed selectors.'
-            : raw,
-          zeroListingsDiagnostics?.url ? `URL: ${zeroListingsDiagnostics.url}` : '',
-          zeroListingsDiagnostics?.title ? `Page title: ${zeroListingsDiagnostics.title}` : '',
-          summary ? `Selector probe — ${summary}` : '',
-          snapshotForFailure ? `Screenshot: ${snapshotForFailure}` : '',
-        ]
-          .filter(Boolean)
-          .join('\n');
-        insertAlert(deps.db, {
-          kind: 'search_failed',
-          severity: 'error',
-          title: 'Search failed',
-          description,
-          site_id: site.id,
-          payload: {
-            raw,
-            snapshot: snapshotForFailure,
-            url: zeroListingsDiagnostics?.url ?? null,
-            page_title: zeroListingsDiagnostics?.title ?? null,
-            selector_counts: counts,
-            first_card_html: zeroListingsDiagnostics?.firstCardHtml ?? null,
-          },
-        });
-      }
-
-      if (payload.schedule_id) {
-        incrementScheduleFailures(deps.db, payload.schedule_id);
-        const schedule = findScheduleById(deps.db, payload.schedule_id);
-        if (schedule && schedule.consecutive_failures >= STRIKE_LIMIT) {
-          setSchedulePaused(deps.db, payload.schedule_id, true);
-          insertAlert(deps.db, {
-            kind: 'schedule_paused',
-            severity: 'action_required',
-            title: 'Schedule paused',
-            description: '3 consecutive search failures. Re-enable from Settings.',
-            site_id: site.id,
-          });
-        }
-      }
-
-      throw err;
+    } finally {
+      await page.close().catch(() => undefined);
     }
+
+    if (payload.schedule_id) resetScheduleFailures(deps.db, payload.schedule_id);
+
+    updateSiteSession(deps.db, site.id, {
+      session_path: site.session_path ?? site.id,
+      session_valid_at: new Date().toISOString(),
+      last_search_at: new Date().toISOString(),
+    });
+
+    if (listingsAdded === 0) {
+      const counts = zeroListingsDiagnostics?.selectorCounts ?? {};
+      const summary = Object.entries(counts)
+        .map(([sel, n]) => `${sel}: ${n}`)
+        .join('  |  ');
+      const description = [
+        'LinkedIn loaded but no job cards were extracted.',
+        zeroListingsDiagnostics?.url ? `URL: ${zeroListingsDiagnostics.url}` : '',
+        zeroListingsDiagnostics?.title ? `Page title: ${zeroListingsDiagnostics.title}` : '',
+        summary ? `Selector probe — ${summary}` : '',
+        zeroListingsScreenshot ? `Screenshot: ${zeroListingsScreenshot}` : '',
+        'Open the screenshot or share the daemon log block tagged "search returned 0 listings — selector probe" to update selectors.',
+      ]
+        .filter(Boolean)
+        .join('\n');
+      insertAlert(deps.db, {
+        kind: 'search_failed',
+        severity: 'action_required',
+        title: 'Search returned 0 listings',
+        description,
+        site_id: site.id,
+        payload: {
+          url: zeroListingsDiagnostics?.url ?? null,
+          page_title: zeroListingsDiagnostics?.title ?? null,
+          selector_counts: counts,
+          first_card_html: zeroListingsDiagnostics?.firstCardHtml ?? null,
+          screenshot: zeroListingsScreenshot,
+        },
+      });
+    }
+
+    deps.bus.emit('search:completed', {
+      task_id: payload.task_id ?? 'unknown',
+      site_id: site.id,
+      listings_added: listingsAdded,
+      scored: scoredEnqueued,
+    });
+  } catch (err) {
+    const isSessionExpired = err instanceof LinkedInSessionExpiredError;
+    const errorKind = isSessionExpired ? 'session_expired' : 'unknown';
+    deps.bus.emit('search:failed', {
+      task_id: payload.task_id ?? 'unknown',
+      site_id: site.id,
+      error_kind: errorKind,
+    });
+
+    if (isSessionExpired) {
+      insertAlert(deps.db, {
+        kind: 'linkedin_session_expired',
+        severity: 'action_required',
+        title: 'LinkedIn session expired',
+        description: 'Re-connect LinkedIn from Settings to resume searches.',
+        site_id: site.id,
+      });
+      deps.bus.emit('linkedin:session-expired', { at: new Date().toISOString() });
+    } else {
+      const raw = err instanceof Error ? err.message : String(err);
+      const isTimeout = /timeout|Timeout|waitForSelector/.test(raw);
+      const counts = zeroListingsDiagnostics?.selectorCounts ?? {};
+      const summary = Object.entries(counts)
+        .map(([sel, n]) => `${sel}: ${n}`)
+        .join('  |  ');
+      const description = [
+        isTimeout
+          ? 'LinkedIn took too long to render results. This usually means the headless browser got blocked, your session is stale, or LinkedIn changed selectors.'
+          : raw,
+        zeroListingsDiagnostics?.url ? `URL: ${zeroListingsDiagnostics.url}` : '',
+        zeroListingsDiagnostics?.title ? `Page title: ${zeroListingsDiagnostics.title}` : '',
+        summary ? `Selector probe — ${summary}` : '',
+        snapshotForFailure ? `Screenshot: ${snapshotForFailure}` : '',
+      ]
+        .filter(Boolean)
+        .join('\n');
+      insertAlert(deps.db, {
+        kind: 'search_failed',
+        severity: 'error',
+        title: 'Search failed',
+        description,
+        site_id: site.id,
+        payload: {
+          raw,
+          snapshot: snapshotForFailure,
+          url: zeroListingsDiagnostics?.url ?? null,
+          page_title: zeroListingsDiagnostics?.title ?? null,
+          selector_counts: counts,
+          first_card_html: zeroListingsDiagnostics?.firstCardHtml ?? null,
+        },
+      });
+    }
+
+    if (payload.schedule_id) {
+      incrementScheduleFailures(deps.db, payload.schedule_id);
+      const schedule = findScheduleById(deps.db, payload.schedule_id);
+      if (schedule && schedule.consecutive_failures >= STRIKE_LIMIT) {
+        setSchedulePaused(deps.db, payload.schedule_id, true);
+        insertAlert(deps.db, {
+          kind: 'schedule_paused',
+          severity: 'action_required',
+          title: 'Schedule paused',
+          description: '3 consecutive search failures. Re-enable from Settings.',
+          site_id: site.id,
+        });
+      }
+    }
+
+    throw err;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// API-kind sites (Google Jobs via SerpAPI)
+// ---------------------------------------------------------------------------
+
+async function runApiSearch(
+  deps: SearchHandlerDeps,
+  site: SiteRow,
+  payload: SearchPayload,
+): Promise<void> {
+  const prefs = getOrInitSearchPreferences(deps.db);
+  deps.bus.emit('search:started', { task_id: payload.task_id ?? 'unknown', site_id: site.id });
+
+  const apiKey = getDecryptedSerpApiKey(deps.db);
+  if (!apiKey) {
+    insertAlert(deps.db, {
+      kind: 'serpapi_key_missing',
+      severity: 'action_required',
+      title: 'SerpAPI key missing',
+      description:
+        'Google Jobs is enabled but no SerpAPI key is configured. Add one in Settings → Sites.',
+      site_id: site.id,
+    });
+    deps.bus.emit('search:failed', {
+      task_id: payload.task_id ?? 'unknown',
+      site_id: site.id,
+      error_kind: 'unknown',
+    });
+    if (payload.schedule_id) incrementScheduleFailures(deps.db, payload.schedule_id);
+    throw new ValidationError('SerpAPI key not configured');
+  }
+
+  const searchImpl = deps.serpapiSearch ?? searchGoogleJobs;
+  const input: GoogleJobsSearchInput = {
+    keywords: [...prefs.keywords, prefs.description].filter(Boolean).join(' '),
+    location: prefs.locations[0],
   };
+
+  let listingsAdded = 0;
+  let scoredEnqueued = 0;
+  const inFlightScoreIds = getInFlightScoreJobIds(deps.db);
+  const updatedJobIds: string[] = [];
+
+  try {
+    for await (const listing of searchImpl(input, { apiKey })) {
+      try {
+        const job = insertJob(deps.db, {
+          site_id: site.id,
+          external_id: listing.external_id,
+          url: listing.apply_url,
+          external_apply_url: listing.apply_url,
+          apply_method: 'manual',
+          original_source: listing.via,
+          title: listing.title,
+          company: listing.company,
+          location: listing.location,
+          description: listing.description,
+          salary_text: listing.salary_text,
+        });
+        listingsAdded += 1;
+        updatedJobIds.push(job.id);
+        if (job.status !== 'new') continue;
+        if (inFlightScoreIds.has(job.id)) continue;
+        enqueue(deps.db, { kind: 'score', payload: { job_id: job.id } });
+        inFlightScoreIds.add(job.id);
+        scoredEnqueued += 1;
+      } catch (err) {
+        log.warn({ err, external_id: listing.external_id }, 'google: insertJob failed; skipping');
+      }
+    }
+
+    if (updatedJobIds.length > 0) deps.bus.emit('jobs:updated', { ids: updatedJobIds });
+    if (payload.schedule_id) resetScheduleFailures(deps.db, payload.schedule_id);
+    updateSiteSession(deps.db, site.id, {
+      last_search_at: new Date().toISOString(),
+    });
+    deps.bus.emit('search:completed', {
+      task_id: payload.task_id ?? 'unknown',
+      site_id: site.id,
+      listings_added: listingsAdded,
+      scored: scoredEnqueued,
+    });
+  } catch (err) {
+    const alertKind =
+      err instanceof SerpapiKeyInvalidError
+        ? 'serpapi_key_invalid'
+        : err instanceof SerpapiQuotaExhaustedError
+          ? 'serpapi_quota_exhausted'
+          : 'search_failed';
+    const severity =
+      err instanceof SerpapiQuotaExhaustedError ? 'info' : 'action_required';
+    insertAlert(deps.db, {
+      kind: alertKind,
+      severity,
+      title:
+        err instanceof SerpapiKeyInvalidError
+          ? 'SerpAPI key rejected'
+          : err instanceof SerpapiQuotaExhaustedError
+            ? 'SerpAPI quota exhausted'
+            : 'Google Jobs search failed',
+      description: err instanceof Error ? err.message : String(err),
+      site_id: site.id,
+    });
+    deps.bus.emit('search:failed', {
+      task_id: payload.task_id ?? 'unknown',
+      site_id: site.id,
+      error_kind: 'unknown',
+    });
+    if (payload.schedule_id) {
+      incrementScheduleFailures(deps.db, payload.schedule_id);
+      const schedule = findScheduleById(deps.db, payload.schedule_id);
+      if (schedule && schedule.consecutive_failures >= STRIKE_LIMIT) {
+        setSchedulePaused(deps.db, payload.schedule_id, true);
+        insertAlert(deps.db, {
+          kind: 'schedule_paused',
+          severity: 'action_required',
+          title: 'Schedule paused',
+          description: '3 consecutive search failures. Re-enable from Settings.',
+          site_id: site.id,
+        });
+      }
+    }
+    throw err;
+  }
 }
