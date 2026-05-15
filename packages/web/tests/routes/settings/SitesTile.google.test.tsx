@@ -71,8 +71,8 @@ describe('SitesTile — Google Jobs', () => {
     harness({ enabled: true, has_session: true, session_valid_at: '2026-05-15T10:00:00Z', last_search_at: '2026-05-15T10:00:00Z' });
     // Wait until the Google Jobs row shows the connected state (Edit key button only appears when connected)
     await waitFor(() => expect(screen.getByRole('button', { name: /edit key/i })).toBeInTheDocument());
-    // Multiple disconnect buttons exist (LinkedIn is also connected in the harness); just check at least one is present
-    expect(screen.getAllByRole('button', { name: /disconnect/i }).length).toBeGreaterThanOrEqual(1);
+    // Both LinkedIn and Google rows are connected; exactly two Disconnect buttons should be present
+    expect(screen.getAllByRole('button', { name: /disconnect/i })).toHaveLength(2);
   });
 
   it('renders Key invalid when an open serpapi_key_invalid alert is present', async () => {

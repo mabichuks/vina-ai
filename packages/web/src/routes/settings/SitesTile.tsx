@@ -88,7 +88,7 @@ function GoogleJobsRow(): JSX.Element {
               <Button
                 variant="ghost"
                 size="sm"
-                onClick={() => disconnect.mutate()}
+                onClick={() => void disconnect.mutate()}
                 disabled={disconnect.isPending}
               >
                 Disconnect
@@ -101,7 +101,7 @@ function GoogleJobsRow(): JSX.Element {
             </Button>
           )}
           {state === 'quota_exhausted' && (
-            <Button variant="ghost" size="sm" onClick={() => disconnect.mutate()}>
+            <Button variant="ghost" size="sm" onClick={() => void disconnect.mutate()}>
               Disconnect
             </Button>
           )}
