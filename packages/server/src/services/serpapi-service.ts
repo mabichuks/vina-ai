@@ -1,7 +1,6 @@
 /**
- * Stub SerpAPI client. Phase 5 only needs `validateSerpApiKey` so the
- * onboarding wizard / settings can confirm a key works. The real Google
- * Jobs query implementation lands in Phase 13 (PRD-140).
+ * SerpAPI client. `validateSerpApiKey` confirms a key works for onboarding.
+ * `searchGoogleJobs` is the paginated iterator used by the search handler.
  */
 
 export type ValidateResult =
@@ -12,7 +11,7 @@ export type ValidateResult =
       detail?: string;
     };
 
-const SERPAPI_BASE = 'https://serpapi.com/search.json';
+export const SERPAPI_BASE = 'https://serpapi.com/search.json';
 
 interface SerpApiErrorBody {
   error?: string;
@@ -65,4 +64,180 @@ export async function validateSerpApiKey(plaintext: string): Promise<ValidateRes
 
   if (!res.ok) return { ok: false, reason: 'other', detail: `HTTP ${res.status}` };
   return { ok: true, latency_ms };
+}
+
+// ---------------------------------------------------------------------------
+// searchGoogleJobs — paginated async iterator
+// ---------------------------------------------------------------------------
+
+export interface GoogleJobsSearchInput {
+  keywords: string;
+  location?: string;
+  num?: number;
+}
+
+export interface GoogleJobsListing {
+  external_id: string;
+  title: string;
+  company: string;
+  location: string | null;
+  description: string;
+  via: string | null;
+  apply_url: string;
+  salary_text: string | null;
+}
+
+export interface SearchGoogleJobsOpts {
+  apiKey: string;
+  fetchImpl?: typeof fetch;
+  /** Default 3. Caps total HTTP calls per invocation. */
+  maxPages?: number;
+  /** Default 2000ms. Backoff before the single 5xx retry. Test seam. */
+  retryDelayMs?: number;
+  signal?: AbortSignal;
+}
+
+export class SerpapiKeyInvalidError extends Error {
+  readonly code = 'serpapi_key_invalid' as const;
+  constructor(detail: string) {
+    super(`SerpAPI rejected the key: ${detail}`);
+  }
+}
+
+export class SerpapiQuotaExhaustedError extends Error {
+  readonly code = 'serpapi_quota_exhausted' as const;
+  constructor() {
+    super('SerpAPI monthly quota exhausted (HTTP 429)');
+  }
+}
+
+export class SerpapiTransientError extends Error {
+  readonly code = 'serpapi_transient' as const;
+  constructor(detail: string) {
+    super(`SerpAPI transient failure: ${detail}`);
+  }
+}
+
+const SALARY_RE = /\$[\d,]+(?:\.\d+)?[KMk]?(?:\s*[-–]\s*\$[\d,]+(?:\.\d+)?[KMk]?)?/;
+
+interface RawJob {
+  job_id?: string;
+  title?: string;
+  company_name?: string;
+  location?: string;
+  description?: string;
+  via?: string;
+  extensions?: string[];
+  detected_extensions?: { salary?: string };
+  apply_options?: Array<{ title?: string; link?: string }>;
+}
+
+function mapJobResult(raw: RawJob): GoogleJobsListing | null {
+  const link = raw.apply_options?.[0]?.link;
+  if (!link) return null;
+  const externalId = raw.job_id ?? link;
+  const salary =
+    raw.detected_extensions?.salary ??
+    raw.extensions?.find((e) => SALARY_RE.test(e)) ??
+    null;
+  return {
+    external_id: externalId,
+    title: raw.title ?? '(untitled)',
+    company: raw.company_name ?? '(unknown)',
+    location: raw.location ?? null,
+    description: raw.description ?? '',
+    via: raw.via ?? null,
+    apply_url: link,
+    salary_text: salary,
+  };
+}
+
+function redactKey(url: URL): string {
+  const u = new URL(url.toString());
+  if (u.searchParams.has('api_key')) u.searchParams.set('api_key', 'REDACTED');
+  return u.toString();
+}
+
+export async function* searchGoogleJobs(
+  input: GoogleJobsSearchInput,
+  opts: SearchGoogleJobsOpts,
+): AsyncIterable<GoogleJobsListing> {
+  const fetchImpl = opts.fetchImpl ?? fetch;
+  const maxPages = opts.maxPages ?? 3;
+  const retryDelayMs = opts.retryDelayMs ?? 2000;
+
+  let pageIdx = 0;
+  let nextPageToken: string | null = null;
+
+  while (pageIdx < maxPages) {
+    if (opts.signal?.aborted) return;
+
+    const url = new URL(SERPAPI_BASE);
+    url.searchParams.set('engine', 'google_jobs');
+    url.searchParams.set('q', input.keywords);
+    if (input.location) url.searchParams.set('location', input.location);
+    if (input.num) url.searchParams.set('num', String(input.num));
+    if (nextPageToken) url.searchParams.set('next_page_token', nextPageToken);
+    url.searchParams.set('api_key', opts.apiKey);
+
+    const res = await fetchOnceWithRetry(fetchImpl, url, retryDelayMs);
+
+    if (res.status === 403) {
+      const body = await res.json().catch(() => ({})) as { error?: string };
+      throw new SerpapiKeyInvalidError(
+        typeof body?.error === 'string' ? body.error : `HTTP 403 at ${redactKey(url)}`,
+      );
+    }
+    if (res.status === 429) throw new SerpapiQuotaExhaustedError();
+    if (!res.ok) {
+      throw new SerpapiTransientError(`HTTP ${res.status} at ${redactKey(url)}`);
+    }
+
+    const payload = (await res.json()) as {
+      jobs_results?: RawJob[];
+      serpapi_pagination?: { next_page_token?: string };
+      error?: string;
+    };
+
+    if (payload.error) {
+      const lower = payload.error.toLowerCase();
+      if (lower.includes('invalid api key') || lower.includes('unauthorized')) {
+        throw new SerpapiKeyInvalidError(payload.error);
+      }
+      if (lower.includes('limit') || lower.includes('exceeded')) {
+        throw new SerpapiQuotaExhaustedError();
+      }
+      throw new SerpapiTransientError(payload.error);
+    }
+
+    for (const raw of payload.jobs_results ?? []) {
+      if (opts.signal?.aborted) return;
+      const mapped = mapJobResult(raw);
+      if (mapped) yield mapped;
+    }
+
+    nextPageToken = payload.serpapi_pagination?.next_page_token ?? null;
+    if (!nextPageToken) return;
+    pageIdx += 1;
+  }
+}
+
+async function fetchOnceWithRetry(
+  fetchImpl: typeof fetch,
+  url: URL,
+  retryDelayMs: number,
+): Promise<Response> {
+  let res: Response;
+  try {
+    res = await fetchImpl(url);
+  } catch {
+    res = new Response('', { status: 502 });
+  }
+  if (res.status < 500) return res;
+  await new Promise((r) => setTimeout(r, retryDelayMs));
+  try {
+    return await fetchImpl(url);
+  } catch {
+    return new Response('', { status: 502 });
+  }
 }
