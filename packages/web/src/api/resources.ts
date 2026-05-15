@@ -507,7 +507,6 @@ export function useValidateSerpapiKey(): {
       api<SerpapiValidateResult>('/api/sites/google/test', { method: 'POST', body: { key } }),
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: ['sites'] });
-      void qc.invalidateQueries({ queryKey: ['google-status'] });
     },
   });
   return { mutate: (key) => mut.mutateAsync(key), isPending: mut.isPending };
@@ -526,7 +525,7 @@ export function useGoogleJobsStatus(opts: { pollMs?: number } = {}): {
 } {
   const sites = useSites();
   const alerts = useAlerts();
-  if (sites.isLoading) return { data: null, isLoading: true };
+  if (sites.isLoading || alerts.isLoading) return { data: null, isLoading: true };
   const row = sites.data.find((s) => s.id === 'google') ?? null;
   if (!row) return { data: null, isLoading: false };
 
@@ -564,7 +563,6 @@ export function useEnableGoogleJobs(): {
     mutationFn: () => api(`/api/sites/google`, { method: 'PATCH', body: { enabled: true } }),
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: ['sites'] });
-      void qc.invalidateQueries({ queryKey: ['google-status'] });
     },
   });
   return { mutate: () => mut.mutateAsync(), isPending: mut.isPending };
@@ -583,7 +581,6 @@ export function useDisconnectGoogleJobs(): {
     },
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: ['sites'] });
-      void qc.invalidateQueries({ queryKey: ['google-status'] });
     },
   });
   return { mutate: () => mut.mutateAsync(), isPending: mut.isPending };

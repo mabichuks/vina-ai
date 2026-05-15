@@ -56,4 +56,36 @@ describe('useGoogleJobsStatus', () => {
     const { result } = renderHook(() => useGoogleJobsStatus(), { wrapper: makeWrapper(qc) });
     await waitFor(() => expect(result.current.data?.state).toBe('not_configured'));
   });
+
+  it('returns key_invalid when an open serpapi_key_invalid alert exists for google', async () => {
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (url) => {
+      const u = String(url);
+      if (u.endsWith('/api/sites')) {
+        return new Response(
+          JSON.stringify([
+            { id: 'google', display_name: 'Google Jobs', kind: 'api', enabled: true,
+              has_session: true, session_valid_at: '2026-05-15T00:00:00Z', last_search_at: null },
+          ]),
+          { status: 200 },
+        );
+      }
+      if (u.includes('/api/alerts')) {
+        return new Response(
+          JSON.stringify({
+            items: [
+              { id: 'a1', kind: 'serpapi_key_invalid', severity: 'action_required',
+                status: 'open', site_id: 'google', title: 'x', description: 'y',
+                created_at: '2026-05-15T00:00:00Z', payload: null, application_id: null, resolution_value: null, resolved_at: null },
+            ],
+          }),
+          { status: 200 },
+        );
+      }
+      return new Response('{}', { status: 200 });
+    });
+
+    const qc = new QueryClient();
+    const { result } = renderHook(() => useGoogleJobsStatus(), { wrapper: makeWrapper(qc) });
+    await waitFor(() => expect(result.current.data?.state).toBe('key_invalid'));
+  });
 });
