@@ -8,6 +8,7 @@ export default defineConfig({
     // reason: web package tests render React hooks and need a DOM environment;
     // happy-dom is used over jsdom to avoid ESM interop issues in the monorepo.
     environmentMatchGlobs: [['packages/web/tests/**', 'happy-dom']],
+    setupFiles: ['packages/web/tests/setup.ts'],
     coverage: {
       provider: 'v8',
       reporter: ['text', 'html'],

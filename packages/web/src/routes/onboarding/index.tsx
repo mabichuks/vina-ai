@@ -8,6 +8,9 @@ const Cv = lazy(() => import('./steps/Cv.js').then((m) => ({ default: m.Cv })));
 const LlmProvider = lazy(() =>
   import('./steps/LlmProvider.js').then((m) => ({ default: m.LlmProvider })),
 );
+const GoogleJobs = lazy(() =>
+  import('./steps/GoogleJobs.js').then((m) => ({ default: m.GoogleJobs })),
+);
 const Preferences = lazy(() =>
   import('./steps/Preferences.js').then((m) => ({ default: m.Preferences })),
 );
@@ -79,6 +82,14 @@ export function OnboardingRouter(): JSX.Element {
           element={
             <StepGuard step="llm-provider">
               <LlmProvider />
+            </StepGuard>
+          }
+        />
+        <Route
+          path="google-jobs"
+          element={
+            <StepGuard step="google-jobs">
+              <GoogleJobs />
             </StepGuard>
           }
         />
