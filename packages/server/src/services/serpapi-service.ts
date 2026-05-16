@@ -199,16 +199,20 @@ export async function* searchGoogleJobs(
 
     const url = new URL(SERPAPI_BASE);
     url.searchParams.set('engine', 'google_jobs');
+    url.searchParams.set('google_domain', 'google.com');
     url.searchParams.set('api_key', opts.apiKey);
-    // SerpAPI's Google Jobs requires `q` (and `location`) on every page,
-    // including continuation pages — sending `next_page_token` alone returns
-    // HTTP 400. The token only carries the pagination cursor, not the query.
     const phrase = input.date_posted ? DATE_POSTED_PHRASES[input.date_posted] : null;
     const q = phrase ? `${input.keywords} ${phrase}` : input.keywords;
     url.searchParams.set('q', q);
-    if (input.location) url.searchParams.set('location', input.location);
-    if (input.num) url.searchParams.set('num', String(input.num));
-    if (nextPageToken) url.searchParams.set('next_page_token', nextPageToken);
+    if (nextPageToken) {
+      // Match SerpAPI's canonical `next` URL: send `q + next_page_token`
+      // only. The token already captures `location`/`num`/etc. — re-sending
+      // them on a continuation page returns HTTP 400.
+      url.searchParams.set('next_page_token', nextPageToken);
+    } else {
+      if (input.location) url.searchParams.set('location', input.location);
+      if (input.num) url.searchParams.set('num', String(input.num));
+    }
 
     const res = await fetchOnceWithRetry(fetchImpl, url, retryDelayMs, opts.signal);
 
