@@ -453,6 +453,22 @@ export function useRunSearchNow(): {
   return { mutate: (siteId) => mut.mutateAsync(siteId), isPending: mut.isPending };
 }
 
+export interface CancelSearchInput {
+  task_id?: string;
+  site_id?: string;
+}
+
+export function useCancelSearch(): {
+  mutate: (input: CancelSearchInput) => Promise<{ cancelled: number }>;
+  isPending: boolean;
+} {
+  const mut = useMutation<{ cancelled: number }, Error, CancelSearchInput>({
+    mutationFn: (input) =>
+      api<{ cancelled: number }>('/api/searches/cancel', { method: 'POST', body: input }),
+  });
+  return { mutate: (input) => mut.mutateAsync(input), isPending: mut.isPending };
+}
+
 /* ------------------------------------------------------------------ */
 /* Alerts                                                               */
 /* ------------------------------------------------------------------ */
