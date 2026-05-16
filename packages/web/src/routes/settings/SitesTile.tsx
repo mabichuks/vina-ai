@@ -1,30 +1,87 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
+  useDisconnectGoogleJobs,
   useDisconnectLinkedIn,
   useLinkedInStatus,
+  useSiteStatus,
   useStartLinkedInConnect,
-  useGoogleJobsStatus,
+  useToggleSite,
   useValidateSerpapiKey,
-  useDisconnectGoogleJobs,
 } from '../../api/resources.js';
 import { Button } from '../../components/ui/button.js';
+import { Switch } from '../../components/ui/switch.js';
 
-function StatusDot({
-  status,
-}: {
-  status: { connected: boolean; error: string | null } | null;
-}): JSX.Element {
-  if (status?.connected) {
-    return <span className="text-success">● Connected</span>;
-  }
-  if (status?.error) {
-    return <span className="text-warning">⚠ Session expired</span>;
-  }
-  return <span className="text-ink-muted">○ Not connected</span>;
+function SiteToggle({ id, label }: { id: string; label: string }): JSX.Element {
+  const status = useSiteStatus(id);
+  const toggle = useToggleSite();
+  const enabled = status.data?.enabled ?? false;
+  const canToggle = (status.data?.has_credentials ?? false) && !toggle.isPending;
+  return (
+    <Switch
+      aria-label={label}
+      checked={enabled}
+      disabled={!canToggle}
+      onCheckedChange={(next) => void toggle.mutate(id, next)}
+      title={status.data?.has_credentials ? undefined : 'Connect first.'}
+    />
+  );
+}
+
+function LinkedInRow(): JSX.Element {
+  const status = useSiteStatus('linkedin', { pollMs: 5_000 });
+  const linkedinConnect = useLinkedInStatus({ pollMs: 3_000 });
+  const start = useStartLinkedInConnect();
+  const disconnect = useDisconnectLinkedIn();
+
+  const state = status.data?.state ?? 'not_configured';
+  const label = (() => {
+    switch (state) {
+      case 'active':
+        return <span className="text-success">● Active</span>;
+      case 'paused':
+        return <span className="text-ink-muted">⊘ Paused (credentials saved)</span>;
+      case 'session_expired':
+        return <span className="text-warning">⚠ Session expired</span>;
+      default:
+        return <span className="text-ink-muted">○ Not connected</span>;
+    }
+  })();
+
+  const connected = state === 'active' || state === 'paused' || state === 'session_expired';
+
+  return (
+    <li className="flex items-center justify-between py-3">
+      <div>
+        <p className="font-medium text-ink-primary">LinkedIn</p>
+        <p className="text-xs text-ink-secondary">{label}</p>
+      </div>
+      <div className="flex items-center gap-3">
+        <SiteToggle id="linkedin" label="LinkedIn" />
+        {connected ? (
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => disconnect.mutate()}
+            disabled={disconnect.isPending}
+          >
+            Disconnect
+          </Button>
+        ) : (
+          <Button
+            size="sm"
+            onClick={() => start.mutate()}
+            disabled={start.isPending || linkedinConnect.data?.attempting}
+          >
+            {linkedinConnect.data?.attempting ? 'Connecting…' : 'Connect'}
+          </Button>
+        )}
+      </div>
+    </li>
+  );
 }
 
 function GoogleJobsRow(): JSX.Element {
-  const status = useGoogleJobsStatus({ pollMs: 5000 });
+  const status = useSiteStatus('google', { pollMs: 5_000 });
   const validate = useValidateSerpapiKey();
   const disconnect = useDisconnectGoogleJobs();
   const [editing, setEditing] = useState(false);
@@ -42,8 +99,18 @@ function GoogleJobsRow(): JSX.Element {
     }
   };
 
-  // Treat null data (still loading) as not_configured so we don't flash empty buttons
   const state = status.data?.state ?? 'not_configured';
+
+  // Auto-close the inline edit form when the row falls back to not_configured
+  // (typically after a successful Disconnect). Without this the form lingers
+  // with stale state when the user re-opens Settings.
+  useEffect(() => {
+    if (state === 'not_configured') {
+      setEditing(false);
+      setKey('');
+      setError(null);
+    }
+  }, [state]);
 
   const label = (() => {
     switch (state) {
@@ -59,7 +126,7 @@ function GoogleJobsRow(): JSX.Element {
           </span>
         );
       case 'paused':
-        return <span className="text-ink-muted">⏸ Paused</span>;
+        return <span className="text-ink-muted">⊘ Paused (credentials saved)</span>;
       case 'key_invalid':
         return <span className="text-warning">⚠ Key invalid</span>;
       case 'quota_exhausted':
@@ -76,7 +143,8 @@ function GoogleJobsRow(): JSX.Element {
           <p className="font-medium text-ink-primary">Google Jobs</p>
           <p className="text-xs text-ink-secondary">{label}</p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex items-center gap-3">
+          <SiteToggle id="google" label="Google Jobs" />
           {state === 'not_configured' && (
             <Button size="sm" onClick={() => setEditing(true)}>
               Add SerpAPI key
@@ -150,10 +218,6 @@ function GoogleJobsRow(): JSX.Element {
 }
 
 export function SitesTile(): JSX.Element {
-  const linkedin = useLinkedInStatus({ pollMs: 3000 });
-  const start = useStartLinkedInConnect();
-  const disconnect = useDisconnectLinkedIn();
-
   return (
     <section
       id="sites"
@@ -166,34 +230,7 @@ export function SitesTile(): JSX.Element {
         Vina searches the sources you connect here.
       </p>
       <ul className="mt-4 divide-y divide-border-subtle">
-        <li className="flex items-center justify-between py-3">
-          <div>
-            <p className="font-medium text-ink-primary">LinkedIn</p>
-            <p className="text-xs text-ink-secondary">
-              <StatusDot status={linkedin.data} />
-            </p>
-          </div>
-          <div className="flex gap-2">
-            {linkedin.data?.connected ? (
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => disconnect.mutate()}
-                disabled={disconnect.isPending}
-              >
-                Disconnect
-              </Button>
-            ) : (
-              <Button
-                size="sm"
-                onClick={() => start.mutate()}
-                disabled={start.isPending || linkedin.data?.attempting}
-              >
-                {linkedin.data?.attempting ? 'Connecting…' : 'Connect'}
-              </Button>
-            )}
-          </div>
-        </li>
+        <LinkedInRow />
         <li className="flex items-center justify-between py-3">
           <p className="font-medium text-ink-secondary">Indeed</p>
           <span className="rounded-full bg-surface-sunken px-2 py-0.5 text-xs text-ink-muted">
