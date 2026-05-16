@@ -54,6 +54,39 @@ describe('POST /api/searches/run-now', () => {
     expect(listPending(h.db).filter((t) => t.kind === 'search')).toHaveLength(1);
   });
 
+  it('fast-forwards a backoff-waiting retry instead of dedup-ing as in-flight', async () => {
+    // Simulate the worker's failure path: bump attempts and push next_attempt_at
+    // into the future, so the row is "pending with backoff" — exactly what
+    // the user's screenshot-stuck experience hits after a transient failure.
+    const a = await h.app.inject({
+      method: 'POST',
+      url: '/api/searches/run-now',
+      headers: auth(h.token),
+      payload: { site_id: 'linkedin' },
+    });
+    const taskId = (a.json() as { task_id: string }).task_id;
+    const future = new Date(Date.now() + 60_000).toISOString();
+    h.db
+      .prepare(`UPDATE task_queue SET attempts = 1, next_attempt_at = ? WHERE id = ?`)
+      .run(future, taskId);
+
+    const b = await h.app.inject({
+      method: 'POST',
+      url: '/api/searches/run-now',
+      headers: auth(h.token),
+      payload: { site_id: 'linkedin' },
+    });
+    const body = b.json() as { task_id: string; deduped: boolean; retried?: boolean };
+    expect(body.task_id).toBe(taskId);
+    expect(body.deduped).toBe(false);
+    expect(body.retried).toBe(true);
+
+    const row = h.db
+      .prepare(`SELECT next_attempt_at FROM task_queue WHERE id = ?`)
+      .get(taskId) as { next_attempt_at: string };
+    expect(new Date(row.next_attempt_at).getTime()).toBeLessThanOrEqual(Date.now() + 100);
+  });
+
   it('404s on unknown site', async () => {
     const res = await h.app.inject({
       method: 'POST',

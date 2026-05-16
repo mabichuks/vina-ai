@@ -3,7 +3,7 @@ import type { Database as DatabaseType } from 'better-sqlite3';
 import { z } from 'zod';
 import { NotFoundError } from '@vina/shared';
 import { findSiteById } from '../../db/repositories/sites.js';
-import { enqueue, listPending } from '../../db/repositories/task-queue.js';
+import { enqueue, listPending, setNextAttemptAt } from '../../db/repositories/task-queue.js';
 import {
   cancelActiveTask,
   cancelTasksForSite,
@@ -32,12 +32,27 @@ export async function searchRoutes(
     const site = findSiteById(db, body.site_id);
     if (!site) throw new NotFoundError(`Site ${body.site_id} not found`);
 
+    // Existing pending search task for this site. Two sub-cases:
+    //   attempts === 0 → freshly enqueued by another caller (a parallel
+    //                    click, a schedule fire). Dedup so we don't pile up.
+    //   attempts  > 0 → the previous run failed and the worker put the row
+    //                    back to 'pending' with a future next_attempt_at for
+    //                    backoff. The user clicking "Search now" is an
+    //                    explicit override — fast-forward next_attempt_at to
+    //                    now and poke the worker so it runs immediately
+    //                    instead of telling the user "already searching" for
+    //                    something that isn't actually running.
     const inFlight = listPending(db).find(
       (t) =>
         t.kind === 'search' &&
         (JSON.parse(t.payload) as { site_id?: string }).site_id === site.id,
     );
     if (inFlight) {
+      if (inFlight.attempts > 0) {
+        setNextAttemptAt(db, inFlight.id, new Date().toISOString());
+        poke();
+        return reply.status(202).send({ task_id: inFlight.id, deduped: false, retried: true });
+      }
       return reply.status(202).send({ task_id: inFlight.id, deduped: true });
     }
 
