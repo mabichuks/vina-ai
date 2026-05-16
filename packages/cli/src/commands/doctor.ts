@@ -140,33 +140,6 @@ interface SerpApiSystemStatus {
   google_state: string;
 }
 
-async function checkSerpApiKeyConfigured(): Promise<CheckResult> {
-  const status = readStatus();
-  if (!status) {
-    return {
-      name: 'SerpAPI key configured',
-      ok: true,
-      remediation: 'daemon not running (skipped)',
-    };
-  }
-  try {
-    const sys = await authedRequest<SerpApiSystemStatus>(
-      status.port,
-      'GET',
-      '/api/system/status',
-    );
-    return sys.google_state === 'not_configured'
-      ? { name: 'SerpAPI key configured', ok: true, remediation: 'not configured (skipped)' }
-      : { name: 'SerpAPI key configured', ok: true };
-  } catch (err) {
-    return {
-      name: 'SerpAPI key configured',
-      ok: false,
-      remediation: (err as Error).message,
-    };
-  }
-}
-
 interface ValidateResp {
   ok: boolean;
   reason?: string;
@@ -174,8 +147,16 @@ interface ValidateResp {
   latency_ms?: number;
 }
 
-async function checkSerpApiKeyValid(): Promise<CheckResult> {
-  const status = readStatus();
+// Both SerpAPI checks need google_state from /api/system/status. Accept a
+// pre-fetched result to avoid hitting the same endpoint twice in parallel.
+function checkSerpApiKeyConfigured(sys: SerpApiSystemStatus | null): CheckResult {
+  if (!sys) return { name: 'SerpAPI key configured', ok: false, remediation: 'could not reach daemon' };
+  return sys.google_state === 'not_configured'
+    ? { name: 'SerpAPI key configured', ok: true, remediation: 'not configured (skipped)' }
+    : { name: 'SerpAPI key configured', ok: true };
+}
+
+async function checkSerpApiKeyValid(status: ReturnType<typeof readStatus>, sys: SerpApiSystemStatus | null): Promise<CheckResult> {
   if (!status) {
     return {
       name: 'SerpAPI key valid',
@@ -183,19 +164,21 @@ async function checkSerpApiKeyValid(): Promise<CheckResult> {
       remediation: 'daemon not running (skipped)',
     };
   }
+  if (!sys) {
+    return {
+      name: 'SerpAPI key valid',
+      ok: false,
+      remediation: 'could not reach daemon',
+    };
+  }
+  if (sys.google_state === 'not_configured') {
+    return {
+      name: 'SerpAPI key valid',
+      ok: true,
+      remediation: 'no key configured (skipped)',
+    };
+  }
   try {
-    const sys = await authedRequest<SerpApiSystemStatus>(
-      status.port,
-      'GET',
-      '/api/system/status',
-    );
-    if (sys.google_state === 'not_configured') {
-      return {
-        name: 'SerpAPI key valid',
-        ok: true,
-        remediation: 'no key configured (skipped)',
-      };
-    }
     const res = await authedRequest<ValidateResp>(
       status.port,
       'POST',
@@ -283,14 +266,23 @@ async function checkDaemonReachable(): Promise<CheckResult> {
 }
 
 export async function doctorCommand(): Promise<number> {
+  // Pre-fetch /api/system/status once; both SerpAPI checks share the result
+  // to avoid hitting the same endpoint twice in the concurrent Promise.all.
+  const daemonStatus = readStatus();
+  const sysStatus = daemonStatus
+    ? await authedRequest<SerpApiSystemStatus>(daemonStatus.port, 'GET', '/api/system/status').catch(() => null)
+    : null;
+
   const checks: (CheckResult | Promise<CheckResult>)[] = [
     checkNodeVersion(),
     checkDataDir(),
     checkDaemonReachable(),
     checkChromium(),
     checkLinkedInProfileDir(),
-    checkSerpApiKeyConfigured(),
-    checkSerpApiKeyValid(),
+    daemonStatus
+      ? checkSerpApiKeyConfigured(sysStatus)
+      : { name: 'SerpAPI key configured', ok: true, remediation: 'daemon not running (skipped)' },
+    checkSerpApiKeyValid(daemonStatus, sysStatus),
     checkLlmProvider(),
     checkSchedulePaused(),
     checkAlerts(),

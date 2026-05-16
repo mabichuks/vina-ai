@@ -48,7 +48,7 @@ export function GoogleJobs(): JSX.Element {
   function handleEnable() {
     setUi('validating');
     setError(null);
-    validate
+    void validate
       .mutate(key)
       .then((res) => {
         if (res.ok) {
