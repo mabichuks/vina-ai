@@ -155,4 +155,124 @@ describe('Google Jobs slice — end-to-end', () => {
     updateJobStatus(db, scored[0]!.id, 'applied_manually');
     expect(findJobById(db, scored[0]!.id)?.status).toBe('applied_manually');
   }, 30_000);
+
+  it('cancellation persists listings up to the abort, flips task to cancelled, emits search:cancelled, no completed', async () => {
+    const { createWorker } = await import('../../src/queue/worker.js');
+    const { enqueue, findById } = await import('../../src/db/repositories/task-queue.js');
+    const {
+      cancelActiveTask,
+      _resetActiveTasksForTests,
+    } = await import('../../src/queue/active-tasks.js');
+
+    _resetActiveTasksForTests();
+
+    const bus = createEventBus();
+    const events: Array<{ name: string; payload: unknown }> = [];
+    bus.on('search:cancelled', (p) => events.push({ name: 'search:cancelled', payload: p }));
+    bus.on('search:completed', (p) => events.push({ name: 'search:completed', payload: p }));
+
+    const fakeBrowserManager = {
+      getContext: async () => ({ newPage: async () => ({}) }),
+      closeAll: async () => {},
+    } as never;
+
+    // A controllable iterator: yields the first listing immediately, then
+    // suspends on a promise we resolve only after cancelActiveTask has run.
+    // This guarantees the handler insertJob path runs for at least one row
+    // before the signal flips, so we exercise the "mid-iteration abort"
+    // contract rather than "abort before any yield".
+    let yieldedFirstResolve!: () => void;
+    const yieldedFirst = new Promise<void>((resolve) => {
+      yieldedFirstResolve = resolve;
+    });
+    let releaseSecond!: () => void;
+    const release = new Promise<void>((resolve) => {
+      releaseSecond = resolve;
+    });
+
+    async function* controlledSearch(
+      _input: GoogleJobsSearchInput,
+      opts: { apiKey: string; signal?: AbortSignal },
+    ): AsyncIterable<GoogleJobsListing> {
+      yield {
+        external_id: 'cancel-1',
+        title: 'Engineer',
+        company: 'Acme',
+        location: 'Remote',
+        description: 'Build things.',
+        via: 'via Greenhouse',
+        apply_url: 'https://gh.io/cancel-1',
+        salary_text: '$200K',
+      };
+      yieldedFirstResolve();
+      await release;
+      if (opts.signal?.aborted) return;
+      yield {
+        external_id: 'cancel-2',
+        title: 'Engineer 2',
+        company: 'Acme',
+        location: 'Remote',
+        description: 'More things.',
+        via: 'via Greenhouse',
+        apply_url: 'https://gh.io/cancel-2',
+        salary_text: '$210K',
+      };
+    }
+
+    const searchHandler = createSearchHandler({
+      db,
+      bus,
+      browserManager: fakeBrowserManager,
+      adapters: {},
+      serpapiSearch: controlledSearch as never,
+    });
+
+    const task = enqueue(db, { kind: 'search', payload: { site_id: 'google' } });
+    const worker = createWorker({
+      db,
+      bus,
+      pollIntervalMs: 25,
+      handlers: { search: searchHandler },
+    });
+
+    worker.start();
+
+    // Wait for the first yield to land, then cancel + release the iterator.
+    await yieldedFirst;
+    cancelActiveTask(task.id);
+    releaseSecond();
+
+    const settled = await new Promise<boolean>((resolve) => {
+      const t0 = Date.now();
+      const poll = (): void => {
+        const row = findById(db, task.id);
+        if (
+          row &&
+          (row.status === 'cancelled' || row.status === 'completed' || row.status === 'failed')
+        ) {
+          return resolve(true);
+        }
+        if (Date.now() - t0 > 5_000) return resolve(false);
+        setTimeout(poll, 50);
+      };
+      poll();
+    });
+    await worker.stop(5_000);
+
+    expect(settled).toBe(true);
+    const row = findById(db, task.id)!;
+    expect(row.status).toBe('cancelled');
+    expect(row.failed_reason).toBe('cancelled_by_user');
+
+    const jobs = listJobs(db, { site_id: 'google' });
+    expect(jobs.map((j) => j.external_id).sort()).toEqual(['cancel-1']);
+
+    const cancelledEvents = events.filter((e) => e.name === 'search:cancelled');
+    expect(cancelledEvents.length).toBe(1);
+    expect(
+      (cancelledEvents[0]!.payload as { listings_added: number }).listings_added,
+    ).toBe(jobs.length);
+
+    expect(events.find((e) => e.name === 'search:completed')).toBeUndefined();
+  }, 15_000);
 });
