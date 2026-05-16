@@ -102,8 +102,10 @@ function GoogleJobsRow(): JSX.Element {
   const state = status.data?.state ?? 'not_configured';
 
   // Auto-close the inline edit form when the row falls back to not_configured
-  // (typically after a successful Disconnect). Without this the form lingers
-  // with stale state when the user re-opens Settings.
+  // (typically after a successful Disconnect). The transition is driven by
+  // server state surfacing through TanStack Query, not by anything inside
+  // this component — an effect is the only way to react to it.
+  /* eslint-disable react-hooks/set-state-in-effect */
   useEffect(() => {
     if (state === 'not_configured') {
       setEditing(false);
@@ -111,6 +113,7 @@ function GoogleJobsRow(): JSX.Element {
       setError(null);
     }
   }, [state]);
+  /* eslint-enable react-hooks/set-state-in-effect */
 
   const label = (() => {
     switch (state) {

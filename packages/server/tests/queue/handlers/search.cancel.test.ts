@@ -87,9 +87,8 @@ describe('search handler — cancellation', () => {
       handler({
         site_id: 'google',
         task_id: 't1',
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         _signal: ac.signal,
-      } as any),
+      } as never),
     ).rejects.toBeInstanceOf(AbortedError);
 
     const jobs = listJobs(db, { site_id: 'google' });
@@ -129,9 +128,8 @@ describe('search handler — cancellation', () => {
       handler({
         site_id: 'google',
         task_id: 't1',
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         _signal: ac.signal,
-      } as any),
+      } as never),
     ).rejects.toBeInstanceOf(AbortedError);
 
     const jobs = listJobs(db, { site_id: 'google' });
