@@ -70,10 +70,20 @@ export async function validateSerpApiKey(plaintext: string): Promise<ValidateRes
 // searchGoogleJobs — paginated async iterator
 // ---------------------------------------------------------------------------
 
+/**
+ * SerpAPI `date_posted` filter — restricts results to listings posted within
+ * the given window. Mirrors Google Jobs' "Date posted" facet on the UI.
+ * Mapped onto the request as `?chips=date_posted:<value>` since SerpAPI passes
+ * the chip param through verbatim; the raw `date_posted` param is the
+ * documented short form and is what we use here.
+ */
+export type DatePostedFilter = 'today' | '3days' | 'week' | 'month';
+
 export interface GoogleJobsSearchInput {
   keywords: string;
   location?: string;
   num?: number;
+  date_posted?: DatePostedFilter;
 }
 
 export interface GoogleJobsListing {
@@ -177,6 +187,12 @@ export async function* searchGoogleJobs(
     url.searchParams.set('q', input.keywords);
     if (input.location) url.searchParams.set('location', input.location);
     if (input.num) url.searchParams.set('num', String(input.num));
+    if (input.date_posted) {
+      // SerpAPI accepts `date_posted` as a top-level param; values are
+      // 'today' | '3days' | 'week' | 'month'. Anything else is silently
+      // dropped server-side, so we keep the union narrow at the type layer.
+      url.searchParams.set('date_posted', input.date_posted);
+    }
     if (nextPageToken) url.searchParams.set('next_page_token', nextPageToken);
     url.searchParams.set('api_key', opts.apiKey);
 

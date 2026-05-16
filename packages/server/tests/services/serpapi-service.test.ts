@@ -129,6 +129,31 @@ describe('searchGoogleJobs', () => {
     expect(out.map((l) => l.external_id)).toEqual(['a', 'b']);
   });
 
+  it('forwards date_posted as a top-level param when set on the input', async () => {
+    let capturedUrl: URL | null = null;
+    const fetchImpl: typeof fetch = async (input) => {
+      capturedUrl = typeof input === 'string' ? new URL(input) : (input as URL);
+      return new Response(JSON.stringify({ jobs_results: [job('a')] }), { status: 200 });
+    };
+    await collect(
+      searchGoogleJobs(
+        { keywords: 'x', date_posted: '3days' },
+        { apiKey: 'k', fetchImpl, maxPages: 1 },
+      ),
+    );
+    expect(capturedUrl!.searchParams.get('date_posted')).toBe('3days');
+  });
+
+  it('omits date_posted when undefined', async () => {
+    let capturedUrl: URL | null = null;
+    const fetchImpl: typeof fetch = async (input) => {
+      capturedUrl = typeof input === 'string' ? new URL(input) : (input as URL);
+      return new Response(JSON.stringify({ jobs_results: [] }), { status: 200 });
+    };
+    await collect(searchGoogleJobs({ keywords: 'x' }, { apiKey: 'k', fetchImpl, maxPages: 1 }));
+    expect(capturedUrl!.searchParams.has('date_posted')).toBe(false);
+  });
+
   it('drops listings without apply_options[0].link', async () => {
     const bad = { ...job('z'), apply_options: [] };
     const fetchImpl = fakeFetch({ 'page-1': { jobs_results: [bad, job('y')] } });
