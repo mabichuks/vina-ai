@@ -255,9 +255,25 @@ export const linkedInAdapter: SiteAdapter = {
     // from collapsing loose queries to a single highlighted-match page.
     const origin = new URL(page.url()).origin;
     const url = buildSearchUrl(origin, prefs);
+    if (signal?.aborted) throw new DOMException('Aborted', 'AbortError');
     try {
-      await page.goto(url, { waitUntil: 'load' });
+      // Race page.goto against the abort signal so the user's Stop click can
+      // interrupt a long page load. Without this, page.goto holds the worker
+      // hostage for its full timeout (default 30s) before the handler can
+      // notice the signal flipped.
+      await Promise.race([
+        page.goto(url, { waitUntil: 'load' }),
+        new Promise<never>((_, reject) => {
+          if (!signal) return;
+          signal.addEventListener(
+            'abort',
+            () => reject(new DOMException('Aborted', 'AbortError')),
+            { once: true },
+          );
+        }),
+      ]);
     } catch (err) {
+      if (err instanceof Error && err.name === 'AbortError') throw err;
       // LinkedIn frequently does a client-side redirect mid-load (e.g. to
       // /jobs/search-results/?…), which Playwright reports as
       // `net::ERR_ABORTED; maybe frame was detached?`. Tolerate it as long
@@ -317,10 +333,18 @@ export async function* iterateLinkedInCards(
   signal?: AbortSignal,
   waitTimeoutMs: number = SELECTOR_TIMEOUT_MS,
 ): AsyncIterable<RawListing> {
-  await page.waitForSelector(selector, {
-    state: 'visible',
-    timeout: waitTimeoutMs,
-  });
+  if (signal?.aborted) throw new DOMException('Aborted', 'AbortError');
+  await Promise.race([
+    page.waitForSelector(selector, { state: 'visible', timeout: waitTimeoutMs }),
+    new Promise<never>((_, reject) => {
+      if (!signal) return;
+      signal.addEventListener(
+        'abort',
+        () => reject(new DOMException('Aborted', 'AbortError')),
+        { once: true },
+      );
+    }),
+  ]);
   const cards = await page.locator(selector).all();
   let isFirst = true;
   for (const card of cards) {

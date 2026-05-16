@@ -197,7 +197,7 @@ export async function* searchGoogleJobs(
     if (nextPageToken) url.searchParams.set('next_page_token', nextPageToken);
     url.searchParams.set('api_key', opts.apiKey);
 
-    const res = await fetchOnceWithRetry(fetchImpl, url, retryDelayMs);
+    const res = await fetchOnceWithRetry(fetchImpl, url, retryDelayMs, opts.signal);
 
     if (res.status === 403) {
       const body = await res.json().catch(() => ({})) as { error?: string };
@@ -243,18 +243,34 @@ async function fetchOnceWithRetry(
   fetchImpl: typeof fetch,
   url: URL,
   retryDelayMs: number,
+  signal?: AbortSignal,
 ): Promise<Response> {
   let res: Response;
   try {
-    res = await fetchImpl(url);
-  } catch {
+    res = await fetchImpl(url, { signal });
+  } catch (err) {
+    // Surface aborts so the iterator can short-circuit. Anything else maps
+    // to a synthetic 502 so the standard transient path handles it.
+    if (err instanceof Error && err.name === 'AbortError') throw err;
     res = new Response('', { status: 502 });
   }
   if (res.status < 500) return res;
-  await new Promise((r) => setTimeout(r, retryDelayMs));
+  await new Promise<void>((resolve, reject) => {
+    if (signal?.aborted) return reject(new DOMException('Aborted', 'AbortError'));
+    const t = setTimeout(resolve, retryDelayMs);
+    signal?.addEventListener(
+      'abort',
+      () => {
+        clearTimeout(t);
+        reject(new DOMException('Aborted', 'AbortError'));
+      },
+      { once: true },
+    );
+  });
   try {
-    return await fetchImpl(url);
-  } catch {
+    return await fetchImpl(url, { signal });
+  } catch (err) {
+    if (err instanceof Error && err.name === 'AbortError') throw err;
     return new Response('', { status: 502 });
   }
 }

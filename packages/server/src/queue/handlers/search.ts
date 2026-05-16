@@ -516,6 +516,18 @@ async function runBrowserSearch(
     // been emitted above. Rethrow so the worker maps it to a `cancelled`
     // row, but skip alert insertion and schedule-failure accounting.
     if (err instanceof AbortedError) throw err;
+    if (
+      (err instanceof Error && err.name === 'AbortError') ||
+      signal?.aborted
+    ) {
+      deps.bus.emit('search:cancelled', {
+        task_id: payload.task_id ?? 'unknown',
+        site_id: site.id,
+        listings_added: listingsAdded,
+        scored: scoredEnqueued,
+      });
+      throw new AbortedError();
+    }
     const isSessionExpired = err instanceof LinkedInSessionExpiredError;
     const errorKind = isSessionExpired ? 'session_expired' : 'unknown';
     deps.bus.emit('search:failed', {
@@ -699,6 +711,23 @@ async function runApiSearch(
     });
   } catch (err) {
     if (err instanceof AbortedError) throw err;
+
+    // A native AbortError out of fetch means the user clicked Stop while a
+    // SerpAPI request was in flight. Translate to the cancellation contract:
+    // emit search:cancelled with current counts and throw AbortedError so the
+    // worker maps the row to 'cancelled' (not 'failed' + alert).
+    if (
+      (err instanceof Error && err.name === 'AbortError') ||
+      signal?.aborted
+    ) {
+      deps.bus.emit('search:cancelled', {
+        task_id: payload.task_id ?? 'unknown',
+        site_id: site.id,
+        listings_added: listingsAdded,
+        scored: scoredEnqueued,
+      });
+      throw new AbortedError();
+    }
 
     const alertKind =
       err instanceof SerpapiKeyInvalidError
