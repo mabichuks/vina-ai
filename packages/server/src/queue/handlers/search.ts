@@ -22,7 +22,7 @@ import {
 } from '../../db/repositories/schedules.js';
 import { getOrInitSearchPreferences } from '../../db/repositories/search-preferences.js';
 import type { EventBus } from '../../events/bus.js';
-import { LinkedInSessionExpiredError } from './errors.js';
+import { AbortedError, LinkedInSessionExpiredError } from './errors.js';
 import {
   searchGoogleJobs,
   SerpapiKeyInvalidError,
@@ -213,18 +213,27 @@ export interface SearchPayload {
   task_id?: string;
 }
 
+/**
+ * Payload as seen by the branch functions: the persisted `SearchPayload`
+ * plus a non-persisted `_signal` slot the worker mutates onto the parsed
+ * object before invoking the handler. The leading underscore marks it as
+ * transient (it is never re-serialized).
+ */
+type RunPayload = SearchPayload & { _signal?: AbortSignal };
+
 export function createSearchHandler(
   deps: SearchHandlerDeps,
 ): (payload: SearchPayload) => Promise<void> {
   return async (payload) => {
-    const site = findSiteById(deps.db, payload.site_id);
-    if (!site) throw new ValidationError(`Unknown site_id: ${payload.site_id}`);
+    const p = payload as RunPayload;
+    const site = findSiteById(deps.db, p.site_id);
+    if (!site) throw new ValidationError(`Unknown site_id: ${p.site_id}`);
 
-    if (site.kind === 'api') return runApiSearch(deps, site, payload);
+    if (site.kind === 'api') return runApiSearch(deps, site, p);
 
     const adapter = deps.adapters[site.id];
     if (!adapter) throw new ValidationError(`No adapter registered for site: ${site.id}`);
-    return runBrowserSearch(deps, site, adapter, payload);
+    return runBrowserSearch(deps, site, adapter, p);
   };
 }
 
@@ -236,8 +245,9 @@ async function runBrowserSearch(
   deps: SearchHandlerDeps,
   site: SiteRow,
   adapter: SiteAdapter,
-  payload: SearchPayload,
+  payload: RunPayload,
 ): Promise<void> {
+  const signal = payload._signal;
   const prefs = getOrInitSearchPreferences(deps.db);
   deps.bus.emit('search:started', {
     task_id: payload.task_id ?? 'unknown',
@@ -324,28 +334,35 @@ async function runBrowserSearch(
 
       try {
         for await (const raw of adapter.search(page, prefs)) {
+          if (signal?.aborted) break;
           listings.push(raw);
         }
         // SUCCESS PATH but yielded nothing — common when the static selector
         // matched something visually card-shaped but `extractRawListing`
         // couldn't extract a usable id/title (e.g. the bare anchor on the
         // 2026 AI-search SRP). Run the same recovery flow.
-        if (listings.length === 0) {
+        if (!signal?.aborted && listings.length === 0) {
           const recovered = await recoverViaSelectorResolver();
           if (recovered.length > 0) listings = recovered;
         }
       } catch (err) {
-        if (await adapter.onSessionExpired(page)) {
-          throw new LinkedInSessionExpiredError();
-        }
-        const recovered = await recoverViaSelectorResolver();
-        if (recovered.length > 0) {
-          listings = recovered;
-        } else {
-          snapshotForFailure = await captureFailureSnapshot(page, deps.dataDir, site.id);
-          zeroListingsDiagnostics = await probeSearchPage(page);
-          zeroListingsScreenshot = snapshotForFailure;
-          throw err;
+        // If the user cancelled mid-iteration, the iterator may throw because
+        // its underlying page was closed or the loop body raced the abort.
+        // Skip the recovery/diagnostics path and let the post-loop abort
+        // branch emit `search:cancelled` instead of a misleading error alert.
+        if (!signal?.aborted) {
+          if (await adapter.onSessionExpired(page)) {
+            throw new LinkedInSessionExpiredError();
+          }
+          const recovered = await recoverViaSelectorResolver();
+          if (recovered.length > 0) {
+            listings = recovered;
+          } else {
+            snapshotForFailure = await captureFailureSnapshot(page, deps.dataDir, site.id);
+            zeroListingsDiagnostics = await probeSearchPage(page);
+            zeroListingsScreenshot = snapshotForFailure;
+            throw err;
+          }
         }
       }
 
@@ -357,6 +374,7 @@ async function runBrowserSearch(
       const updatedJobIds: string[] = [];
 
       for (const raw of listings) {
+        if (signal?.aborted) break;
         // Search-pass keeps it cheap: insertJob with card-level data, then
         // enqueue score. No detail-page navigation, no apply-method
         // classification here — both burn 5–15s per listing of strict
@@ -415,7 +433,8 @@ async function runBrowserSearch(
 
       // Capture diagnostics BEFORE the page closes if extraction yielded
       // nothing — selectors drifted, or LinkedIn served a non-search page.
-      if (listingsAdded === 0) {
+      // Skip when aborted: zero listings is the expected shape of a cancel.
+      if (!signal?.aborted && listingsAdded === 0) {
         zeroListingsDiagnostics = await probeSearchPage(page);
         zeroListingsScreenshot = await captureFailureSnapshot(
           page,
@@ -435,6 +454,16 @@ async function runBrowserSearch(
       }
     } finally {
       await page.close().catch(() => undefined);
+    }
+
+    if (signal?.aborted) {
+      deps.bus.emit('search:cancelled', {
+        task_id: payload.task_id ?? 'unknown',
+        site_id: site.id,
+        listings_added: listingsAdded,
+        scored: scoredEnqueued,
+      });
+      throw new AbortedError();
     }
 
     if (payload.schedule_id) resetScheduleFailures(deps.db, payload.schedule_id);
@@ -483,6 +512,10 @@ async function runBrowserSearch(
       scored: scoredEnqueued,
     });
   } catch (err) {
+    // Cancellation is not a failure — the search:cancelled event has already
+    // been emitted above. Rethrow so the worker maps it to a `cancelled`
+    // row, but skip alert insertion and schedule-failure accounting.
+    if (err instanceof AbortedError) throw err;
     const isSessionExpired = err instanceof LinkedInSessionExpiredError;
     const errorKind = isSessionExpired ? 'session_expired' : 'unknown';
     deps.bus.emit('search:failed', {
@@ -561,8 +594,9 @@ async function runBrowserSearch(
 async function runApiSearch(
   deps: SearchHandlerDeps,
   site: SiteRow,
-  payload: SearchPayload,
+  payload: RunPayload,
 ): Promise<void> {
+  const signal = payload._signal;
   const prefs = getOrInitSearchPreferences(deps.db);
   deps.bus.emit('search:started', { task_id: payload.task_id ?? 'unknown', site_id: site.id });
 
@@ -597,7 +631,21 @@ async function runApiSearch(
   const updatedJobIds: string[] = [];
 
   try {
-    for await (const listing of searchImpl(input, { apiKey })) {
+    // Check before opening the iterator so a pre-aborted controller persists
+    // zero jobs and emits an empty `search:cancelled` payload — the route
+    // can throw the cancellation away cleanly without ever hitting SerpAPI.
+    if (signal?.aborted) {
+      deps.bus.emit('search:cancelled', {
+        task_id: payload.task_id ?? 'unknown',
+        site_id: site.id,
+        listings_added: 0,
+        scored: 0,
+      });
+      throw new AbortedError();
+    }
+
+    for await (const listing of searchImpl(input, { apiKey, signal })) {
+      if (signal?.aborted) break;
       try {
         const job = insertJob(deps.db, {
           site_id: site.id,
@@ -624,6 +672,20 @@ async function runApiSearch(
       }
     }
 
+    if (signal?.aborted) {
+      // Mid-iteration cancel: emit a snapshot of what landed, then bail.
+      // updatedJobIds is intentionally NOT broadcast because the UI sees
+      // the cancel event and refreshes the jobs list off of it.
+      if (updatedJobIds.length > 0) deps.bus.emit('jobs:updated', { ids: updatedJobIds });
+      deps.bus.emit('search:cancelled', {
+        task_id: payload.task_id ?? 'unknown',
+        site_id: site.id,
+        listings_added: listingsAdded,
+        scored: scoredEnqueued,
+      });
+      throw new AbortedError();
+    }
+
     if (updatedJobIds.length > 0) deps.bus.emit('jobs:updated', { ids: updatedJobIds });
     if (payload.schedule_id) resetScheduleFailures(deps.db, payload.schedule_id);
     updateSiteSession(deps.db, site.id, {
@@ -636,6 +698,7 @@ async function runApiSearch(
       scored: scoredEnqueued,
     });
   } catch (err) {
+    if (err instanceof AbortedError) throw err;
     const alertKind =
       err instanceof SerpapiKeyInvalidError
         ? 'serpapi_key_invalid'

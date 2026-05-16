@@ -2,6 +2,7 @@ import PQueue from 'p-queue';
 import type { Database as DatabaseType } from 'better-sqlite3';
 import { createLogger, TASK_KINDS, type Task, type TaskKind } from '@vina/shared';
 import {
+  cancel as cancelTaskRow,
   claimNext,
   complete,
   countByStatus,
@@ -10,6 +11,8 @@ import {
 } from '../db/repositories/task-queue.js';
 import type { EventBus } from '../events/bus.js';
 import { DEFAULT_CONCURRENCY } from './concurrency.js';
+import { AbortedError } from './handlers/errors.js';
+import { registerActiveTask, unregisterActiveTask } from './active-tasks.js';
 import { DEFAULT_TIMEOUTS_MS } from './timeouts.js';
 
 const log = createLogger('worker');
@@ -132,26 +135,56 @@ export function createWorker(options: WorkerOptions): WorkerHandle {
       emitCounts();
       return;
     }
+    // Only `search` tasks are user-cancellable. Registering an AbortController
+    // for other kinds (score/tailor/apply) would surface a /cancel-able row
+    // that has no handler-side hooks to honour the signal, so we skip them.
+    // The signal is threaded onto the parsed payload object via a transient
+    // `_signal` slot rather than widening TaskHandler<P> — that keeps every
+    // existing handler signature unchanged. We also stamp `task_id` onto the
+    // payload so handlers can emit attribution events without the row id
+    // being persisted in JSON.
+    let abortSignal: AbortSignal | undefined;
+    if (task.kind === 'search') {
+      const payloadSiteId =
+        (payload as { site_id?: unknown }).site_id &&
+        typeof (payload as { site_id?: unknown }).site_id === 'string'
+          ? ((payload as { site_id: string }).site_id)
+          : task.id;
+      abortSignal = registerActiveTask(task.id, payloadSiteId);
+      (payload as Record<string, unknown>)._signal = abortSignal;
+      (payload as Record<string, unknown>).task_id = task.id;
+    }
+
     try {
       const timeoutMs = options.timeoutsMs?.[task.kind] ?? DEFAULT_TIMEOUTS_MS[task.kind];
       await runWithTimeout(handler(payload), timeoutMs, task.kind);
       complete(options.db, task.id);
     } catch (err) {
-      const reason = err instanceof Error ? err.message : String(err);
-      const willRetry = task.attempts < task.max_attempts;
-      if (willRetry) {
-        // `fail(..., retry=true)` flips the row back to `pending`. Push the
-        // next-attempt time forward so we don't busy-loop on a flaky task.
-        fail(options.db, task.id, reason, true);
-        setNextAttemptAt(options.db, task.id, nextAttemptAtIso(task.attempts));
+      // User-cancellation: row flips to `cancelled` (idempotent), no retry,
+      // no onTerminalFailure. The handler has already emitted the
+      // `search:cancelled` event before throwing.
+      if (err instanceof AbortedError) {
+        cancelTaskRow(options.db, task.id, 'cancelled_by_user');
+        log.info({ task_id: task.id, kind: task.kind }, 'task cancelled by user');
       } else {
-        fail(options.db, task.id, reason, false);
-        options.onTerminalFailure?.(task, reason);
+        const reason = err instanceof Error ? err.message : String(err);
+        const willRetry = task.attempts < task.max_attempts;
+        if (willRetry) {
+          // `fail(..., retry=true)` flips the row back to `pending`. Push the
+          // next-attempt time forward so we don't busy-loop on a flaky task.
+          fail(options.db, task.id, reason, true);
+          setNextAttemptAt(options.db, task.id, nextAttemptAtIso(task.attempts));
+        } else {
+          fail(options.db, task.id, reason, false);
+          options.onTerminalFailure?.(task, reason);
+        }
+        log.warn(
+          { task_id: task.id, kind: task.kind, attempts: task.attempts, err },
+          'task failed',
+        );
       }
-      log.warn(
-        { task_id: task.id, kind: task.kind, attempts: task.attempts, err },
-        'task failed',
-      );
+    } finally {
+      if (task.kind === 'search') unregisterActiveTask(task.id);
     }
     emitCounts();
   }
