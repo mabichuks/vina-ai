@@ -200,19 +200,15 @@ export async function* searchGoogleJobs(
     const url = new URL(SERPAPI_BASE);
     url.searchParams.set('engine', 'google_jobs');
     url.searchParams.set('api_key', opts.apiKey);
-    if (nextPageToken) {
-      // SerpAPI docs: when using `next_page_token`, the engine resolves the
-      // full query context from the token. Re-sending `q`/`location` on a
-      // continuation page can produce empty `serpapi_pagination`, which we
-      // mis-read as "no more pages". Send the token alone on subsequent pages.
-      url.searchParams.set('next_page_token', nextPageToken);
-    } else {
-      const phrase = input.date_posted ? DATE_POSTED_PHRASES[input.date_posted] : null;
-      const q = phrase ? `${input.keywords} ${phrase}` : input.keywords;
-      url.searchParams.set('q', q);
-      if (input.location) url.searchParams.set('location', input.location);
-      if (input.num) url.searchParams.set('num', String(input.num));
-    }
+    // SerpAPI's Google Jobs requires `q` (and `location`) on every page,
+    // including continuation pages — sending `next_page_token` alone returns
+    // HTTP 400. The token only carries the pagination cursor, not the query.
+    const phrase = input.date_posted ? DATE_POSTED_PHRASES[input.date_posted] : null;
+    const q = phrase ? `${input.keywords} ${phrase}` : input.keywords;
+    url.searchParams.set('q', q);
+    if (input.location) url.searchParams.set('location', input.location);
+    if (input.num) url.searchParams.set('num', String(input.num));
+    if (nextPageToken) url.searchParams.set('next_page_token', nextPageToken);
 
     const res = await fetchOnceWithRetry(fetchImpl, url, retryDelayMs, opts.signal);
 
