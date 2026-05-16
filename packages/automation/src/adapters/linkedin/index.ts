@@ -61,16 +61,16 @@ function fWtFromPrefs(prefs: SearchPreferences): string {
  *   keywords     — from `prefs.keywords`
  *   location     — first of `prefs.locations`
  *   f_WT         — work-type codes from `prefs.work_models` (default remote+hybrid)
- *   f_TPR=r<seconds> — Time Posted Range (`r<seconds>`). Restricts results to
- *                  fresh listings only; secondary effect is that it's a strict
- *                  filter LinkedIn must honor, reinforcing the SRP-rather-than-
- *                  single-job-collapse behaviour. Defaulted to 3 days; will be
- *                  user-configurable via Settings once that surface lands. The
- *                  constant is the seam — bump it to wire a pref through.
+ *   f_TPR=r86400 — Time Posted Range, last 24 hours (`r<seconds>`). Restricts
+ *                  results to fresh listings only; secondary effect is that
+ *                  it's a strict filter LinkedIn must honor, reinforcing the
+ *                  SRP-rather-than-single-job-collapse behaviour. Hard-coded
+ *                  to 24h for now; could be wired through `prefs.posted_within_seconds`
+ *                  with a small migration if users want a tunable window.
  *   sortBy=DD    — date descending (most recent first)
  *   start=0      — paginated layout (resists single-job collapse)
  */
-const POSTED_WITHIN_SECONDS = 3 * 86_400;
+const POSTED_WITHIN_SECONDS = 86_400;
 
 function buildSearchUrl(origin: string, prefs: SearchPreferences): string {
   const url = new URL('/jobs/search/', origin);

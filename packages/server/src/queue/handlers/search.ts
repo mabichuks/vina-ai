@@ -27,7 +27,6 @@ import {
   searchGoogleJobs,
   SerpapiKeyInvalidError,
   SerpapiQuotaExhaustedError,
-  SerpapiTransientError,
   type GoogleJobsListing,
   type GoogleJobsSearchInput,
 } from '../../services/serpapi-service.js';
@@ -624,9 +623,6 @@ async function runApiSearch(
   const input: GoogleJobsSearchInput = {
     keywords: [...prefs.keywords, prefs.description].filter(Boolean).join(' '),
     location: prefs.locations[0],
-    // Default freshness window. User-configurable via Settings is the
-    // follow-up; for now we hard-cap at 3 days to keep results actionable.
-    date_posted: '3days',
   };
 
   let listingsAdded = 0;
@@ -703,17 +699,6 @@ async function runApiSearch(
     });
   } catch (err) {
     if (err instanceof AbortedError) throw err;
-
-    // Transient SerpAPI failures (HTTP 5xx, network blips, generic payload
-    // errors) are retried silently by the worker. Surfacing them as
-    // `search:failed` would flash the UI every retry tick and bury the
-    // alerts list with noise that often resolves itself within the retry
-    // budget. Log + rethrow; the worker's terminal-failure path is where a
-    // sustained transient gets escalated.
-    if (err instanceof SerpapiTransientError) {
-      log.warn({ err, site_id: site.id }, 'serpapi transient failure (will retry)');
-      throw err;
-    }
 
     const alertKind =
       err instanceof SerpapiKeyInvalidError

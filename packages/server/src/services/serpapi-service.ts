@@ -188,10 +188,11 @@ export async function* searchGoogleJobs(
     if (input.location) url.searchParams.set('location', input.location);
     if (input.num) url.searchParams.set('num', String(input.num));
     if (input.date_posted) {
-      // SerpAPI accepts `date_posted` as a top-level param; values are
-      // 'today' | '3days' | 'week' | 'month'. Anything else is silently
-      // dropped server-side, so we keep the union narrow at the type layer.
-      url.searchParams.set('date_posted', input.date_posted);
+      // SerpAPI's documented way to filter by post age is the `chips`
+      // parameter, encoded as `chips=date_posted:<value>`. Passing
+      // `date_posted` as a top-level param is undocumented and was observed
+      // to surface as transient errors against live SerpAPI accounts.
+      url.searchParams.set('chips', `date_posted:${input.date_posted}`);
     }
     if (nextPageToken) url.searchParams.set('next_page_token', nextPageToken);
     url.searchParams.set('api_key', opts.apiKey);
