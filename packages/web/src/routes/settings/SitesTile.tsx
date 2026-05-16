@@ -47,10 +47,10 @@ function GoogleJobsRow(): JSX.Element {
 
   const label = (() => {
     switch (state) {
-      case 'connected':
+      case 'active':
         return (
           <span className="text-success">
-            ● Connected
+            ● Active
             {status.data?.last_search_at && (
               <span className="ml-2 text-ink-muted">
                 · last search {new Date(status.data.last_search_at).toLocaleString()}
@@ -58,6 +58,8 @@ function GoogleJobsRow(): JSX.Element {
             )}
           </span>
         );
+      case 'paused':
+        return <span className="text-ink-muted">⏸ Paused</span>;
       case 'key_invalid':
         return <span className="text-warning">⚠ Key invalid</span>;
       case 'quota_exhausted':
@@ -80,7 +82,7 @@ function GoogleJobsRow(): JSX.Element {
               Add SerpAPI key
             </Button>
           )}
-          {state === 'connected' && (
+          {(state === 'active' || state === 'paused') && (
             <>
               <Button variant="ghost" size="sm" onClick={() => setEditing(true)}>
                 Edit key

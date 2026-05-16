@@ -278,6 +278,7 @@ export interface SiteResponse {
   kind: 'browser' | 'api';
   enabled: boolean;
   has_session: boolean;
+  has_credentials: boolean;
   session_valid_at: string | null;
   last_search_at: string | null;
 }
@@ -512,10 +513,73 @@ export function useValidateSerpapiKey(): {
   return { mutate: (key) => mut.mutateAsync(key), isPending: mut.isPending };
 }
 
-export type GoogleJobsState = 'not_configured' | 'connected' | 'key_invalid' | 'quota_exhausted';
+export type SiteState =
+  | 'not_configured'
+  | 'paused'
+  | 'active'
+  | 'key_invalid'
+  | 'quota_exhausted'
+  | 'session_expired';
+
+export interface SiteStatus {
+  state: SiteState;
+  enabled: boolean;
+  has_credentials: boolean;
+  last_search_at: string | null;
+}
+
+export function useSiteStatus(
+  id: string,
+  opts: { pollMs?: number } = {},
+): { data: SiteStatus | null; isLoading: boolean } {
+  const sites = useSites();
+  const alerts = useAlerts();
+  // reason: pollMs is reserved for future per-hook polling tuning; both
+  // underlying queries already have their own intervals configured.
+  void opts.pollMs;
+
+  if (sites.isLoading || alerts.isLoading) return { data: null, isLoading: true };
+  const row = sites.data.find((s) => s.id === id) ?? null;
+  if (!row) return { data: null, isLoading: false };
+
+  const open = alerts.data.filter((a) => a.site_id === id && a.status === 'open');
+  const hasInvalid = open.some((a) => a.kind === 'serpapi_key_invalid');
+  const hasQuota = open.some((a) => a.kind === 'serpapi_quota_exhausted');
+  const hasSessionExpired = open.some((a) => a.kind === 'linkedin_session_expired');
+
+  const state: SiteState = hasInvalid
+    ? 'key_invalid'
+    : hasQuota
+      ? 'quota_exhausted'
+      : hasSessionExpired
+        ? 'session_expired'
+        : !row.has_credentials
+          ? 'not_configured'
+          : !row.enabled
+            ? 'paused'
+            : 'active';
+
+  return {
+    data: {
+      state,
+      enabled: row.enabled,
+      has_credentials: row.has_credentials,
+      last_search_at: row.last_search_at,
+    },
+    isLoading: false,
+  };
+}
+
+export type GoogleJobsState =
+  | 'not_configured'
+  | 'paused'
+  | 'active'
+  | 'key_invalid'
+  | 'quota_exhausted';
 export interface GoogleJobsStatus {
   state: GoogleJobsState;
   enabled: boolean;
+  has_credentials: boolean;
   last_search_at: string | null;
 }
 
@@ -523,35 +587,25 @@ export function useGoogleJobsStatus(opts: { pollMs?: number } = {}): {
   data: GoogleJobsStatus | null;
   isLoading: boolean;
 } {
-  const sites = useSites();
-  const alerts = useAlerts();
-  if (sites.isLoading || alerts.isLoading) return { data: null, isLoading: true };
-  const row = sites.data.find((s) => s.id === 'google') ?? null;
-  if (!row) return { data: null, isLoading: false };
-
-  const hasInvalid = alerts.data.some(
-    (a) => a.site_id === 'google' && a.kind === 'serpapi_key_invalid' && a.status === 'open',
-  );
-  const hasQuota = alerts.data.some(
-    (a) => a.site_id === 'google' && a.kind === 'serpapi_quota_exhausted' && a.status === 'open',
-  );
-
-  const state: GoogleJobsState = hasInvalid
-    ? 'key_invalid'
-    : hasQuota
-      ? 'quota_exhausted'
-      : row.session_valid_at || row.enabled
-        ? 'connected'
-        : 'not_configured';
-
-  // reason: pollMs is reserved for future per-hook polling tuning; both
-  // underlying queries already have their own intervals configured.
-  void opts.pollMs;
-
+  const inner = useSiteStatus('google', opts);
+  if (!inner.data) return { data: null, isLoading: inner.isLoading };
   return {
-    data: { state, enabled: row.enabled, last_search_at: row.last_search_at },
-    isLoading: false,
+    data: {
+      // session_expired is unreachable for the google row; the cast is safe.
+      state: inner.data.state as GoogleJobsState,
+      enabled: inner.data.enabled,
+      has_credentials: inner.data.has_credentials,
+      last_search_at: inner.data.last_search_at,
+    },
+    isLoading: inner.isLoading,
   };
+}
+
+export function useLinkedInSiteStatus(opts: { pollMs?: number } = {}): {
+  data: SiteStatus | null;
+  isLoading: boolean;
+} {
+  return useSiteStatus('linkedin', opts);
 }
 
 export function useEnableGoogleJobs(): {
