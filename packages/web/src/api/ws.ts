@@ -65,11 +65,22 @@ function updateSearchProgressFor(eventType: string, payload: unknown): void {
       store.markCancelled();
       break;
     case 'jobs:updated': {
+      // Discovery progress only. Score completions emit a dedicated
+      // score:job_completed event — counting jobs:updated during 'scoring'
+      // would race with manual triage events (skip/applied) and miscount.
+      if (store.phase !== 'discovering') return;
       const ids = (payload as JobsUpdatedPayload | undefined)?.ids;
       const n = Array.isArray(ids) ? ids.length : 0;
       if (n === 0) return;
-      if (store.phase === 'discovering') store.countDiscoveredListings(n);
-      else if (store.phase === 'scoring') store.countScored(n);
+      store.countDiscoveredListings(n);
+      break;
+    }
+    case 'score:job_completed': {
+      // Always count one toward the scoring goal, regardless of which phase
+      // we're observing. A score task that completes before search:completed
+      // still represents real progress; we just buffer it until beginScoring
+      // sets the target.
+      if (store.phase === 'scoring') store.countScored(1);
       break;
     }
     case 'search:completed': {

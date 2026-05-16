@@ -36,6 +36,14 @@ interface SearchProgressState {
   currentTaskId: string | null;
   /** True when the most recent terminal transition came from `search:cancelled`. */
   wasCancelled: boolean;
+  /**
+   * Score completions that arrived before `beginScoring` set a target — the
+   * worker can run score tasks concurrently with the search loop, so a fast
+   * LLM can finish scoring before the handler emits `search:completed`. We
+   * buffer them and fold into `scoredCount` when the target lands; otherwise
+   * the counter sticks below the total and the UI flashes "scoring" forever.
+   */
+  pendingScoreCount: number;
 }
 
 interface SearchProgressActions {
@@ -58,6 +66,7 @@ const INITIAL: SearchProgressState = {
   phaseChangedAt: 0,
   currentTaskId: null,
   wasCancelled: false,
+  pendingScoreCount: 0,
 };
 
 export const useSearchProgressStore = create<SearchProgressState & SearchProgressActions>(
@@ -69,6 +78,7 @@ export const useSearchProgressStore = create<SearchProgressState & SearchProgres
         listingsFound: 0,
         scoredCount: 0,
         totalToScore: 0,
+        pendingScoreCount: 0,
         errorKind: null,
         currentTaskId: opts?.taskId ?? null,
         wasCancelled: false,
@@ -81,16 +91,29 @@ export const useSearchProgressStore = create<SearchProgressState & SearchProgres
           : s,
       ),
     beginScoring: (totalToScore) =>
-      set({
-        // When the search produced no new score tasks we skip 'scoring' entirely
-        // — staying there would leave the UI stuck on "Scoring 0/0".
-        phase: totalToScore > 0 ? 'scoring' : 'done',
-        totalToScore,
-        scoredCount: 0,
-        phaseChangedAt: Date.now(),
+      set((s) => {
+        // Score completions that landed during the discovering phase still
+        // count toward the target. Fold the buffer in here so the counter
+        // doesn't undercount when the LLM beats the search handler to the
+        // event bus.
+        const scoredCount = Math.min(s.pendingScoreCount, Math.max(totalToScore, 0));
+        const done = scoredCount >= totalToScore && totalToScore > 0;
+        return {
+          // When the search produced no new score tasks we skip 'scoring' entirely
+          // — staying there would leave the UI stuck on "Scoring 0/0".
+          phase: totalToScore > 0 && !done ? 'scoring' : 'done',
+          totalToScore,
+          scoredCount,
+          pendingScoreCount: 0,
+          phaseChangedAt: Date.now(),
+        };
       }),
     countScored: (n) =>
       set((s) => {
+        if (s.phase === 'discovering') {
+          // Buffer until beginScoring sets a target.
+          return { pendingScoreCount: s.pendingScoreCount + n };
+        }
         if (s.phase !== 'scoring') return s;
         const scoredCount = Math.min(s.scoredCount + n, Math.max(s.totalToScore, 0));
         return scoredCount >= s.totalToScore && s.totalToScore > 0

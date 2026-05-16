@@ -79,7 +79,13 @@ export function createScoreHandler(
         updateJobStatus(deps.db, job.id, 'scored');
       }
     })();
+    // Two events, two concerns: jobs:updated invalidates the worklist cache;
+    // score:job_completed drives the search-progress store's "scoring N/M"
+    // counter. Splitting them prevents a race where a fast score task that
+    // completes BEFORE search:completed emits gets miscounted as a discovery
+    // event, leaving the counter stuck below totalToScore forever.
     deps.bus.emit('jobs:updated', { ids: [job.id] });
+    deps.bus.emit('score:job_completed', { job_id: job.id, score: result.score });
     log.info({ job_id: job.id, score: result.score }, 'job scored');
   };
 }
