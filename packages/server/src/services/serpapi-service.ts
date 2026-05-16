@@ -71,13 +71,24 @@ export async function validateSerpApiKey(plaintext: string): Promise<ValidateRes
 // ---------------------------------------------------------------------------
 
 /**
- * SerpAPI `date_posted` filter — restricts results to listings posted within
- * the given window. Mirrors Google Jobs' "Date posted" facet on the UI.
- * Mapped onto the request as `?chips=date_posted:<value>` since SerpAPI passes
- * the chip param through verbatim; the raw `date_posted` param is the
- * documented short form and is what we use here.
+ * Restricts results to listings posted within the given window. Mirrors
+ * Google Jobs' "Date posted" facet on the UI.
+ *
+ * Implementation choice: append a natural-language phrase to the `q` string
+ * rather than the `chips` param. SerpAPI's documented `chips` filter is a
+ * server-issued token from a prior response's `chips_filter` array — it
+ * isn't a manually-constructable `key:value` string. Google Jobs parses
+ * "in the last N days" out of the query itself, which is what the SerpAPI
+ * playground demonstrates ("`.net developer jobs uk in the last 3 days`").
  */
 export type DatePostedFilter = 'today' | '3days' | 'week' | 'month';
+
+const DATE_POSTED_PHRASES: Record<DatePostedFilter, string> = {
+  today: 'in the last 24 hours',
+  '3days': 'in the last 3 days',
+  week: 'in the last week',
+  month: 'in the last month',
+};
 
 export interface GoogleJobsSearchInput {
   keywords: string;
@@ -184,16 +195,11 @@ export async function* searchGoogleJobs(
 
     const url = new URL(SERPAPI_BASE);
     url.searchParams.set('engine', 'google_jobs');
-    url.searchParams.set('q', input.keywords);
+    const phrase = input.date_posted ? DATE_POSTED_PHRASES[input.date_posted] : null;
+    const q = phrase ? `${input.keywords} ${phrase}` : input.keywords;
+    url.searchParams.set('q', q);
     if (input.location) url.searchParams.set('location', input.location);
     if (input.num) url.searchParams.set('num', String(input.num));
-    if (input.date_posted) {
-      // SerpAPI's documented way to filter by post age is the `chips`
-      // parameter, encoded as `chips=date_posted:<value>`. Passing
-      // `date_posted` as a top-level param is undocumented and was observed
-      // to surface as transient errors against live SerpAPI accounts.
-      url.searchParams.set('chips', `date_posted:${input.date_posted}`);
-    }
     if (nextPageToken) url.searchParams.set('next_page_token', nextPageToken);
     url.searchParams.set('api_key', opts.apiKey);
 

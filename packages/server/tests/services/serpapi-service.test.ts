@@ -129,7 +129,7 @@ describe('searchGoogleJobs', () => {
     expect(out.map((l) => l.external_id)).toEqual(['a', 'b']);
   });
 
-  it('forwards date_posted as a chips filter when set on the input', async () => {
+  it('appends a natural-language freshness phrase to q when date_posted is set', async () => {
     let capturedUrl: URL | null = null;
     const fetchImpl: typeof fetch = async (input) => {
       capturedUrl = typeof input === 'string' ? new URL(input) : (input as URL);
@@ -137,21 +137,23 @@ describe('searchGoogleJobs', () => {
     };
     await collect(
       searchGoogleJobs(
-        { keywords: 'x', date_posted: '3days' },
+        { keywords: '.net developer uk', date_posted: '3days' },
         { apiKey: 'k', fetchImpl, maxPages: 1 },
       ),
     );
-    expect(capturedUrl!.searchParams.get('chips')).toBe('date_posted:3days');
+    expect(capturedUrl!.searchParams.get('q')).toBe('.net developer uk in the last 3 days');
   });
 
-  it('omits the chips filter when date_posted is undefined', async () => {
+  it('leaves q untouched when date_posted is undefined', async () => {
     let capturedUrl: URL | null = null;
     const fetchImpl: typeof fetch = async (input) => {
       capturedUrl = typeof input === 'string' ? new URL(input) : (input as URL);
       return new Response(JSON.stringify({ jobs_results: [] }), { status: 200 });
     };
-    await collect(searchGoogleJobs({ keywords: 'x' }, { apiKey: 'k', fetchImpl, maxPages: 1 }));
-    expect(capturedUrl!.searchParams.has('chips')).toBe(false);
+    await collect(
+      searchGoogleJobs({ keywords: 'typescript' }, { apiKey: 'k', fetchImpl, maxPages: 1 }),
+    );
+    expect(capturedUrl!.searchParams.get('q')).toBe('typescript');
   });
 
   it('drops listings without apply_options[0].link', async () => {
