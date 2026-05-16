@@ -44,12 +44,20 @@ interface SearchProgressState {
    * the counter sticks below the total and the UI flashes "scoring" forever.
    */
   pendingScoreCount: number;
+  /**
+   * Total listings the server saw on the last completed search, including
+   * dedups against the existing worklist. Lets the panel distinguish "0
+   * results from Google" from "results came back but all were already on
+   * your worklist" — both currently land in the same `totalToScore===0`
+   * branch.
+   */
+  lastListingsTouched: number;
 }
 
 interface SearchProgressActions {
   beginDiscovering: (opts?: { taskId?: string }) => void;
   countDiscoveredListings: (n: number) => void;
-  beginScoring: (totalToScore: number) => void;
+  beginScoring: (totalToScore: number, listingsAdded?: number) => void;
   countScored: (n: number) => void;
   markDone: () => void;
   markCancelled: () => void;
@@ -67,6 +75,7 @@ const INITIAL: SearchProgressState = {
   currentTaskId: null,
   wasCancelled: false,
   pendingScoreCount: 0,
+  lastListingsTouched: 0,
 };
 
 export const useSearchProgressStore = create<SearchProgressState & SearchProgressActions>(
@@ -79,6 +88,7 @@ export const useSearchProgressStore = create<SearchProgressState & SearchProgres
         scoredCount: 0,
         totalToScore: 0,
         pendingScoreCount: 0,
+        lastListingsTouched: 0,
         errorKind: null,
         currentTaskId: opts?.taskId ?? null,
         wasCancelled: false,
@@ -90,7 +100,7 @@ export const useSearchProgressStore = create<SearchProgressState & SearchProgres
           ? { listingsFound: s.listingsFound + n }
           : s,
       ),
-    beginScoring: (totalToScore) =>
+    beginScoring: (totalToScore, listingsAdded = 0) =>
       set((s) => {
         // Score completions that landed during the discovering phase still
         // count toward the target. Fold the buffer in here so the counter
@@ -105,6 +115,7 @@ export const useSearchProgressStore = create<SearchProgressState & SearchProgres
           totalToScore,
           scoredCount,
           pendingScoreCount: 0,
+          lastListingsTouched: listingsAdded,
           phaseChangedAt: Date.now(),
         };
       }),

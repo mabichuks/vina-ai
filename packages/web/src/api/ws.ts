@@ -43,6 +43,7 @@ interface JobsUpdatedPayload {
 }
 interface SearchCompletedPayload {
   scored: number;
+  listings_added: number;
 }
 interface SearchFailedPayload {
   error_kind: string;
@@ -84,8 +85,10 @@ function updateSearchProgressFor(eventType: string, payload: unknown): void {
       break;
     }
     case 'search:completed': {
-      const scored = (payload as SearchCompletedPayload | undefined)?.scored ?? 0;
-      store.beginScoring(scored);
+      const p = payload as SearchCompletedPayload | undefined;
+      const scored = p?.scored ?? 0;
+      const listingsAdded = p?.listings_added ?? 0;
+      store.beginScoring(scored, listingsAdded);
       break;
     }
     case 'search:failed': {

@@ -30,7 +30,8 @@ export function SearchNowButton(): JSX.Element {
   const google = useSiteStatus('google', { pollMs: 5_000 });
   const runNow = useRunSearchNow();
   const pushToast = useUiStore((s) => s.pushToast);
-  const { phase, listingsFound, scoredCount, totalToScore } = useSearchProgressStore();
+  const { phase, listingsFound, scoredCount, totalToScore, lastListingsTouched } =
+    useSearchProgressStore();
   const gerund = useSearchGerund(phase);
   const [menuOpen, setMenuOpen] = useState(false);
 
@@ -54,7 +55,8 @@ export function SearchNowButton(): JSX.Element {
           ? `${gerund ?? 'Scoring'} ${scoredCount}/${totalToScore}…`
           : `${gerund ?? 'Scoring'}…`;
       case 'done':
-        return totalToScore > 0 ? `Done · ${scoredCount} scored` : 'Done · no new jobs';
+        if (totalToScore > 0) return `Done · ${scoredCount} scored`;
+        return lastListingsTouched > 0 ? 'Done · all up to date' : 'Done · no listings';
       case 'error':
         return 'Search failed — retry';
       default:

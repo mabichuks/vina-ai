@@ -20,6 +20,7 @@ export function SearchActivityPanel(): JSX.Element | null {
     phaseChangedAt,
     currentTaskId,
     wasCancelled,
+    lastListingsTouched,
   } = useSearchProgressStore();
   const cancel = useCancelSearch();
   const gerund = useSearchGerund(phase);
@@ -56,9 +57,15 @@ export function SearchActivityPanel(): JSX.Element | null {
             ? `Cancelled · ${scoredCount} scored`
             : `Cancelled · ${listingsFound} listings`;
         }
-        return totalToScore > 0
-          ? `Done · ${scoredCount} new jobs scored`
-          : 'Done · no new jobs this run';
+        if (totalToScore > 0) return `Done · ${scoredCount} new jobs scored`;
+        // No new score tasks ran. Distinguish between "Google returned nothing"
+        // and "every result was already on your worklist" — both used to surface
+        // the same flat "no new jobs this run" message, which made it impossible
+        // to tell whether the search itself was broken.
+        if (lastListingsTouched > 0) {
+          return `Done · ${lastListingsTouched} listings already on your worklist`;
+        }
+        return 'Done · no listings returned';
       case 'error':
         return errorKind === 'session_expired'
           ? 'Search failed · LinkedIn session expired'
