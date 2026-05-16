@@ -29,6 +29,13 @@ interface SiteResponse {
   kind: 'browser' | 'api';
   enabled: boolean;
   has_session: boolean;
+  /**
+   * True when the site has whatever it needs to be usable: a Playwright
+   * session on disk for browser-kind rows, a stored SerpAPI key for the
+   * single api-kind row. Distinct from `enabled` — a paused source can still
+   * have credentials.
+   */
+  has_credentials: boolean;
   session_valid_at: string | null;
   last_search_at: string | null;
 }
@@ -45,16 +52,22 @@ export async function siteRoutes(
 
   app.get(
     '/api/sites',
-    async (): Promise<SiteResponse[]> =>
-      listSites(db).map((s) => ({
+    async (): Promise<SiteResponse[]> => {
+      const serpApiKeyPresent = hasSerpApiKey(db);
+      return listSites(db).map((s) => ({
         id: s.id,
         display_name: s.display_name,
         kind: s.kind,
         enabled: s.enabled,
         has_session: s.session_path !== null,
+        has_credentials:
+          s.kind === 'browser' ? s.session_path !== null :
+          s.kind === 'api'     ? serpApiKeyPresent :
+          false,
         session_valid_at: s.session_valid_at,
         last_search_at: s.last_search_at,
-      })),
+      }));
+    },
   );
 
   app.patch('/api/sites/:id', async (req) => {
