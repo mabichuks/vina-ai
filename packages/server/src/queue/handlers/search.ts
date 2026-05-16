@@ -640,6 +640,10 @@ async function runApiSearch(
   const input: GoogleJobsSearchInput = {
     keywords: prefs.keywords.filter(Boolean).join(' ') || prefs.description,
     location: prefs.locations[0],
+    // Default freshness window. User-configurable via Settings is a follow-up;
+    // for now we hard-cap at 3 days to keep results actionable. Translated
+    // into the SerpAPI `chips=date_posted:3days` form by the service layer.
+    date_posted: '3days',
   };
 
   let listingsAdded = 0;
