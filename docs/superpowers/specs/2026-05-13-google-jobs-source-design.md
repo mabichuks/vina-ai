@@ -1,6 +1,6 @@
 # Google Jobs Source via SerpAPI — Design
 
-**Status:** Designed (2026-05-13).
+**Status:** Implemented (2026-05-16).
 **Date:** 2026-05-13.
 **Scope:** Bring Google Jobs online as the second source. HTTP-only (no Playwright). Every listing routes through the existing JobsPage UX as `apply_method='manual'`. Tailored materials (CV + cover letter) are out of scope here — they land in Phase B.
 
