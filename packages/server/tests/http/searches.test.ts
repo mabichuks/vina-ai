@@ -1,12 +1,18 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { listPending } from '../../src/db/repositories/task-queue.js';
+import {
+  registerActiveTask,
+  _resetActiveTasksForTests,
+} from '../../src/queue/active-tasks.js';
 import { auth, buildTestApp, type TestAppHandle } from './helpers.js';
 
 let h: TestAppHandle;
 beforeEach(async () => {
   h = await buildTestApp();
+  _resetActiveTasksForTests();
 });
 afterEach(async () => {
+  _resetActiveTasksForTests();
   await h.cleanup();
 });
 
@@ -56,5 +62,71 @@ describe('POST /api/searches/run-now', () => {
       payload: { site_id: 'nope' },
     });
     expect(res.statusCode).toBe(404);
+  });
+});
+
+describe('POST /api/searches/cancel', () => {
+  it('cancels by task_id and aborts the registered signal', async () => {
+    const signal = registerActiveTask('t-known', 'google');
+    const res = await h.app.inject({
+      method: 'POST',
+      url: '/api/searches/cancel',
+      headers: auth(h.token),
+      payload: { task_id: 't-known' },
+    });
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toEqual({ cancelled: 1 });
+    expect(signal.aborted).toBe(true);
+  });
+
+  it('cancels by site_id and aborts every signal on that site', async () => {
+    const s1 = registerActiveTask('a', 'google');
+    const s2 = registerActiveTask('b', 'google');
+    const s3 = registerActiveTask('c', 'linkedin');
+    const res = await h.app.inject({
+      method: 'POST',
+      url: '/api/searches/cancel',
+      headers: auth(h.token),
+      payload: { site_id: 'google' },
+    });
+    expect(res.json()).toEqual({ cancelled: 2 });
+    expect(s1.aborted).toBe(true);
+    expect(s2.aborted).toBe(true);
+    expect(s3.aborted).toBe(false);
+  });
+
+  it('returns cancelled:0 when the task_id is unknown (200, not 404)', async () => {
+    const res = await h.app.inject({
+      method: 'POST',
+      url: '/api/searches/cancel',
+      headers: auth(h.token),
+      payload: { task_id: 'ghost' },
+    });
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toEqual({ cancelled: 0 });
+  });
+
+  it('prefers task_id when both are provided', async () => {
+    const signal = registerActiveTask('only-this-one', 'google');
+    const other = registerActiveTask('other', 'google');
+    const res = await h.app.inject({
+      method: 'POST',
+      url: '/api/searches/cancel',
+      headers: auth(h.token),
+      payload: { task_id: 'only-this-one', site_id: 'google' },
+    });
+    expect(res.json()).toEqual({ cancelled: 1 });
+    expect(signal.aborted).toBe(true);
+    expect(other.aborted).toBe(false);
+  });
+
+  it('rejects requests with neither task_id nor site_id', async () => {
+    const res = await h.app.inject({
+      method: 'POST',
+      url: '/api/searches/cancel',
+      headers: auth(h.token),
+      payload: {},
+    });
+    expect(res.statusCode).toBe(400);
   });
 });
