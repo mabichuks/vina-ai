@@ -104,6 +104,34 @@ describe('score handler', () => {
     await expect(handler({ job_id: 'missing' })).rejects.toThrow(NotFoundError);
   });
 
+  it('does not clobber status when the user has already skipped the job mid-score', async () => {
+    const job = insertJob(db, {
+      site_id: 'linkedin',
+      external_id: 'race-1',
+      url: 'https://x',
+      apply_method: 'auto',
+      title: 'Engineer',
+      company: 'Acme',
+      description: 'TS',
+    });
+    // Simulate the user clicking Skip between enqueue and run.
+    const { updateJobStatus } = await import('../../../src/db/repositories/jobs.js');
+    updateJobStatus(db, job.id, 'skipped');
+
+    const handler = createScoreHandler({
+      db,
+      bus: createEventBus(),
+      buildModel: async () => fakeScorer(82, 'fine'),
+    });
+    await handler({ job_id: job.id });
+
+    const fresh = findJobById(db, job.id);
+    // Score and justification persist so the alternate filters still see it,
+    // but status remains 'skipped' — the user's triage decision wins.
+    expect(fresh?.match_score).toBe(82);
+    expect(fresh?.status).toBe('skipped');
+  });
+
   it('folds the default CV extracted_text into the prompt as the CV section', async () => {
     insertCv(db, {
       label: 'main',

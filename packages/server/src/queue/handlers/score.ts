@@ -70,7 +70,14 @@ export function createScoreHandler(
 
     deps.db.transaction(() => {
       updateJobScore(deps.db, job.id, result.score, result.justification);
-      updateJobStatus(deps.db, job.id, 'scored');
+      // Only flip status if the row is still in its initial state. The user
+      // can skip / mark-applied between the score task being enqueued and
+      // running; clobbering 'skipped' back to 'scored' here re-surfaces jobs
+      // in the New worklist that they've already triaged.
+      const fresh = findJobById(deps.db, job.id);
+      if (fresh?.status === 'new') {
+        updateJobStatus(deps.db, job.id, 'scored');
+      }
     })();
     deps.bus.emit('jobs:updated', { ids: [job.id] });
     log.info({ job_id: job.id, score: result.score }, 'job scored');
