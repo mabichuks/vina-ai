@@ -5,7 +5,7 @@ import { insertCv } from '../../src/db/repositories/cvs.js';
 import { insertLlmProvider } from '../../src/db/repositories/llm-providers.js';
 import { insertProfile } from '../../src/db/repositories/profile.js';
 import { updateSettings } from '../../src/db/repositories/settings.js';
-import { updateSiteEnabled } from '../../src/db/repositories/sites.js';
+import { updateSiteEnabled, updateSiteSession } from '../../src/db/repositories/sites.js';
 import { insertSchedule, updateSchedule } from '../../src/db/repositories/schedules.js';
 import { buildTestApp, type TestAppHandle } from './helpers.js';
 
@@ -78,6 +78,10 @@ describe('GET /api/bootstrap', () => {
     expect(res.onboarded).toBe(false);
 
     updateSiteEnabled(db, 'linkedin', true);
+    updateSiteSession(db, 'linkedin', {
+      session_path: '/tmp/linkedin-session',
+      session_valid_at: '2026-05-16T00:00:00Z',
+    });
     res = (await app.inject({ method: 'GET', url: '/api/bootstrap' })).json() as {
       onboarded: boolean;
     };
@@ -86,6 +90,29 @@ describe('GET /api/bootstrap', () => {
 
     updateSettings(db, { active_llm_provider_id: provider.id });
     res = (await app.inject({ method: 'GET', url: '/api/bootstrap' })).json() as {
+      onboarded: boolean;
+    };
+    expect(res.onboarded).toBe(true);
+  });
+
+  it('stays onboarded after the user pauses every site (has_credentials, not enabled, is the gate)', async () => {
+    insertProfile(db, { full_name: 'Ada', email: 'ada@x.com' });
+    const provider = insertLlmProvider(db, { kind: 'anthropic', label: 'C', model: 'm' });
+    insertCv(db, {
+      label: 'A',
+      original_filename: 'cv.pdf',
+      mime_type: 'application/pdf',
+      file_path: 'cv.pdf',
+    });
+    updateSettings(db, { active_llm_provider_id: provider.id });
+    // LinkedIn has a session on disk but the user toggled it off.
+    updateSiteSession(db, 'linkedin', {
+      session_path: '/tmp/linkedin-session',
+      session_valid_at: '2026-05-16T00:00:00Z',
+    });
+    updateSiteEnabled(db, 'linkedin', false);
+
+    const res = (await app.inject({ method: 'GET', url: '/api/bootstrap' })).json() as {
       onboarded: boolean;
     };
     expect(res.onboarded).toBe(true);

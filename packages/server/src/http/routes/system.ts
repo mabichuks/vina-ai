@@ -47,7 +47,19 @@ function isOnboarded(db: DatabaseType): boolean {
   // one as active, otherwise the orchestrator has nothing to call.
   if (!getOrInitSettings(db).active_llm_provider_id) return false;
   if (listCvs(db).length === 0) return false;
-  if (!listSites(db).some((s) => s.enabled)) return false;
+  // Has-credentials, NOT enabled: a paused source still counts as configured.
+  // Browser-kind sources are credentialed by a Playwright session on disk
+  // (`session_path`); the api-kind google row is credentialed by a stored
+  // SerpAPI key. Checking `enabled` here would trap users in the wizard the
+  // moment they paused a source via the Settings toggle.
+  const sites = listSites(db);
+  const serpApiKeyPresent = hasSerpApiKey(db);
+  const hasAnyCredentials = sites.some((s) => {
+    if (s.kind === 'browser') return s.session_path !== null;
+    if (s.kind === 'api' && s.id === 'google') return serpApiKeyPresent;
+    return false;
+  });
+  if (!hasAnyCredentials) return false;
   return true;
 }
 
