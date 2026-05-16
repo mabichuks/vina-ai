@@ -213,6 +213,10 @@ export async function* searchGoogleJobs(
       if (input.location) url.searchParams.set('location', input.location);
       if (input.num) url.searchParams.set('num', String(input.num));
     }
+    log.info(
+      { page: pageIdx + 1, max_pages: maxPages, url: redactKey(url) },
+      'serpapi page fetch',
+    );
 
     const res = await fetchOnceWithRetry(fetchImpl, url, retryDelayMs, opts.signal);
 
@@ -253,6 +257,10 @@ export async function* searchGoogleJobs(
         lower.includes('no results') ||
         lower.includes("didn't return any results")
       ) {
+        log.info(
+          { page: pageIdx + 1, error: payload.error },
+          'serpapi reported no results, stopping pagination',
+        );
         return;
       }
       throw new SerpapiTransientError(payload.error);
