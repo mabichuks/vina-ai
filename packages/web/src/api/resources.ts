@@ -509,7 +509,13 @@ export function useDismissAlert(): { mutate: (id: string) => Promise<void> } {
 
 export interface SerpapiValidateResult {
   ok: boolean;
-  reason?: 'auth_failed' | 'rate_limited' | 'network' | 'other' | 'no_key_configured';
+  reason?:
+    | 'auth_failed'
+    | 'rate_limited'
+    | 'network'
+    | 'other'
+    | 'no_key_configured'
+    | 'empty_key';
   detail?: string;
   latency_ms?: number;
 }
@@ -520,8 +526,15 @@ export function useValidateSerpapiKey(): {
 } {
   const qc = useQueryClient();
   const mut = useMutation<SerpapiValidateResult, Error, string>({
-    mutationFn: (key) =>
-      api<SerpapiValidateResult>('/api/sites/google/test', { method: 'POST', body: { key } }),
+    mutationFn: async (key) => {
+      if (typeof key !== 'string' || key.trim().length === 0) {
+        return { ok: false as const, reason: 'empty_key' as const, detail: 'Key is required' };
+      }
+      return api<SerpapiValidateResult>('/api/sites/google/test', {
+        method: 'POST',
+        body: { key },
+      });
+    },
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: ['sites'] });
     },
