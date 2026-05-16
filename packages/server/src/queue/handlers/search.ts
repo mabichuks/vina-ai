@@ -632,8 +632,13 @@ async function runApiSearch(
   }
 
   const searchImpl = deps.serpapiSearch ?? searchGoogleJobs;
+  // Google Jobs is keyword-only. `prefs.description` is a long natural-language
+  // paragraph used by the scoring LLM — concatenating it onto the query string
+  // produces a query Google rejects as "no results". Match the LinkedIn
+  // adapter's behaviour and feed only `prefs.keywords`. The role description
+  // still influences which listings *match* (via the score handler downstream).
   const input: GoogleJobsSearchInput = {
-    keywords: [...prefs.keywords, prefs.description].filter(Boolean).join(' '),
+    keywords: prefs.keywords.filter(Boolean).join(' ') || prefs.description,
     location: prefs.locations[0],
   };
 

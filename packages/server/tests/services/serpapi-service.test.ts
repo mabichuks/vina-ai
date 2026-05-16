@@ -170,6 +170,19 @@ describe('searchGoogleJobs', () => {
     ).rejects.toBeInstanceOf(SerpapiKeyInvalidError);
   });
 
+  it('treats SerpAPI "no results" error as an empty page (does not throw)', async () => {
+    const fetchImpl = fakeFetch({
+      'page-1': {
+        status: 200,
+        body: { error: "Google hasn't returned any results for this query." },
+      },
+    });
+    const out = await collect(
+      searchGoogleJobs({ keywords: 'unfindable role' }, { apiKey: 'k', fetchImpl }),
+    );
+    expect(out).toEqual([]);
+  });
+
   it('throws SerpapiQuotaExhaustedError on 429', async () => {
     const fetchImpl = fakeFetch({ 'page-1': { status: 429 } });
     await expect(

@@ -224,6 +224,17 @@ export async function* searchGoogleJobs(
       if (lower.includes('limit') || lower.includes('exceeded')) {
         throw new SerpapiQuotaExhaustedError();
       }
+      // SerpAPI surfaces "no results" via `error` rather than an empty
+      // `jobs_results` array. Treat as a clean empty-result page: stop
+      // pagination and return without throwing, so the handler reports
+      // "0 listings added" instead of "search failed" + a retry storm.
+      if (
+        lower.includes("hasn't returned any results") ||
+        lower.includes('no results') ||
+        lower.includes("didn't return any results")
+      ) {
+        return;
+      }
       throw new SerpapiTransientError(payload.error);
     }
 
