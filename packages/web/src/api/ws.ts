@@ -22,6 +22,7 @@ const INVALIDATIONS: Record<string, ReadonlyArray<readonly unknown[]>> = {
   'search:started': [['jobs']],
   'search:completed': [['jobs']],
   'search:failed': [['jobs']],
+  'search:cancelled': [['jobs']],
   'linkedin:session-expired': [['linkedin-status']],
   'site:login_status': [['sites'], ['linkedin-status']],
   'alert:created': [['alerts']],
@@ -55,8 +56,13 @@ interface SearchFailedPayload {
 function updateSearchProgressFor(eventType: string, payload: unknown): void {
   const store = useSearchProgressStore.getState();
   switch (eventType) {
-    case 'search:started':
-      store.beginDiscovering();
+    case 'search:started': {
+      const taskId = (payload as { task_id?: string } | undefined)?.task_id;
+      store.beginDiscovering({ taskId });
+      break;
+    }
+    case 'search:cancelled':
+      store.markCancelled();
       break;
     case 'jobs:updated': {
       const ids = (payload as JobsUpdatedPayload | undefined)?.ids;

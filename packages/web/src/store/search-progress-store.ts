@@ -32,14 +32,19 @@ interface SearchProgressState {
   errorKind: string | null;
   /** Timestamp of the latest phase transition; used for "x seconds ago." */
   phaseChangedAt: number;
+  /** Most-recent task id observed on `search:started`; null between runs. */
+  currentTaskId: string | null;
+  /** True when the most recent terminal transition came from `search:cancelled`. */
+  wasCancelled: boolean;
 }
 
 interface SearchProgressActions {
-  beginDiscovering: () => void;
+  beginDiscovering: (opts?: { taskId?: string }) => void;
   countDiscoveredListings: (n: number) => void;
   beginScoring: (totalToScore: number) => void;
   countScored: (n: number) => void;
   markDone: () => void;
+  markCancelled: () => void;
   markError: (errorKind: string) => void;
   reset: () => void;
 }
@@ -51,18 +56,22 @@ const INITIAL: SearchProgressState = {
   totalToScore: 0,
   errorKind: null,
   phaseChangedAt: 0,
+  currentTaskId: null,
+  wasCancelled: false,
 };
 
 export const useSearchProgressStore = create<SearchProgressState & SearchProgressActions>(
   (set) => ({
     ...INITIAL,
-    beginDiscovering: () =>
+    beginDiscovering: (opts) =>
       set({
         phase: 'discovering',
         listingsFound: 0,
         scoredCount: 0,
         totalToScore: 0,
         errorKind: null,
+        currentTaskId: opts?.taskId ?? null,
+        wasCancelled: false,
         phaseChangedAt: Date.now(),
       }),
     countDiscoveredListings: (n) =>
@@ -90,6 +99,12 @@ export const useSearchProgressStore = create<SearchProgressState & SearchProgres
       }),
     markDone: () =>
       set((s) => (s.phase === 'done' ? s : { phase: 'done', phaseChangedAt: Date.now() })),
+    markCancelled: () =>
+      set((s) =>
+        s.phase === 'done' && s.wasCancelled
+          ? s
+          : { phase: 'done', wasCancelled: true, phaseChangedAt: Date.now() },
+      ),
     markError: (errorKind) =>
       set((s) =>
         s.phase === 'error' && s.errorKind === errorKind
