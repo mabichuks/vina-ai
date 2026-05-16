@@ -3,6 +3,10 @@
  * `searchGoogleJobs` is the paginated iterator used by the search handler.
  */
 
+import { createLogger } from '@vina/shared';
+
+const log = createLogger('serpapi');
+
 export type ValidateResult =
   | { ok: true; latency_ms: number }
   | {
@@ -195,13 +199,20 @@ export async function* searchGoogleJobs(
 
     const url = new URL(SERPAPI_BASE);
     url.searchParams.set('engine', 'google_jobs');
-    const phrase = input.date_posted ? DATE_POSTED_PHRASES[input.date_posted] : null;
-    const q = phrase ? `${input.keywords} ${phrase}` : input.keywords;
-    url.searchParams.set('q', q);
-    if (input.location) url.searchParams.set('location', input.location);
-    if (input.num) url.searchParams.set('num', String(input.num));
-    if (nextPageToken) url.searchParams.set('next_page_token', nextPageToken);
     url.searchParams.set('api_key', opts.apiKey);
+    if (nextPageToken) {
+      // SerpAPI docs: when using `next_page_token`, the engine resolves the
+      // full query context from the token. Re-sending `q`/`location` on a
+      // continuation page can produce empty `serpapi_pagination`, which we
+      // mis-read as "no more pages". Send the token alone on subsequent pages.
+      url.searchParams.set('next_page_token', nextPageToken);
+    } else {
+      const phrase = input.date_posted ? DATE_POSTED_PHRASES[input.date_posted] : null;
+      const q = phrase ? `${input.keywords} ${phrase}` : input.keywords;
+      url.searchParams.set('q', q);
+      if (input.location) url.searchParams.set('location', input.location);
+      if (input.num) url.searchParams.set('num', String(input.num));
+    }
 
     const res = await fetchOnceWithRetry(fetchImpl, url, retryDelayMs, opts.signal);
 
@@ -219,6 +230,9 @@ export async function* searchGoogleJobs(
     const payload = (await res.json()) as {
       jobs_results?: RawJob[];
       serpapi_pagination?: { next_page_token?: string };
+      // Some SerpAPI Google Jobs responses surface pagination under the
+      // shorter `pagination` key. Read both so we don't drop the cursor.
+      pagination?: { next_page_token?: string };
       error?: string;
     };
 
@@ -244,13 +258,31 @@ export async function* searchGoogleJobs(
       throw new SerpapiTransientError(payload.error);
     }
 
-    for (const raw of payload.jobs_results ?? []) {
+    const rawResults = payload.jobs_results ?? [];
+    let yieldedThisPage = 0;
+    for (const raw of rawResults) {
       if (opts.signal?.aborted) return;
       const mapped = mapJobResult(raw);
-      if (mapped) yield mapped;
+      if (mapped) {
+        yieldedThisPage += 1;
+        yield mapped;
+      }
     }
 
-    nextPageToken = payload.serpapi_pagination?.next_page_token ?? null;
+    nextPageToken =
+      payload.serpapi_pagination?.next_page_token ??
+      payload.pagination?.next_page_token ??
+      null;
+    log.info(
+      {
+        page: pageIdx + 1,
+        max_pages: maxPages,
+        raw_results: rawResults.length,
+        yielded: yieldedThisPage,
+        has_next: nextPageToken !== null,
+      },
+      'serpapi page complete',
+    );
     if (!nextPageToken) return;
     pageIdx += 1;
   }
