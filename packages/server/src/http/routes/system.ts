@@ -9,6 +9,8 @@ import { listCvs } from '../../db/repositories/cvs.js';
 import { findLlmProviderById, listLlmProviders } from '../../db/repositories/llm-providers.js';
 import { findSiteById, listSites } from '../../db/repositories/sites.js';
 import { getOrInitSettings, updateSettings } from '../../db/repositories/settings.js';
+import { listAlerts } from '../../db/repositories/alerts.js';
+import { hasSerpApiKey } from '../../services/settings-service.js';
 import { countByStatus } from '../../db/repositories/task-queue.js';
 import { listSchedules } from '../../db/repositories/schedules.js';
 import { nextRunAt } from '../../scheduler/cron.js';
@@ -81,13 +83,25 @@ export async function systemRoutes(app: FastifyInstance, deps: SystemRouteDeps):
     const linkedin = findSiteById(db, 'linkedin');
     const schedulePaused = listSchedules(db).some((s) => s.paused);
 
+    const sitesList = listSites(db);
+    const google = sitesList.find((s) => s.id === 'google');
+    const openAlerts = listAlerts(db, { status: 'open' });
+    const hasGoogleAlert = (kind: string): boolean =>
+      openAlerts.some((a) => a.site_id === 'google' && a.kind === kind);
+
+    const google_state: 'not_configured' | 'connected' | 'key_invalid' | 'quota_exhausted' =
+      hasGoogleAlert('serpapi_key_invalid') ? 'key_invalid' :
+      hasGoogleAlert('serpapi_quota_exhausted') ? 'quota_exhausted' :
+      (google?.enabled && hasSerpApiKey(db)) ? 'connected' :
+      'not_configured';
+
     return {
       version,
       started_at: startedAt,
       scheduler: { running: !settings.paused, next_run_at: earliest },
       queue: { pending, running },
       active_provider: provider ? { kind: provider.kind, model: provider.model } : null,
-      sources: listSites(db).map((s) => ({
+      sources: sitesList.map((s) => ({
         id: s.id,
         kind: s.kind,
         enabled: s.enabled,
@@ -95,6 +109,8 @@ export async function systemRoutes(app: FastifyInstance, deps: SystemRouteDeps):
       })),
       linkedin_connected: linkedin?.session_valid_at !== null && linkedin?.session_valid_at !== undefined,
       linkedin_last_search_at: linkedin?.last_search_at ?? null,
+      google_state,
+      google_last_search_at: google?.last_search_at ?? null,
       schedule_paused: schedulePaused,
     };
   });
