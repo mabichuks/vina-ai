@@ -1,33 +1,46 @@
-import {
-  useLinkedInStatus,
-  useRunSearchNow,
-} from '../../api/resources.js';
+import { useState } from 'react';
+import { useRunSearchNow, useSiteStatus } from '../../api/resources.js';
 import { useSearchProgressStore } from '../../store/search-progress-store.js';
 import { useUiStore } from '../../store/ui-store.js';
 import { Button } from '../ui/button.js';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '../ui/dropdown-menu.js';
 import { useSearchGerund } from './use-search-gerund.js';
 
+const SITE_LABELS: Record<string, string> = {
+  linkedin: 'LinkedIn',
+  google: 'Google Jobs',
+};
+
 /**
- * Search-now button that surfaces lifecycle state from
- * `useSearchProgressStore` instead of a generic spinner. Label morphs through
- * the search → score progression so the user can see what's happening
- * without watching the headless browser.
+ * Search-now button that adapts to the number of active sources:
+ * - 0 active → disabled with explanatory tooltip
+ * - 1 active → single button that fans out to that site
+ * - 2 active → dropdown with "Search both" / per-source options
+ *
+ * Label morphs through the discovering → scoring → done progression so the
+ * user can see what's happening without watching the headless browser.
  */
 export function SearchNowButton(): JSX.Element {
-  const linkedin = useLinkedInStatus({ pollMs: 5_000 });
+  const linkedin = useSiteStatus('linkedin', { pollMs: 5_000 });
+  const google = useSiteStatus('google', { pollMs: 5_000 });
   const runNow = useRunSearchNow();
   const pushToast = useUiStore((s) => s.pushToast);
   const { phase, listingsFound, scoredCount, totalToScore } = useSearchProgressStore();
   const gerund = useSearchGerund(phase);
+  const [menuOpen, setMenuOpen] = useState(false);
 
-  const sessionExpired =
-    linkedin.data !== null && !linkedin.data.connected && linkedin.data.error !== null;
-  // `runNow.isPending` covers the moment between click and the WS
-  // `search:started` event; without it the button would flash back to idle
-  // before the store transitions into 'discovering'.
+  const activeSites: string[] = [
+    linkedin.data?.state === 'active' ? 'linkedin' : null,
+    google.data?.state === 'active' ? 'google' : null,
+  ].filter((x): x is string => x !== null);
+
   const inFlight =
     runNow.isPending || phase === 'discovering' || phase === 'scoring';
-  const disabled = !linkedin.data?.connected || sessionExpired || inFlight;
 
   const label = (() => {
     if (runNow.isPending) return 'Starting search…';
@@ -41,9 +54,7 @@ export function SearchNowButton(): JSX.Element {
           ? `${gerund ?? 'Scoring'} ${scoredCount}/${totalToScore}…`
           : `${gerund ?? 'Scoring'}…`;
       case 'done':
-        return totalToScore > 0
-          ? `Done · ${scoredCount} scored`
-          : 'Done · no new jobs';
+        return totalToScore > 0 ? `Done · ${scoredCount} scored` : 'Done · no new jobs';
       case 'error':
         return 'Search failed — retry';
       default:
@@ -51,24 +62,57 @@ export function SearchNowButton(): JSX.Element {
     }
   })();
 
+  const fireRunNow = async (sites: string[]): Promise<void> => {
+    try {
+      const results = await Promise.all(sites.map((id) => runNow.mutate(id)));
+      if (results.length === 1 && results[0]!.deduped) {
+        pushToast({ kind: 'info', message: 'Already searching…' });
+      }
+    } catch (err) {
+      pushToast({
+        kind: 'error',
+        message: err instanceof Error ? err.message : 'Search failed to start.',
+      });
+    }
+  };
+
+  if (activeSites.length === 0) {
+    return (
+      <Button disabled title="No source configured & active">
+        {label}
+      </Button>
+    );
+  }
+
+  if (activeSites.length === 1) {
+    const only = activeSites[0]!;
+    return (
+      <Button disabled={inFlight} onClick={() => void fireRunNow([only])}>
+        {label}
+      </Button>
+    );
+  }
+
   return (
-    <Button
-      disabled={disabled}
-      onClick={async () => {
-        try {
-          const r = await runNow.mutate('linkedin');
-          if (r.deduped) {
-            pushToast({ kind: 'info', message: 'Already searching…' });
-          }
-        } catch (err) {
-          pushToast({
-            kind: 'error',
-            message: err instanceof Error ? err.message : 'Search failed to start.',
-          });
-        }
-      }}
-    >
-      {label}
-    </Button>
+    <DropdownMenu open={menuOpen} onOpenChange={setMenuOpen}>
+      <DropdownMenuTrigger asChild>
+        <Button disabled={inFlight}>
+          {label}
+          <span aria-hidden className="ml-2">
+            ▾
+          </span>
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end">
+        <DropdownMenuItem onSelect={() => void fireRunNow(activeSites)}>
+          Search both
+        </DropdownMenuItem>
+        {activeSites.map((id) => (
+          <DropdownMenuItem key={id} onSelect={() => void fireRunNow([id])}>
+            Search {SITE_LABELS[id] ?? id} only
+          </DropdownMenuItem>
+        ))}
+      </DropdownMenuContent>
+    </DropdownMenu>
   );
 }
