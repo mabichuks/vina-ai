@@ -26,8 +26,10 @@ describe('events catalog', () => {
         EVENTS.APPLICATION_READY_FOR_MANUAL_APPLY,
         {
           application_id: '01A',
+          job_id: '01J',
           external_apply_url: 'https://x.greenhouse.io/jobs/1',
           tailored_cv_path: 't.docx',
+          tailored_cover_letter_path: null,
         },
       ],
       [
@@ -75,6 +77,39 @@ describe('EVENTS — linkedin slice additions', () => {
   it('linkedin:session-expired payload validates an ISO timestamp', () => {
     const schema = EVENT_PAYLOADS['linkedin:session-expired'];
     expect(() => schema.parse({ at: '2026-05-09T12:00:00.000Z' })).not.toThrow();
+  });
+});
+
+describe('EVENTS — manual-apply slice additions', () => {
+  it('declares application:skipped', () => {
+    expect((EVENTS as Record<string, string>)['APPLICATION_SKIPPED']).toBe('application:skipped');
+  });
+
+  it('application:skipped payload accepts an optional reason', () => {
+    const schema = EVENT_PAYLOADS['application:skipped'];
+    expect(() =>
+      schema.parse({ application_id: 'a1', skipped_at: '2026-05-17T10:00:00.000Z' }),
+    ).not.toThrow();
+    expect(() =>
+      schema.parse({
+        application_id: 'a1',
+        skipped_at: '2026-05-17T10:00:00.000Z',
+        reason: 'role mismatch',
+      }),
+    ).not.toThrow();
+  });
+
+  it('application:ready_for_manual_apply payload exposes job_id and an optional cover_letter_path', () => {
+    const schema = EVENT_PAYLOADS['application:ready_for_manual_apply'];
+    expect(() =>
+      schema.parse({
+        application_id: 'a1',
+        job_id: 'j1',
+        external_apply_url: 'https://example.com/apply',
+        tailored_cv_path: '/tmp/cv.docx',
+        tailored_cover_letter_path: null,
+      }),
+    ).not.toThrow();
   });
 });
 

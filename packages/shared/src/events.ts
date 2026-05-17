@@ -11,6 +11,7 @@ export const EVENTS = {
   APPLICATION_EVENT: 'application:event',
   APPLICATION_READY_FOR_MANUAL_APPLY: 'application:ready_for_manual_apply',
   APPLICATION_APPLIED_MANUALLY: 'application:applied_manually',
+  APPLICATION_SKIPPED: 'application:skipped',
   ALERT_CREATED: 'alert:created',
   ALERT_RESOLVED: 'alert:resolved',
   ALERT_DISMISSED: 'alert:dismissed',
@@ -37,12 +38,19 @@ const ApplicationEventPayload = ApplicationEventSchema.pick({
 });
 const ApplicationReadyForManualApplyPayload = z.object({
   application_id: z.string(),
+  job_id: z.string(),
   external_apply_url: z.url(),
   tailored_cv_path: z.string(),
+  tailored_cover_letter_path: z.string().nullable(),
 });
 const ApplicationAppliedManuallyPayload = z.object({
   application_id: z.string(),
   applied_at: isoDate,
+});
+const ApplicationSkippedPayload = z.object({
+  application_id: z.string(),
+  skipped_at: isoDate,
+  reason: z.string().optional(),
 });
 const AlertCreatedPayload = AlertSchema;
 const AlertResolvedPayload = z.object({ id: z.string() });
@@ -97,6 +105,7 @@ export const EVENT_PAYLOADS = {
   [EVENTS.APPLICATION_EVENT]: ApplicationEventPayload,
   [EVENTS.APPLICATION_READY_FOR_MANUAL_APPLY]: ApplicationReadyForManualApplyPayload,
   [EVENTS.APPLICATION_APPLIED_MANUALLY]: ApplicationAppliedManuallyPayload,
+  [EVENTS.APPLICATION_SKIPPED]: ApplicationSkippedPayload,
   [EVENTS.ALERT_CREATED]: AlertCreatedPayload,
   [EVENTS.ALERT_RESOLVED]: AlertResolvedPayload,
   [EVENTS.ALERT_DISMISSED]: AlertDismissedPayload,
