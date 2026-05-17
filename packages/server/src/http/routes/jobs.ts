@@ -3,6 +3,7 @@ import type { Database as DatabaseType } from 'better-sqlite3';
 import { z } from 'zod';
 import { JOB_STATUSES, NotFoundError, type JobStatus } from '@vina/shared';
 import { findJobById, listJobs, updateJobStatus } from '../../db/repositories/jobs.js';
+import { enqueueManualApplyForJob } from '../../queue/manual-apply-enqueuer.js';
 import type { EventBus } from '../../events/bus.js';
 import { parse } from '../parse.js';
 
@@ -77,5 +78,18 @@ export async function jobRoutes(
     const next = updateJobStatus(db, id, 'scored');
     bus.emit('jobs:updated', { ids: [id] });
     return next;
+  });
+
+  // Manual-apply pipeline entry point. Idempotent — repeated calls return the
+  // same active application without piling up tasks.
+  app.post('/api/jobs/:id/prepare', async (req, reply) => {
+    const { id } = parse(IdParamsSchema, req.params, 'route params');
+    if (!findJobById(db, id)) throw new NotFoundError(`Job ${id} not found`);
+    const result = enqueueManualApplyForJob(db, bus, id);
+    return reply.status(202).send({
+      application_id: result.application_id,
+      status: result.status,
+      deduped: result.deduped,
+    });
   });
 }
