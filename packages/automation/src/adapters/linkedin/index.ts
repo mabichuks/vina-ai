@@ -61,16 +61,17 @@ function fWtFromPrefs(prefs: SearchPreferences): string {
  *   keywords     — from `prefs.keywords`
  *   location     — first of `prefs.locations`
  *   f_WT         — work-type codes from `prefs.work_models` (default remote+hybrid)
- *   f_TPR=r86400 — Time Posted Range, last 24 hours (`r<seconds>`). Restricts
- *                  results to fresh listings only; secondary effect is that
- *                  it's a strict filter LinkedIn must honor, reinforcing the
- *                  SRP-rather-than-single-job-collapse behaviour. Hard-coded
- *                  to 24h for now; could be wired through `prefs.posted_within_seconds`
- *                  with a small migration if users want a tunable window.
+ *   f_TPR=r<seconds> — Time Posted Range (`r<seconds>`). Restricts results to
+ *                  fresh listings only; secondary effect is that it's a strict
+ *                  filter LinkedIn must honor, reinforcing the SRP-rather-than-
+ *                  single-job-collapse behaviour. Defaulted to 1 week to match
+ *                  the Google Jobs side — narrower windows empty the worklist
+ *                  in niche stacks and mid-sized cities. User-configurable via
+ *                  Settings is a follow-up; the constant is the seam.
  *   sortBy=DD    — date descending (most recent first)
  *   start=0      — paginated layout (resists single-job collapse)
  */
-const POSTED_WITHIN_SECONDS = 86_400;
+const POSTED_WITHIN_SECONDS = 7 * 86_400;
 
 function buildSearchUrl(origin: string, prefs: SearchPreferences): string {
   const url = new URL('/jobs/search/', origin);
@@ -255,9 +256,25 @@ export const linkedInAdapter: SiteAdapter = {
     // from collapsing loose queries to a single highlighted-match page.
     const origin = new URL(page.url()).origin;
     const url = buildSearchUrl(origin, prefs);
+    if (signal?.aborted) throw new DOMException('Aborted', 'AbortError');
     try {
-      await page.goto(url, { waitUntil: 'load' });
+      // Race page.goto against the abort signal so the user's Stop click can
+      // interrupt a long page load. Without this, page.goto holds the worker
+      // hostage for its full timeout (default 30s) before the handler can
+      // notice the signal flipped.
+      await Promise.race([
+        page.goto(url, { waitUntil: 'load' }),
+        new Promise<never>((_, reject) => {
+          if (!signal) return;
+          signal.addEventListener(
+            'abort',
+            () => reject(new DOMException('Aborted', 'AbortError')),
+            { once: true },
+          );
+        }),
+      ]);
     } catch (err) {
+      if (err instanceof Error && err.name === 'AbortError') throw err;
       // LinkedIn frequently does a client-side redirect mid-load (e.g. to
       // /jobs/search-results/?…), which Playwright reports as
       // `net::ERR_ABORTED; maybe frame was detached?`. Tolerate it as long
@@ -317,10 +334,18 @@ export async function* iterateLinkedInCards(
   signal?: AbortSignal,
   waitTimeoutMs: number = SELECTOR_TIMEOUT_MS,
 ): AsyncIterable<RawListing> {
-  await page.waitForSelector(selector, {
-    state: 'visible',
-    timeout: waitTimeoutMs,
-  });
+  if (signal?.aborted) throw new DOMException('Aborted', 'AbortError');
+  await Promise.race([
+    page.waitForSelector(selector, { state: 'visible', timeout: waitTimeoutMs }),
+    new Promise<never>((_, reject) => {
+      if (!signal) return;
+      signal.addEventListener(
+        'abort',
+        () => reject(new DOMException('Aborted', 'AbortError')),
+        { once: true },
+      );
+    }),
+  ]);
   const cards = await page.locator(selector).all();
   let isFirst = true;
   for (const card of cards) {

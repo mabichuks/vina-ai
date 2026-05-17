@@ -70,9 +70,22 @@ export function createScoreHandler(
 
     deps.db.transaction(() => {
       updateJobScore(deps.db, job.id, result.score, result.justification);
-      updateJobStatus(deps.db, job.id, 'scored');
+      // Only flip status if the row is still in its initial state. The user
+      // can skip / mark-applied between the score task being enqueued and
+      // running; clobbering 'skipped' back to 'scored' here re-surfaces jobs
+      // in the New worklist that they've already triaged.
+      const fresh = findJobById(deps.db, job.id);
+      if (fresh?.status === 'new') {
+        updateJobStatus(deps.db, job.id, 'scored');
+      }
     })();
+    // Two events, two concerns: jobs:updated invalidates the worklist cache;
+    // score:job_completed drives the search-progress store's "scoring N/M"
+    // counter. Splitting them prevents a race where a fast score task that
+    // completes BEFORE search:completed emits gets miscounted as a discovery
+    // event, leaving the counter stuck below totalToScore forever.
     deps.bus.emit('jobs:updated', { ids: [job.id] });
+    deps.bus.emit('score:job_completed', { job_id: job.id, score: result.score });
     log.info({ job_id: job.id, score: result.score }, 'job scored');
   };
 }

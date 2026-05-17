@@ -1,5 +1,7 @@
 import { useEffect, useState } from 'react';
+import { useCancelSearch } from '../../api/resources.js';
 import { useSearchProgressStore } from '../../store/search-progress-store.js';
+import { Button } from '../ui/button.js';
 import { useSearchGerund } from './use-search-gerund.js';
 
 /**
@@ -9,8 +11,18 @@ import { useSearchGerund } from './use-search-gerund.js';
  * itself in the idle phase so it doesn't clutter when nothing is happening.
  */
 export function SearchActivityPanel(): JSX.Element | null {
-  const { phase, listingsFound, scoredCount, totalToScore, errorKind, phaseChangedAt } =
-    useSearchProgressStore();
+  const {
+    phase,
+    listingsFound,
+    scoredCount,
+    totalToScore,
+    errorKind,
+    phaseChangedAt,
+    currentTaskId,
+    wasCancelled,
+    lastListingsTouched,
+  } = useSearchProgressStore();
+  const cancel = useCancelSearch();
   const gerund = useSearchGerund(phase);
 
   // Tick once a second while a search is active so "started Ns ago" stays fresh.
@@ -40,9 +52,20 @@ export function SearchActivityPanel(): JSX.Element | null {
           ? `${gerund ?? 'Scoring'} · ${scoredCount}/${totalToScore}`
           : `${gerund ?? 'Scoring'}…`;
       case 'done':
-        return totalToScore > 0
-          ? `Done · ${scoredCount} new jobs scored`
-          : 'Done · no new jobs this run';
+        if (wasCancelled) {
+          return totalToScore > 0
+            ? `Cancelled · ${scoredCount} scored`
+            : `Cancelled · ${listingsFound} listings`;
+        }
+        if (totalToScore > 0) return `Done · ${scoredCount} new jobs scored`;
+        // No new score tasks ran. Distinguish between "Google returned nothing"
+        // and "every result was already on your worklist" — both used to surface
+        // the same flat "no new jobs this run" message, which made it impossible
+        // to tell whether the search itself was broken.
+        if (lastListingsTouched > 0) {
+          return `Done · ${lastListingsTouched} listings already on your worklist`;
+        }
+        return 'Done · no listings returned';
       case 'error':
         return errorKind === 'session_expired'
           ? 'Search failed · LinkedIn session expired'
@@ -74,7 +97,19 @@ export function SearchActivityPanel(): JSX.Element | null {
     <div className={`rounded-md border px-4 py-3 ${tone}`}>
       <div className="flex items-baseline justify-between gap-3 text-sm">
         <span className="font-medium">{headline}</span>
-        <span className="text-xs text-ink-muted">{elapsed} elapsed</span>
+        <div className="flex items-center gap-3">
+          {phase === 'discovering' && currentTaskId && (
+            <Button
+              variant="ghost"
+              size="sm"
+              disabled={cancel.isPending}
+              onClick={() => void cancel.mutate({ task_id: currentTaskId })}
+            >
+              Stop
+            </Button>
+          )}
+          <span className="text-xs text-ink-muted">{elapsed} elapsed</span>
+        </div>
       </div>
       {progress !== null && (
         <div

@@ -22,6 +22,7 @@ const INVALIDATIONS: Record<string, ReadonlyArray<readonly unknown[]>> = {
   'search:started': [['jobs']],
   'search:completed': [['jobs']],
   'search:failed': [['jobs']],
+  'search:cancelled': [['jobs']],
   'linkedin:session-expired': [['linkedin-status']],
   'site:login_status': [['sites'], ['linkedin-status']],
   'alert:created': [['alerts']],
@@ -42,6 +43,7 @@ interface JobsUpdatedPayload {
 }
 interface SearchCompletedPayload {
   scored: number;
+  listings_added: number;
 }
 interface SearchFailedPayload {
   error_kind: string;
@@ -55,20 +57,38 @@ interface SearchFailedPayload {
 function updateSearchProgressFor(eventType: string, payload: unknown): void {
   const store = useSearchProgressStore.getState();
   switch (eventType) {
-    case 'search:started':
-      store.beginDiscovering();
+    case 'search:started': {
+      const taskId = (payload as { task_id?: string } | undefined)?.task_id;
+      store.beginDiscovering({ taskId });
+      break;
+    }
+    case 'search:cancelled':
+      store.markCancelled();
       break;
     case 'jobs:updated': {
+      // Discovery progress only. Score completions emit a dedicated
+      // score:job_completed event — counting jobs:updated during 'scoring'
+      // would race with manual triage events (skip/applied) and miscount.
+      if (store.phase !== 'discovering') return;
       const ids = (payload as JobsUpdatedPayload | undefined)?.ids;
       const n = Array.isArray(ids) ? ids.length : 0;
       if (n === 0) return;
-      if (store.phase === 'discovering') store.countDiscoveredListings(n);
-      else if (store.phase === 'scoring') store.countScored(n);
+      store.countDiscoveredListings(n);
+      break;
+    }
+    case 'score:job_completed': {
+      // Always count one toward the scoring goal, regardless of which phase
+      // we're observing. A score task that completes before search:completed
+      // still represents real progress; we just buffer it until beginScoring
+      // sets the target.
+      if (store.phase === 'scoring') store.countScored(1);
       break;
     }
     case 'search:completed': {
-      const scored = (payload as SearchCompletedPayload | undefined)?.scored ?? 0;
-      store.beginScoring(scored);
+      const p = payload as SearchCompletedPayload | undefined;
+      const scored = p?.scored ?? 0;
+      const listingsAdded = p?.listings_added ?? 0;
+      store.beginScoring(scored, listingsAdded);
       break;
     }
     case 'search:failed': {

@@ -1,6 +1,12 @@
 import type { Job } from '@vina/shared';
 import { Button } from '../../components/ui/button.js';
 
+function applyLabel(job: Job): string {
+  if (job.apply_method === 'auto') return 'Apply on LinkedIn';
+  if (job.original_source) return `Apply on ${job.original_source.replace(/^via\s+/i, '')}`;
+  return 'Apply externally';
+}
+
 interface Props {
   job: Job;
   variant: 'new' | 'applied' | 'skipped';
@@ -35,6 +41,9 @@ export function JobCard({
             <span className="text-ink-secondary">{job.location}</span>
           </>
         )}
+        {job.original_source && (
+          <p className="basis-full text-xs text-ink-muted">{job.original_source}</p>
+        )}
       </header>
       <div className="mt-2 flex flex-wrap items-center gap-2 text-xs">
         <span
@@ -65,7 +74,7 @@ export function JobCard({
         {variant === 'new' ? (
           <>
             <Button variant="default" size="sm" onClick={onApply}>
-              Apply on LinkedIn
+              {applyLabel(job)}
             </Button>
             <Button variant="ghost" size="sm" onClick={onMarkApplied}>
               Mark applied

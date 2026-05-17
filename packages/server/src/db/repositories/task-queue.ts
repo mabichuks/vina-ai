@@ -111,6 +111,25 @@ export function complete(db: DatabaseType, id: string): void {
   db.prepare(`UPDATE task_queue SET status = 'completed' WHERE id = ?`).run(id);
 }
 
+/** Look up a task row by id (or null if it was deleted). */
+export function findById(db: DatabaseType, id: string): Task | null {
+  const row = db.prepare(`SELECT * FROM task_queue WHERE id = ?`).get(id) as TaskRow | undefined;
+  return row ? rowToTask(row) : null;
+}
+
+/**
+ * Flip a `pending`/`running` task to `cancelled`. Idempotent — a late cancel
+ * arriving after the row has already completed or failed leaves it alone, so
+ * a doubled cancel signal won't rewrite a terminal state.
+ */
+export function cancel(db: DatabaseType, id: string, reason = 'cancelled_by_user'): void {
+  db.prepare(
+    `UPDATE task_queue
+       SET status = 'cancelled', failed_reason = ?
+     WHERE id = ? AND status IN ('pending', 'running')`,
+  ).run(reason, id);
+}
+
 /**
  * Marks a running task as failed. If `retry` is true and attempts < max_attempts,
  * the task returns to `pending` for another attempt; otherwise it stays `failed`.

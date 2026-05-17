@@ -34,8 +34,8 @@ You will receive a job listing, the user's profile, and their search preferences
 
 Compose the score from four weighted axes:
 
-- **Title fit** (40%): how directly the job title matches the roles the user has done or is targeting. Reward exact-or-close matches. Penalise senior↔junior gaps.
-- **Skills** (30%): keyword and technology overlap between the listing and the user's profile/preferences. Reward depth, not just presence.
+- **Title fit** (40%): how directly the job title matches the roles the user has done (from the \`## CV\`) or is targeting (from \`## Search preferences\`). Reward exact-or-close matches. Penalise senior↔junior gaps.
+- **Skills** (30%): keyword and technology overlap between the listing and the user's CV / profile / preferences. Reward depth of evidence in the CV, not just bare keyword presence.
 - **Seniority** (15%): does the listing's implied seniority match the user's preferences?
 - **Location & work model** (15%): does the listing match the user's locations and work-model preferences (remote/hybrid/onsite)?
 

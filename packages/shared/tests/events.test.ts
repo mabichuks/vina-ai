@@ -77,3 +77,28 @@ describe('EVENTS — linkedin slice additions', () => {
     expect(() => schema.parse({ at: '2026-05-09T12:00:00.000Z' })).not.toThrow();
   });
 });
+
+describe('EVENTS — multi-source slice additions', () => {
+  it('includes SEARCH_CANCELLED', () => {
+    expect((EVENTS as Record<string, string>)['SEARCH_CANCELLED']).toBe('search:cancelled');
+  });
+
+  it('search:cancelled payload validates listings_added and scored', () => {
+    const schema = EVENT_PAYLOADS['search:cancelled'];
+    expect(() =>
+      schema.parse({
+        task_id: 't1',
+        site_id: 'google',
+        listings_added: 3,
+        scored: 2,
+      }),
+    ).not.toThrow();
+  });
+
+  it('search:cancelled payload rejects negative counts', () => {
+    const schema = EVENT_PAYLOADS['search:cancelled'];
+    expect(() =>
+      schema.parse({ task_id: 't1', site_id: 'google', listings_added: -1, scored: 0 }),
+    ).toThrow();
+  });
+});

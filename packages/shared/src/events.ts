@@ -22,6 +22,8 @@ export const EVENTS = {
   SEARCH_STARTED: 'search:started',
   SEARCH_COMPLETED: 'search:completed',
   SEARCH_FAILED: 'search:failed',
+  SEARCH_CANCELLED: 'search:cancelled',
+  SCORE_JOB_COMPLETED: 'score:job_completed',
   LINKEDIN_SESSION_EXPIRED: 'linkedin:session-expired',
 } as const;
 export type EventName = (typeof EVENTS)[keyof typeof EVENTS];
@@ -77,6 +79,16 @@ const SearchFailedPayload = z.object({
   site_id: z.string(),
   error_kind: z.enum(['session_expired', 'network', 'unknown']),
 });
+const SearchCancelledPayload = z.object({
+  task_id: z.string(),
+  site_id: z.string(),
+  listings_added: z.number().int().nonnegative(),
+  scored: z.number().int().nonnegative(),
+});
+const ScoreJobCompletedPayload = z.object({
+  job_id: z.string(),
+  score: z.number().int().min(0).max(100),
+});
 const LinkedInSessionExpiredPayload = z.object({ at: isoDate });
 
 export const EVENT_PAYLOADS = {
@@ -96,6 +108,8 @@ export const EVENT_PAYLOADS = {
   [EVENTS.SEARCH_STARTED]: SearchStartedPayload,
   [EVENTS.SEARCH_COMPLETED]: SearchCompletedPayload,
   [EVENTS.SEARCH_FAILED]: SearchFailedPayload,
+  [EVENTS.SEARCH_CANCELLED]: SearchCancelledPayload,
+  [EVENTS.SCORE_JOB_COMPLETED]: ScoreJobCompletedPayload,
   [EVENTS.LINKEDIN_SESSION_EXPIRED]: LinkedInSessionExpiredPayload,
 } as const satisfies Record<EventName, z.ZodTypeAny>;
 

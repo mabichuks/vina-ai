@@ -52,6 +52,9 @@ export const ALERT_KINDS = [
   'score_failed',
   'schedule_paused',
   'provider_failed',
+  'serpapi_key_missing',
+  'serpapi_key_invalid',
+  'serpapi_quota_exhausted',
 ] as const;
 export type AlertKind = (typeof ALERT_KINDS)[number];
 

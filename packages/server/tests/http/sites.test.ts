@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { setSerpApiKey } from '../../src/services/settings-service.js';
 import { buildTestApp, auth, type TestAppHandle } from './helpers.js';
+import * as serpapiService from '../../src/services/serpapi-service.js';
 
 let h: TestAppHandle;
 
@@ -78,6 +79,65 @@ describe('sites routes', () => {
       headers: auth(h.token),
     });
     expect(res.json()).toMatchObject({ ok: true });
+  });
+});
+
+describe('GET /api/sites — has_credentials', () => {
+  it('reports has_credentials=false for the linkedin row when no session is on disk', async () => {
+    const res = await h.app.inject({
+      method: 'GET',
+      url: '/api/sites',
+      headers: auth(h.token),
+    });
+    const sites = res.json() as Array<{ id: string; has_credentials: boolean; kind: string }>;
+    const linkedin = sites.find((s) => s.id === 'linkedin')!;
+    expect(linkedin.kind).toBe('browser');
+    expect(linkedin.has_credentials).toBe(false);
+  });
+
+  it('reports has_credentials=false for the google row when no SerpAPI key is stored', async () => {
+    const res = await h.app.inject({
+      method: 'GET',
+      url: '/api/sites',
+      headers: auth(h.token),
+    });
+    const sites = res.json() as Array<{ id: string; has_credentials: boolean }>;
+    const google = sites.find((s) => s.id === 'google')!;
+    expect(google.has_credentials).toBe(false);
+  });
+
+  it('flips google.has_credentials to true after the SerpAPI key is stored', async () => {
+    vi.spyOn(serpapiService, 'validateSerpApiKey').mockResolvedValue({ ok: true, latency_ms: 1 });
+    await h.app.inject({
+      method: 'POST',
+      url: '/api/sites/google/test',
+      headers: auth(h.token),
+      payload: { key: 'live-key' },
+    });
+    const res = await h.app.inject({
+      method: 'GET',
+      url: '/api/sites',
+      headers: auth(h.token),
+    });
+    const sites = res.json() as Array<{ id: string; has_credentials: boolean }>;
+    const google = sites.find((s) => s.id === 'google')!;
+    expect(google.has_credentials).toBe(true);
+  });
+
+  it('flips linkedin.has_credentials to true after the login stub seeds session_path', async () => {
+    await h.app.inject({
+      method: 'POST',
+      url: '/api/sites/linkedin/login',
+      headers: auth(h.token),
+    });
+    const res = await h.app.inject({
+      method: 'GET',
+      url: '/api/sites',
+      headers: auth(h.token),
+    });
+    const sites = res.json() as Array<{ id: string; has_credentials: boolean }>;
+    const linkedin = sites.find((s) => s.id === 'linkedin')!;
+    expect(linkedin.has_credentials).toBe(true);
   });
 });
 

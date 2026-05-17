@@ -1,3 +1,4 @@
+import { SearchPreferencesTile } from './SearchPreferencesTile.js';
 import { SitesTile } from './SitesTile.js';
 
 export function SettingsPage(): JSX.Element {
@@ -7,6 +8,7 @@ export function SettingsPage(): JSX.Element {
         Settings
       </h1>
       <SitesTile />
+      <SearchPreferencesTile />
     </section>
   );
 }

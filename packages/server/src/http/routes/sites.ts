@@ -9,7 +9,12 @@ import {
   updateSiteEnabled,
   updateSiteSession,
 } from '../../db/repositories/sites.js';
-import { getDecryptedSerpApiKey, hasSerpApiKey } from '../../services/settings-service.js';
+import {
+  clearSerpApiKey,
+  getDecryptedSerpApiKey,
+  hasSerpApiKey,
+  setSerpApiKey,
+} from '../../services/settings-service.js';
 import { validateSerpApiKey } from '../../services/serpapi-service.js';
 import type { LinkedInConnectService } from '../../services/linkedin-connect-service.js';
 import type { ServerConfig } from '../../config.js';
@@ -24,6 +29,13 @@ interface SiteResponse {
   kind: 'browser' | 'api';
   enabled: boolean;
   has_session: boolean;
+  /**
+   * True when the site has whatever it needs to be usable: a Playwright
+   * session on disk for browser-kind rows, a stored SerpAPI key for the
+   * single api-kind row. Distinct from `enabled` — a paused source can still
+   * have credentials.
+   */
+  has_credentials: boolean;
   session_valid_at: string | null;
   last_search_at: string | null;
 }
@@ -40,16 +52,22 @@ export async function siteRoutes(
 
   app.get(
     '/api/sites',
-    async (): Promise<SiteResponse[]> =>
-      listSites(db).map((s) => ({
+    async (): Promise<SiteResponse[]> => {
+      const serpApiKeyPresent = hasSerpApiKey(db);
+      return listSites(db).map((s) => ({
         id: s.id,
         display_name: s.display_name,
         kind: s.kind,
         enabled: s.enabled,
         has_session: s.session_path !== null,
+        has_credentials:
+          s.kind === 'browser' ? s.session_path !== null :
+          s.kind === 'api'     ? serpApiKeyPresent :
+          false,
         session_valid_at: s.session_valid_at,
         last_search_at: s.last_search_at,
-      })),
+      }));
+    },
   );
 
   app.patch('/api/sites/:id', async (req) => {
@@ -88,7 +106,14 @@ export async function siteRoutes(
     return { status: 'pending' as const, login_id };
   });
 
+  const TestKeyBodySchema = z
+    .object({ key: z.string().min(1).optional() })
+    .optional();
+
   // PRD-086: SerpAPI test for the google site, 405 for browser-kind.
+  // When a `{ key }` body is provided, validates the candidate key and
+  // persists+enables on success (no mutation on failure). When no key is in
+  // the body, validates the already-stored key without any mutation.
   app.post('/api/sites/:id/test', async (req, reply) => {
     const { id } = parse(IdParamsSchema, req.params, 'route params');
     const site = findSiteById(db, id);
@@ -99,9 +124,20 @@ export async function siteRoutes(
         message: 'Browser-kind sites authenticate via /login, not /test',
       });
     }
-    const key = getDecryptedSerpApiKey(db);
-    if (!key) return { ok: false as const, reason: 'no_key_configured' as const };
-    return validateSerpApiKey(key);
+
+    const body = parse(TestKeyBodySchema, req.body ?? {}, 'request body');
+    if (body?.key) {
+      const result = await validateSerpApiKey(body.key);
+      if (result.ok) {
+        setSerpApiKey(db, body.key);
+        updateSiteEnabled(db, id, true);
+      }
+      return result;
+    }
+
+    const stored = getDecryptedSerpApiKey(db);
+    if (!stored) return { ok: false as const, reason: 'no_key_configured' as const };
+    return validateSerpApiKey(stored);
   });
 
   app.get('/api/sites/linkedin/status', async () => linkedInConnectService.getStatus());
@@ -118,6 +154,13 @@ export async function siteRoutes(
 
   app.delete('/api/sites/linkedin', async (_req, reply) => {
     await linkedInConnectService.disconnect();
+    return reply.status(204).send();
+  });
+
+  app.delete('/api/sites/google', async (_req, reply) => {
+    clearSerpApiKey(db);
+    updateSiteEnabled(db, 'google', false);
+    updateSiteSession(db, 'google', { session_path: null, session_valid_at: null });
     return reply.status(204).send();
   });
 

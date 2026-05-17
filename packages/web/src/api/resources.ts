@@ -278,6 +278,7 @@ export interface SiteResponse {
   kind: 'browser' | 'api';
   enabled: boolean;
   has_session: boolean;
+  has_credentials: boolean;
   session_valid_at: string | null;
   last_search_at: string | null;
 }
@@ -452,6 +453,22 @@ export function useRunSearchNow(): {
   return { mutate: (siteId) => mut.mutateAsync(siteId), isPending: mut.isPending };
 }
 
+export interface CancelSearchInput {
+  task_id?: string;
+  site_id?: string;
+}
+
+export function useCancelSearch(): {
+  mutate: (input: CancelSearchInput) => Promise<{ cancelled: number }>;
+  isPending: boolean;
+} {
+  const mut = useMutation<{ cancelled: number }, Error, CancelSearchInput>({
+    mutationFn: (input) =>
+      api<{ cancelled: number }>('/api/searches/cancel', { method: 'POST', body: input }),
+  });
+  return { mutate: (input) => mut.mutateAsync(input), isPending: mut.isPending };
+}
+
 /* ------------------------------------------------------------------ */
 /* Alerts                                                               */
 /* ------------------------------------------------------------------ */
@@ -484,4 +501,169 @@ export function useDismissAlert(): { mutate: (id: string) => Promise<void> } {
     onSuccess: () => qc.invalidateQueries({ queryKey: ['alerts'] }),
   });
   return { mutate: (id) => mut.mutateAsync(id) };
+}
+
+/* ------------------------------------------------------------------ */
+/* Google Jobs                                                          */
+/* ------------------------------------------------------------------ */
+
+export interface SerpapiValidateResult {
+  ok: boolean;
+  reason?:
+    | 'auth_failed'
+    | 'rate_limited'
+    | 'network'
+    | 'other'
+    | 'no_key_configured'
+    | 'empty_key';
+  detail?: string;
+  latency_ms?: number;
+}
+
+export function useValidateSerpapiKey(): {
+  mutate: (key: string) => Promise<SerpapiValidateResult>;
+  isPending: boolean;
+} {
+  const qc = useQueryClient();
+  const mut = useMutation<SerpapiValidateResult, Error, string>({
+    mutationFn: async (key) => {
+      if (typeof key !== 'string' || key.trim().length === 0) {
+        return { ok: false as const, reason: 'empty_key' as const, detail: 'Key is required' };
+      }
+      return api<SerpapiValidateResult>('/api/sites/google/test', {
+        method: 'POST',
+        body: { key },
+      });
+    },
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ['sites'] });
+    },
+  });
+  return { mutate: (key) => mut.mutateAsync(key), isPending: mut.isPending };
+}
+
+export type SiteState =
+  | 'not_configured'
+  | 'paused'
+  | 'active'
+  | 'key_invalid'
+  | 'quota_exhausted'
+  | 'session_expired';
+
+export interface SiteStatus {
+  state: SiteState;
+  enabled: boolean;
+  has_credentials: boolean;
+  last_search_at: string | null;
+}
+
+export function useSiteStatus(
+  id: string,
+  opts: { pollMs?: number } = {},
+): { data: SiteStatus | null; isLoading: boolean } {
+  const sites = useSites();
+  const alerts = useAlerts();
+  // reason: pollMs is reserved for future per-hook polling tuning; both
+  // underlying queries already have their own intervals configured.
+  void opts.pollMs;
+
+  if (sites.isLoading || alerts.isLoading) return { data: null, isLoading: true };
+  const row = sites.data.find((s) => s.id === id) ?? null;
+  if (!row) return { data: null, isLoading: false };
+
+  const open = alerts.data.filter((a) => a.site_id === id && a.status === 'open');
+  const hasInvalid = open.some((a) => a.kind === 'serpapi_key_invalid');
+  const hasQuota = open.some((a) => a.kind === 'serpapi_quota_exhausted');
+  const hasSessionExpired = open.some((a) => a.kind === 'linkedin_session_expired');
+
+  const state: SiteState = hasInvalid
+    ? 'key_invalid'
+    : hasQuota
+      ? 'quota_exhausted'
+      : hasSessionExpired
+        ? 'session_expired'
+        : !row.has_credentials
+          ? 'not_configured'
+          : !row.enabled
+            ? 'paused'
+            : 'active';
+
+  return {
+    data: {
+      state,
+      enabled: row.enabled,
+      has_credentials: row.has_credentials,
+      last_search_at: row.last_search_at,
+    },
+    isLoading: false,
+  };
+}
+
+export type GoogleJobsState =
+  | 'not_configured'
+  | 'paused'
+  | 'active'
+  | 'key_invalid'
+  | 'quota_exhausted';
+export interface GoogleJobsStatus {
+  state: GoogleJobsState;
+  enabled: boolean;
+  has_credentials: boolean;
+  last_search_at: string | null;
+}
+
+export function useGoogleJobsStatus(opts: { pollMs?: number } = {}): {
+  data: GoogleJobsStatus | null;
+  isLoading: boolean;
+} {
+  const inner = useSiteStatus('google', opts);
+  if (!inner.data) return { data: null, isLoading: inner.isLoading };
+  return {
+    data: {
+      // session_expired is unreachable for the google row; the cast is safe.
+      state: inner.data.state as GoogleJobsState,
+      enabled: inner.data.enabled,
+      has_credentials: inner.data.has_credentials,
+      last_search_at: inner.data.last_search_at,
+    },
+    isLoading: inner.isLoading,
+  };
+}
+
+export function useLinkedInSiteStatus(opts: { pollMs?: number } = {}): {
+  data: SiteStatus | null;
+  isLoading: boolean;
+} {
+  return useSiteStatus('linkedin', opts);
+}
+
+export function useEnableGoogleJobs(): {
+  mutate: () => Promise<unknown>;
+  isPending: boolean;
+} {
+  const qc = useQueryClient();
+  const mut = useMutation<unknown, Error, void>({
+    mutationFn: () => api(`/api/sites/google`, { method: 'PATCH', body: { enabled: true } }),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ['sites'] });
+    },
+  });
+  return { mutate: () => mut.mutateAsync(), isPending: mut.isPending };
+}
+
+export function useDisconnectGoogleJobs(): {
+  mutate: () => Promise<unknown>;
+  isPending: boolean;
+} {
+  const qc = useQueryClient();
+  const mut = useMutation<unknown, Error, void>({
+    mutationFn: async () => {
+      await api(`/api/sites/google`, { method: 'DELETE' });
+      return null;
+    },
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ['sites'] });
+    },
+  });
+  return { mutate: () => mut.mutateAsync(), isPending: mut.isPending };
 }

@@ -10,6 +10,8 @@ interface SystemStatus {
   active_provider: { kind: string; model: string } | null;
   linkedin_connected: boolean;
   linkedin_last_search_at: string | null;
+  google_state: 'not_configured' | 'connected' | 'key_invalid' | 'quota_exhausted';
+  google_last_search_at: string | null;
   schedule_paused: boolean;
 }
 
@@ -41,6 +43,18 @@ export async function statusCommand(): Promise<number> {
     process.stdout.write(
       `Last search: ${detail.linkedin_last_search_at ?? 'never'}\n`,
     );
+    const googleLabel = (() => {
+      switch (detail.google_state) {
+        case 'connected':
+          return detail.google_last_search_at
+            ? `connected (last search ${detail.google_last_search_at})`
+            : 'connected';
+        case 'key_invalid': return 'key invalid';
+        case 'quota_exhausted': return 'quota exhausted';
+        default: return 'not configured';
+      }
+    })();
+    process.stdout.write(`Google Jobs: ${googleLabel}\n`);
     if (detail.schedule_paused) {
       process.stdout.write('⚠ Schedule is paused\n');
     }

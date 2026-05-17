@@ -245,3 +245,45 @@ describe('002_linkedin_e2e_schema', () => {
     db.close();
   });
 });
+
+describe('003_serpapi_alert_kinds', () => {
+  it('widens alerts.kind to include the three SerpAPI kinds', () => {
+    const db = freshDb();
+    for (const kind of [
+      'serpapi_key_missing',
+      'serpapi_key_invalid',
+      'serpapi_quota_exhausted',
+    ]) {
+      expect(() =>
+        db
+          .prepare(
+            `INSERT INTO alerts (id, kind, severity, title, description, status, created_at)
+             VALUES (?, ?, 'info', 't', 'd', 'open', ?)`,
+          )
+          .run(`a-${kind}`, kind, new Date().toISOString()),
+      ).not.toThrow();
+    }
+    db.close();
+  });
+
+  it('preserves the previously-allowed alert kinds from 002', () => {
+    const db = freshDb();
+    for (const kind of [
+      'linkedin_session_expired',
+      'search_failed',
+      'score_failed',
+      'schedule_paused',
+      'provider_failed',
+    ]) {
+      expect(() =>
+        db
+          .prepare(
+            `INSERT INTO alerts (id, kind, severity, title, description, status, created_at)
+             VALUES (?, ?, 'info', 't', 'd', 'open', ?)`,
+          )
+          .run(`b-${kind}`, kind, new Date().toISOString()),
+      ).not.toThrow();
+    }
+    db.close();
+  });
+});
