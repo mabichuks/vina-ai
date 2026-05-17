@@ -184,6 +184,49 @@ export function setApplicationTailored(
   return findApplicationById(db, id)!;
 }
 
+const TERMINAL_STATUSES: ReadonlySet<ApplicationStatus> = new Set([
+  'applied_manually',
+  'submitted',
+  'failed',
+  'skipped',
+]);
+
+/**
+ * Return the most recent non-terminal application for this job, or null when
+ * every application is in a terminal state (or none exist). Used by the
+ * `POST /api/jobs/:id/prepare` route for idempotency — the user clicking
+ * "Prepare materials" twice should attach to the same in-flight application.
+ */
+export function findActiveApplicationForJob(
+  db: DatabaseType,
+  jobId: string,
+): Application | null {
+  const rows = db
+    .prepare(
+      `SELECT * FROM applications
+         WHERE job_id = ?
+         ORDER BY started_at DESC, id DESC`,
+    )
+    .all(jobId) as ApplicationRow[];
+  for (const row of rows) {
+    if (!TERMINAL_STATUSES.has(row.status)) return rowToApplication(row);
+  }
+  return null;
+}
+
+export function markApplicationSkipped(
+  db: DatabaseType,
+  id: string,
+  reason?: string,
+): Application {
+  const current = findApplicationById(db, id);
+  if (!current) throw new NotFoundError(`Application ${id} not found`);
+  db.prepare(
+    `UPDATE applications SET status = 'skipped', failure_reason = ? WHERE id = ?`,
+  ).run(reason ?? null, id);
+  return findApplicationById(db, id)!;
+}
+
 /**
  * Manual-apply terminal transition. Only valid from `ready_for_manual_apply`;
  * any other state throws ConflictError.

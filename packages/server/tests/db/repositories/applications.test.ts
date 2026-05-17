@@ -2,8 +2,10 @@ import { describe, expect, it } from 'vitest';
 import { ConflictError, NotFoundError } from '@vina/shared';
 import type { Database as DatabaseType } from 'better-sqlite3';
 import {
+  findActiveApplicationForJob,
   insertApplication,
   markApplicationApplied,
+  markApplicationSkipped,
   updateApplicationStatus,
 } from '../../../src/db/repositories/applications.js';
 import { insertCv } from '../../../src/db/repositories/cvs.js';
@@ -69,6 +71,57 @@ describe('applications repository', () => {
     expect(result.status).toBe('applied_manually');
     expect(result.applied_manually_at).toBe('2026-04-29T10:00:00Z');
     expect(result.applied_manually_notes).toBe('via Workday');
+    db.close();
+  });
+});
+
+describe('applications repository — manual-apply helpers', () => {
+  it('findActiveApplicationForJob returns the most recent non-terminal row', () => {
+    const db = freshTestDb();
+    const { cvId, jobId } = seedJobAndCv(db);
+    insertApplication(db, {
+      job_id: jobId,
+      cv_id: cvId,
+      apply_method: 'manual',
+      status: 'skipped',
+    });
+    const ready = insertApplication(db, {
+      job_id: jobId,
+      cv_id: cvId,
+      apply_method: 'manual',
+      status: 'ready_for_manual_apply',
+    });
+    const found = findActiveApplicationForJob(db, jobId);
+    expect(found?.id).toBe(ready.id);
+    db.close();
+  });
+
+  it('returns null when only terminal applications exist for the job', () => {
+    const db = freshTestDb();
+    const { cvId, jobId } = seedJobAndCv(db);
+    insertApplication(db, {
+      job_id: jobId,
+      cv_id: cvId,
+      apply_method: 'manual',
+      status: 'failed',
+    });
+    expect(findActiveApplicationForJob(db, jobId)).toBeNull();
+    db.close();
+  });
+
+  it('markApplicationSkipped flips status and stores reason', () => {
+    const db = freshTestDb();
+    const { cvId, jobId } = seedJobAndCv(db);
+    const app = insertApplication(db, {
+      job_id: jobId,
+      cv_id: cvId,
+      apply_method: 'manual',
+      status: 'ready_for_manual_apply',
+    });
+    const next = markApplicationSkipped(db, app.id, 'role mismatch');
+    expect(next.status).toBe('skipped');
+    expect(next.failure_reason).toBe('role mismatch');
+    expect(() => markApplicationSkipped(db, 'absent')).toThrow(NotFoundError);
     db.close();
   });
 });
