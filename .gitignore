@@ -37,6 +37,9 @@ logs/
 # OS detritus
 .DS_Store
 Thumbs.db
+# Finder's "duplicate filename" pattern (`file 2.ext`, `file 3.ext`, …).
+# pnpm only ever reads `pnpm-lock.yaml`; numbered variants are inert junk.
+pnpm-lock\ *.yaml
 
 # Editor
 .vscode/*
