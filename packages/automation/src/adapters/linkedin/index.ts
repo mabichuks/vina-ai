@@ -64,13 +64,14 @@ function fWtFromPrefs(prefs: SearchPreferences): string {
  *   f_TPR=r<seconds> — Time Posted Range (`r<seconds>`). Restricts results to
  *                  fresh listings only; secondary effect is that it's a strict
  *                  filter LinkedIn must honor, reinforcing the SRP-rather-than-
- *                  single-job-collapse behaviour. Defaulted to 3 days. Will be
- *                  user-configurable via Settings once that surface lands —
- *                  the named constant is the seam.
+ *                  single-job-collapse behaviour. Defaulted to 1 week to match
+ *                  the Google Jobs side — narrower windows empty the worklist
+ *                  in niche stacks and mid-sized cities. User-configurable via
+ *                  Settings is a follow-up; the constant is the seam.
  *   sortBy=DD    — date descending (most recent first)
  *   start=0      — paginated layout (resists single-job collapse)
  */
-const POSTED_WITHIN_SECONDS = 3 * 86_400;
+const POSTED_WITHIN_SECONDS = 7 * 86_400;
 
 function buildSearchUrl(origin: string, prefs: SearchPreferences): string {
   const url = new URL('/jobs/search/', origin);

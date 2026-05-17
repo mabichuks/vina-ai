@@ -640,10 +640,12 @@ async function runApiSearch(
   const input: GoogleJobsSearchInput = {
     keywords: prefs.keywords.filter(Boolean).join(' ') || prefs.description,
     location: prefs.locations[0],
-    // Default freshness window. User-configurable via Settings is a follow-up;
-    // for now we hard-cap at 3 days to keep results actionable. Translated
-    // into the SerpAPI `chips=date_posted:3days` form by the service layer.
-    date_posted: '3days',
+    // Default freshness window. User-configurable via Settings is a follow-up.
+    // Set to 1 week — narrower windows (3 days) too often empty the result
+    // set in mid-sized markets and niche stacks, leaving the worklist sparse
+    // even when valid roles exist 5–6 days back. Translated to a natural-
+    // language phrase appended to `q` by the SerpAPI service.
+    date_posted: 'week',
   };
 
   let listingsAdded = 0;
