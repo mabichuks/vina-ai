@@ -71,7 +71,7 @@ export default function Dashboard(): JSX.Element {
             <h2 className="font-display text-xl font-headline tracking-tight text-ink-primary">
               Ready to apply
             </h2>
-            <Link to="/ready" className="text-sm text-accent hover:underline">
+            <Link to="/ready" className="text-sm text-ink-primary underline hover:no-underline">
               View all ({ready.data.length})
             </Link>
           </header>

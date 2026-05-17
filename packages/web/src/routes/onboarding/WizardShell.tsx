@@ -56,7 +56,7 @@ export function WizardShell({
           {allRequiredDone && step !== 'done' && (
             <button
               type="button"
-              className="font-mono text-2xs uppercase tracking-wide text-accent hover:underline"
+              className="font-mono text-2xs uppercase tracking-wide text-ink-primary underline hover:no-underline"
               onClick={() => navigate('/onboarding/done')}
             >
               Open dashboard now
