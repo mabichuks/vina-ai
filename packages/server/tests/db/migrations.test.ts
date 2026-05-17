@@ -287,3 +287,42 @@ describe('003_serpapi_alert_kinds', () => {
     db.close();
   });
 });
+
+describe('004_manual_apply_pipeline', () => {
+  function seedJobAndCv(db: DatabaseType): void {
+    const now = new Date().toISOString();
+    db.prepare(
+      `INSERT INTO jobs
+         (id, site_id, external_id, url, apply_method, title, company, description,
+          discovered_at, status)
+       VALUES ('j1', 'linkedin', 'ext-1', 'https://x', 'manual', 't', 'co', 'd', ?, 'scored')`,
+    ).run(now);
+    db.prepare(
+      `INSERT INTO cvs (id, label, original_filename, mime_type, file_path, created_at)
+       VALUES ('cv1', 'main', 'cv.pdf', 'application/pdf', '/tmp/cv.pdf', ?)`,
+    ).run(now);
+  }
+
+  it('adds tailored_at column to applications', () => {
+    const db = freshDb();
+    const cols = db.prepare(`PRAGMA table_info(applications)`).all() as { name: string }[];
+    const names = new Set(cols.map((c) => c.name));
+    expect(names.has('tailored_at')).toBe(true);
+    db.close();
+  });
+
+  it('preserves the existing applications schema after migration', () => {
+    const db = freshDb();
+    seedJobAndCv(db);
+    db.prepare(
+      `INSERT INTO applications
+         (id, job_id, cv_id, apply_method, status, started_at)
+       VALUES ('a1', 'j1', 'cv1', 'manual', 'queued', ?)`,
+    ).run(new Date().toISOString());
+    const row = db.prepare(`SELECT tailored_at FROM applications WHERE id='a1'`).get() as
+      | { tailored_at: string | null }
+      | undefined;
+    expect(row?.tailored_at).toBeNull();
+    db.close();
+  });
+});
