@@ -29,7 +29,13 @@ export function findCvById(db: DatabaseType, id: string): Cv | null {
 export function insertCv(db: DatabaseType, input: CvInput): Cv {
   const id = newId();
   const now = new Date().toISOString();
-  const isDefault = input.is_default ? 1 : 0;
+  // Auto-promote the first ever CV (or the next one if no current default
+  // exists) so the manual-apply pipeline always has something to point at.
+  // Without this an upload that doesn't explicitly set is_default leaves the
+  // user with CVs but no default — the handler then says "no CV" misleadingly.
+  const hasAnyDefault =
+    (db.prepare(`SELECT 1 FROM cvs WHERE is_default = 1 LIMIT 1`).get() as unknown) !== undefined;
+  const isDefault = input.is_default || !hasAnyDefault ? 1 : 0;
 
   const tx = db.transaction(() => {
     if (isDefault === 1) {

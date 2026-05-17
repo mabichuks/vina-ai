@@ -61,7 +61,7 @@ export function Cv(): JSX.Element {
                     <div className="font-mono text-2xs text-ink-muted">{cv.original_filename}</div>
                   </div>
                   {cv.is_default && (
-                    <span className="rounded-pill bg-accent-soft px-2 py-0.5 font-mono text-2xs uppercase tracking-wide text-accent">
+                    <span className="rounded-pill bg-accent-soft px-2 py-0.5 font-mono text-2xs uppercase tracking-wide text-ink-primary">
                       Default
                     </span>
                   )}

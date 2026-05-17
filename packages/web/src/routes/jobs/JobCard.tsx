@@ -82,6 +82,10 @@ export function JobCard({
       <div className="mt-3 flex flex-wrap items-center gap-2">
         {variant === 'new' ? (
           <>
+            {/* Prepare materials is the *recommended* primary action for
+                manual jobs, but the user can always bypass it and apply
+                directly with their default CV. Apply stays visible as a
+                secondary action for that path. */}
             {isExternal && onPrepare && !preparing && !ready && (
               <Button variant="default" size="sm" onClick={onPrepare}>
                 Prepare materials
@@ -101,11 +105,13 @@ export function JobCard({
                 Ready to apply →
               </a>
             )}
-            {(!isExternal || (!onPrepare && !preparing && !ready)) && (
-              <Button variant="default" size="sm" onClick={onApply}>
-                {applyLabel(job)}
-              </Button>
-            )}
+            <Button
+              variant={isExternal && onPrepare && !preparing && !ready ? 'ghost' : 'default'}
+              size="sm"
+              onClick={onApply}
+            >
+              {applyLabel(job)}
+            </Button>
             <Button variant="ghost" size="sm" onClick={onMarkApplied}>
               Mark applied
             </Button>

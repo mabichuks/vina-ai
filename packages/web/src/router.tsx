@@ -25,7 +25,9 @@ const Alerts = lazy(() =>
   import('./routes/alerts/AlertsPage.js').then((m) => ({ default: m.AlertsPage })),
 );
 const Chat = lazy(() => import('./routes/pages.js').then((m) => ({ default: m.Chat })));
-const Profile = lazy(() => import('./routes/pages.js').then((m) => ({ default: m.Profile })));
+const Profile = lazy(() =>
+  import('./routes/profile/ProfilePage.js').then((m) => ({ default: m.ProfilePage })),
+);
 const Settings = lazy(() =>
   import('./routes/settings/SettingsPage.js').then((m) => ({ default: m.SettingsPage })),
 );
