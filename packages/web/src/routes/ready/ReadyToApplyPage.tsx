@@ -9,6 +9,7 @@ import {
   useMarkApplied,
   useSkipApplication,
 } from '../../api/resources.js';
+import { downloadAuthed } from '../../api/client.js';
 import { useUiStore } from '../../store/ui-store.js';
 import { Button } from '../../components/ui/button.js';
 
@@ -26,6 +27,14 @@ export function ReadyToApplyPage(): JSX.Element {
   const markApplied = useMarkApplied();
   const skip = useSkipApplication();
   const pushToast = useUiStore((s) => s.pushToast);
+
+  const downloadOrToast = async (path: string, filename: string): Promise<void> => {
+    try {
+      await downloadAuthed(path, filename);
+    } catch (err) {
+      pushToast({ kind: 'error', message: err instanceof Error ? err.message : String(err) });
+    }
+  };
 
   if (applications.isLoading) {
     return <p className="p-6 text-sm text-ink-secondary">Loading…</p>;
@@ -73,6 +82,7 @@ export function ReadyToApplyPage(): JSX.Element {
             <ApplicationCard
               application={app}
               job={jobsById.get(app.job_id) ?? null}
+              onDownload={downloadOrToast}
               onMarkApplied={async (id, notes) => {
                 try {
                   await markApplied.mutate(id, notes);
@@ -106,11 +116,18 @@ export function ReadyToApplyPage(): JSX.Element {
 interface CardProps {
   application: Application;
   job: Job | null;
+  onDownload: (path: string, filename: string) => Promise<void>;
   onMarkApplied: (id: string, notes?: string) => void;
   onSkip: (id: string, reason?: string) => void;
 }
 
-function ApplicationCard({ application, job, onMarkApplied, onSkip }: CardProps): JSX.Element {
+function ApplicationCard({
+  application,
+  job,
+  onDownload,
+  onMarkApplied,
+  onSkip,
+}: CardProps): JSX.Element {
   const [markOpen, setMarkOpen] = useState(false);
   const [skipOpen, setSkipOpen] = useState(false);
   const [notes, setNotes] = useState('');
@@ -151,21 +168,23 @@ function ApplicationCard({ application, job, onMarkApplied, onSkip }: CardProps)
         {application.tailored_cover_letter_path ? ' · Cover letter ready' : ''}
       </p>
       <div className="mt-3 flex flex-wrap items-center gap-2">
-        <a
-          href={tailoredCvUrl(application.id)}
-          download={cvFilename}
+        <button
+          type="button"
+          onClick={() => void onDownload(tailoredCvUrl(application.id), cvFilename)}
           className="rounded-md border border-border-subtle bg-surface-sunken px-3 py-1 text-sm text-ink-primary hover:bg-surface-base"
         >
           Download CV
-        </a>
+        </button>
         {application.tailored_cover_letter_path && (
-          <a
-            href={tailoredCoverLetterUrl(application.id)}
-            download={coverFilename}
+          <button
+            type="button"
+            onClick={() =>
+              void onDownload(tailoredCoverLetterUrl(application.id), coverFilename)
+            }
             className="rounded-md border border-border-subtle bg-surface-sunken px-3 py-1 text-sm text-ink-primary hover:bg-surface-base"
           >
             Download cover letter
-          </a>
+          </button>
         )}
         {externalUrl && (
           <a

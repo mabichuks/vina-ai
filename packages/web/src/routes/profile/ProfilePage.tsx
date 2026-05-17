@@ -8,6 +8,7 @@ import {
   useSetDefaultCv,
   useUploadCv,
 } from '../../api/resources.js';
+import { downloadAuthed } from '../../api/client.js';
 import { useUiStore } from '../../store/ui-store.js';
 import { Button } from '../../components/ui/button.js';
 
@@ -188,12 +189,22 @@ function CvTile({ cvs }: { cvs: Cv[] }): JSX.Element {
                 <div className="font-mono text-2xs text-ink-muted">{cv.original_filename}</div>
               </div>
               <div className="flex shrink-0 gap-2">
-                <a
-                  href={`/api/cvs/${cv.id}/download`}
+                <button
+                  type="button"
+                  onClick={async () => {
+                    try {
+                      await downloadAuthed(`/api/cvs/${cv.id}/download`, cv.original_filename);
+                    } catch (err) {
+                      pushToast({
+                        kind: 'error',
+                        message: err instanceof Error ? err.message : String(err),
+                      });
+                    }
+                  }}
                   className="rounded-md border border-border-subtle bg-surface-raised px-3 py-1 text-xs text-ink-primary hover:bg-surface-base"
                 >
                   Download
-                </a>
+                </button>
                 {!cv.is_default && (
                   <Button
                     variant="ghost"
