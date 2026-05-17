@@ -146,6 +146,7 @@ describe('job / application schemas', () => {
       apply_method: 'manual' as const,
       tailored_cv_path: null,
       tailored_cover_letter_path: null,
+      tailored_at: null,
       status: 'ready_for_manual_apply' as const,
       started_at: '2026-04-28T09:00:00Z',
       submitted_at: null,

@@ -1,6 +1,6 @@
 # Manual-Apply Pipeline — Design
 
-**Status:** Designed (2026-05-13).
+**Status:** Implemented (2026-05-17).
 **Date:** 2026-05-13.
 **Scope:** Wake the dormant `cv-service` / `cover-letter-service` shells and the dormant `applications` table. Build the tailor-CV graph, the tailor-cover-letter graph, the `prepare_manual_apply` graph that orchestrates them, and the Ready-to-Apply UI surface. Both sources (LinkedIn external + Google Jobs) flow through this pipeline.
 
