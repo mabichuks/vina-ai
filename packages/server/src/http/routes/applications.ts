@@ -20,6 +20,9 @@ const ListQuerySchema = z.object({
   page_size: z.coerce.number().int().min(1).max(100).default(50),
 });
 const IdParams = z.object({ id: z.string().min(1) });
+const FormatQuery = z.object({
+  format: z.enum(['docx', 'pdf']).default('docx'),
+});
 const MarkAppliedBody = z.object({ notes: z.string().optional() });
 const SkipBody = z.object({ reason: z.string().optional() });
 
@@ -49,12 +52,14 @@ function attachmentFilename(
   jobTitle: string,
   company: string,
   kind: 'cv' | 'cover',
+  format: 'docx' | 'pdf',
 ): string {
   const safe = (s: string): string => s.replace(/[^A-Za-z0-9._-]+/g, '_').slice(0, 60);
-  return `${safe(company)}-${safe(jobTitle)}-${kind}.docx`;
+  return `${safe(company)}-${safe(jobTitle)}-${kind}.${format}`;
 }
 
 const DOCX_MIME = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+const PDF_MIME = 'application/pdf';
 
 export async function applicationRoutes(
   app: FastifyInstance,
@@ -82,38 +87,41 @@ export async function applicationRoutes(
 
   app.get('/api/applications/:id/tailored-cv', async (req, reply) => {
     const { id } = parse(IdParams, req.params, 'route params');
+    const { format } = parse(FormatQuery, req.query, 'query');
     const row = findApplicationById(db, id);
-    if (!row || !row.tailored_cv_path) {
-      throw new NotFoundError(`No tailored CV for ${id}`);
-    }
-    if (!fs.existsSync(row.tailored_cv_path)) {
+    if (!row) throw new NotFoundError(`Application ${id} not found`);
+    const filePath = format === 'pdf' ? row.tailored_cv_pdf_path : row.tailored_cv_path;
+    if (!filePath) throw new NotFoundError(`No tailored CV (${format}) for ${id}`);
+    if (!fs.existsSync(filePath)) {
       throw new NotFoundError('Tailored CV missing on disk');
     }
     const job = findJobById(db, row.job_id);
     reply.header(
       'Content-Disposition',
-      `attachment; filename="${attachmentFilename(job?.title ?? 'job', job?.company ?? 'company', 'cv')}"`,
+      `attachment; filename="${attachmentFilename(job?.title ?? 'job', job?.company ?? 'company', 'cv', format)}"`,
     );
-    reply.type(DOCX_MIME);
-    return fs.createReadStream(row.tailored_cv_path);
+    reply.type(format === 'pdf' ? PDF_MIME : DOCX_MIME);
+    return fs.createReadStream(filePath);
   });
 
   app.get('/api/applications/:id/tailored-cover-letter', async (req, reply) => {
     const { id } = parse(IdParams, req.params, 'route params');
+    const { format } = parse(FormatQuery, req.query, 'query');
     const row = findApplicationById(db, id);
-    if (!row || !row.tailored_cover_letter_path) {
-      throw new NotFoundError(`No tailored cover letter for ${id}`);
-    }
-    if (!fs.existsSync(row.tailored_cover_letter_path)) {
+    if (!row) throw new NotFoundError(`Application ${id} not found`);
+    const filePath =
+      format === 'pdf' ? row.tailored_cover_letter_pdf_path : row.tailored_cover_letter_path;
+    if (!filePath) throw new NotFoundError(`No tailored cover letter (${format}) for ${id}`);
+    if (!fs.existsSync(filePath)) {
       throw new NotFoundError('Cover letter missing on disk');
     }
     const job = findJobById(db, row.job_id);
     reply.header(
       'Content-Disposition',
-      `attachment; filename="${attachmentFilename(job?.title ?? 'job', job?.company ?? 'company', 'cover')}"`,
+      `attachment; filename="${attachmentFilename(job?.title ?? 'job', job?.company ?? 'company', 'cover', format)}"`,
     );
-    reply.type(DOCX_MIME);
-    return fs.createReadStream(row.tailored_cover_letter_path);
+    reply.type(format === 'pdf' ? PDF_MIME : DOCX_MIME);
+    return fs.createReadStream(filePath);
   });
 
   app.post('/api/applications/:id/mark-applied', async (req) => {

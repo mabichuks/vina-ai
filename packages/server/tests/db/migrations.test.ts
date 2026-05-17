@@ -326,3 +326,14 @@ describe('004_manual_apply_pipeline', () => {
     db.close();
   });
 });
+
+describe('005_tailored_pdf_paths', () => {
+  it('adds tailored_cv_pdf_path and tailored_cover_letter_pdf_path columns', () => {
+    const db = freshDb();
+    const cols = db.prepare(`PRAGMA table_info(applications)`).all() as { name: string }[];
+    const names = new Set(cols.map((c) => c.name));
+    expect(names.has('tailored_cv_pdf_path')).toBe(true);
+    expect(names.has('tailored_cover_letter_pdf_path')).toBe(true);
+    db.close();
+  });
+});

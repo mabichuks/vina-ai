@@ -14,7 +14,55 @@ import { downloadAuthed } from '../api/client.js';
 import { SearchActivityPanel } from '../components/search/SearchActivityPanel.js';
 import { SearchNowButton } from '../components/search/SearchNowButton.js';
 import { Button } from '../components/ui/button.js';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '../components/ui/dropdown-menu.js';
 import { useUiStore } from '../store/ui-store.js';
+
+const safeName = (s: string): string => s.replace(/[^A-Za-z0-9._-]+/g, '_').slice(0, 60);
+
+function DashboardCvDownload({
+  jobTitle,
+  company,
+  appId,
+}: {
+  jobTitle: string | undefined;
+  company: string | undefined;
+  appId: string;
+}): JSX.Element {
+  const pushToast = useUiStore((s) => s.pushToast);
+  const base = `${safeName(company ?? 'job')}-${safeName(jobTitle ?? 'tailored')}-cv`;
+  const downloadFormat = async (format: 'docx' | 'pdf'): Promise<void> => {
+    try {
+      await downloadAuthed(`${tailoredCvUrl(appId)}?format=${format}`, `${base}.${format}`);
+    } catch (err) {
+      pushToast({ kind: 'error', message: err instanceof Error ? err.message : String(err) });
+    }
+  };
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <button
+          type="button"
+          className="rounded-md border border-border-subtle bg-surface-raised px-3 py-1 text-xs text-ink-primary hover:bg-surface-base"
+        >
+          CV
+        </button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent>
+        <DropdownMenuItem onSelect={() => void downloadFormat('docx')}>
+          Download .docx
+        </DropdownMenuItem>
+        <DropdownMenuItem onSelect={() => void downloadFormat('pdf')}>
+          Download .pdf
+        </DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
 
 interface PageProps {
   title: string;
@@ -46,9 +94,6 @@ export default function Dashboard(): JSX.Element {
   const readyJobIds = ready.data.map((a) => a.job_id);
   const readyJobs = useJobs({ page_size: 100 });
   const readyJobMap = new Map(readyJobs.data.map((j) => [j.id, j]));
-  const pushToast = useUiStore((s) => s.pushToast);
-
-  const safeName = (s: string): string => s.replace(/[^A-Za-z0-9._-]+/g, '_').slice(0, 60);
 
   return (
     <section className="space-y-4">
@@ -98,23 +143,7 @@ export default function Dashboard(): JSX.Element {
                       {app.tailored_cover_letter_path ? ' · cover letter ready' : ''}
                     </span>
                   </div>
-                  <button
-                    type="button"
-                    onClick={async () => {
-                      try {
-                        const name = `${safeName(job?.company ?? 'job')}-${safeName(job?.title ?? 'tailored')}-cv.docx`;
-                        await downloadAuthed(tailoredCvUrl(app.id), name);
-                      } catch (err) {
-                        pushToast({
-                          kind: 'error',
-                          message: err instanceof Error ? err.message : String(err),
-                        });
-                      }
-                    }}
-                    className="rounded-md border border-border-subtle bg-surface-raised px-3 py-1 text-xs text-ink-primary hover:bg-surface-base"
-                  >
-                    CV
-                  </button>
+                  <DashboardCvDownload jobTitle={job?.title} company={job?.company} appId={app.id} />
                 </li>
               );
             })}

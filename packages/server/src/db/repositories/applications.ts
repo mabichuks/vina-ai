@@ -16,6 +16,8 @@ interface ApplicationRow {
   apply_method: ApplyMethod;
   tailored_cv_path: string | null;
   tailored_cover_letter_path: string | null;
+  tailored_cv_pdf_path: string | null;
+  tailored_cover_letter_pdf_path: string | null;
   tailored_at: string | null;
   status: ApplicationStatus;
   started_at: string;
@@ -161,6 +163,8 @@ export function setApplicationTailored(
   patch: {
     tailored_cv_path: string;
     tailored_cover_letter_path: string | null;
+    tailored_cv_pdf_path: string;
+    tailored_cover_letter_pdf_path: string | null;
     tailored_at: string;
     new_status: ApplicationStatus;
   },
@@ -171,12 +175,16 @@ export function setApplicationTailored(
     `UPDATE applications
        SET tailored_cv_path = ?,
            tailored_cover_letter_path = ?,
+           tailored_cv_pdf_path = ?,
+           tailored_cover_letter_pdf_path = ?,
            tailored_at = ?,
            status = ?
      WHERE id = ?`,
   ).run(
     patch.tailored_cv_path,
     patch.tailored_cover_letter_path,
+    patch.tailored_cv_pdf_path,
+    patch.tailored_cover_letter_pdf_path,
     patch.tailored_at,
     patch.new_status,
     id,

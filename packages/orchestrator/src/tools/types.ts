@@ -32,8 +32,16 @@ export interface SaveTailoredFileResult {
  * The orchestrator never imports the server or automation packages; the
  * caller supplies the implementations (see packages/server/src/orchestrator/
  * tools/). This mirrors the selectorResolver DI in resolve-selector.ts.
+ *
+ * Each tailored artefact is saved in two formats — DOCX for editing, PDF for
+ * portfolios/ATS uploads. They share the same `application_id` keying so the
+ * download routes can pick the right file by extension.
  */
 export interface ManualApplyToolKit {
   saveTailoredCv(input: SaveTailoredCvInput): Promise<SaveTailoredFileResult>;
   saveTailoredCoverLetter(input: SaveTailoredCoverLetterInput): Promise<SaveTailoredFileResult>;
+  saveTailoredCvPdf(input: SaveTailoredCvInput): Promise<SaveTailoredFileResult>;
+  saveTailoredCoverLetterPdf(
+    input: SaveTailoredCoverLetterInput,
+  ): Promise<SaveTailoredFileResult>;
 }

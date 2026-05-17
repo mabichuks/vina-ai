@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import PDFDocument from 'pdfkit';
 import { ProviderError } from '@vina/shared';
 import { Document, Packer, Paragraph, HeadingLevel, TextRun } from 'docx';
 import {
@@ -108,4 +109,65 @@ export async function renderTailoredDocx(
 
   const doc = new Document({ sections: [{ children }] });
   return Packer.toBuffer(doc) as unknown as Promise<Buffer>;
+}
+
+/**
+ * Same `TailorCvOutput` rendered into a PDF instead of DOCX. Deterministic —
+ * no LLM involvement. Layout mirrors the DOCX template (title / contact /
+ * summary / experience by section / skills) so the two artefacts are visually
+ * equivalent. PDFs are the right pick for portfolios and ATS pipelines that
+ * reject DOCX; DOCX is the right pick for further editing.
+ */
+export async function renderTailoredPdf(
+  out: TailorCvOutput,
+  header: TailorCvHeader,
+): Promise<Buffer> {
+  return new Promise<Buffer>((resolve, reject) => {
+    const doc = new PDFDocument({ size: 'LETTER', margin: 56 });
+    const chunks: Buffer[] = [];
+    doc.on('data', (c: Buffer) => chunks.push(c));
+    doc.on('end', () => resolve(Buffer.concat(chunks)));
+    doc.on('error', reject);
+
+    // Header
+    doc.font('Helvetica-Bold').fontSize(20).text(header.full_name);
+    doc.moveDown(0.2);
+    doc.font('Helvetica').fontSize(10).text(header.email);
+    doc.moveDown(0.8);
+
+    // Summary
+    doc.font('Helvetica-Bold').fontSize(13).text('Summary');
+    doc.moveDown(0.2);
+    doc.font('Helvetica').fontSize(11).text(out.summary, { align: 'left' });
+    doc.moveDown(0.8);
+
+    // Experience grouped by section
+    const bySection = new Map<string, string[]>();
+    for (const b of out.bullets) {
+      const arr = bySection.get(b.section) ?? [];
+      arr.push(b.bullet);
+      bySection.set(b.section, arr);
+    }
+    if (bySection.size > 0) {
+      doc.font('Helvetica-Bold').fontSize(13).text('Experience');
+      doc.moveDown(0.2);
+      for (const [section, bullets] of bySection) {
+        doc.font('Helvetica-Bold').fontSize(11).text(section);
+        doc.moveDown(0.1);
+        for (const bullet of bullets) {
+          doc.font('Helvetica').fontSize(10.5).text(`• ${bullet}`, { indent: 14 });
+        }
+        doc.moveDown(0.4);
+      }
+    }
+
+    // Skills
+    if (out.skills.length > 0) {
+      doc.font('Helvetica-Bold').fontSize(13).text('Skills');
+      doc.moveDown(0.2);
+      doc.font('Helvetica').fontSize(11).text(out.skills.join(' · '));
+    }
+
+    doc.end();
+  });
 }

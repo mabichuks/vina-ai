@@ -1,5 +1,6 @@
 import type { Job } from '@vina/shared';
 import { Button } from '../../components/ui/button.js';
+import { LoadingDots } from '../../components/ui/loading-dots.js';
 
 function applyLabel(job: Job): string {
   if (job.apply_method === 'auto') return 'Apply on LinkedIn';
@@ -70,8 +71,8 @@ export function JobCard({
           // Pinned-to-bottom worklist row that's still being scored. The
           // pulse hints that work is in progress without needing a spinner.
           <span className="inline-flex items-center gap-1.5 rounded-full bg-info-soft px-2 py-0.5 text-info">
-            <span className="size-1.5 animate-pulse rounded-full bg-info" />
-            Scoring…
+            Scoring
+            <LoadingDots />
           </span>
         )}
         {job.salary_text && <span className="text-ink-muted">{job.salary_text}</span>}
@@ -93,8 +94,8 @@ export function JobCard({
             )}
             {isExternal && preparing && (
               <span className="inline-flex items-center gap-1.5 rounded-full bg-info-soft px-2 py-0.5 text-xs text-info">
-                <span className="size-1.5 animate-pulse rounded-full bg-info" />
-                Tailoring…
+                Tailoring
+                <LoadingDots />
               </span>
             )}
             {isExternal && ready && (

@@ -11,6 +11,8 @@ export const ApplicationSchema = z.object({
   apply_method: z.enum(APPLY_METHODS),
   tailored_cv_path: z.string().nullable(),
   tailored_cover_letter_path: z.string().nullable(),
+  tailored_cv_pdf_path: z.string().nullable(),
+  tailored_cover_letter_pdf_path: z.string().nullable(),
   tailored_at: isoDate.nullable(),
   status: z.enum(APPLICATION_STATUSES),
   started_at: isoDate,

@@ -144,11 +144,16 @@ describe('GET /api/applications/:id/tailored-cv', () => {
       status: 'queued',
     });
     const tmpFile = path.join(h.config.dataDir, 'files', 'tailored', `${a.id}.docx`);
+    const tmpPdf = path.join(h.config.dataDir, 'files', 'tailored-pdf', `${a.id}.pdf`);
     fs.mkdirSync(path.dirname(tmpFile), { recursive: true });
     fs.writeFileSync(tmpFile, 'PK\x03\x04fake', { mode: 0o600 });
+    fs.mkdirSync(path.dirname(tmpPdf), { recursive: true });
+    fs.writeFileSync(tmpPdf, '%PDF-1.4 fake', { mode: 0o600 });
     setApplicationTailored(h.db, a.id, {
       tailored_cv_path: tmpFile,
       tailored_cover_letter_path: null,
+      tailored_cv_pdf_path: tmpPdf,
+      tailored_cover_letter_pdf_path: null,
       tailored_at: new Date().toISOString(),
       new_status: 'ready_for_manual_apply',
     });

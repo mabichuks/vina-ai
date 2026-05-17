@@ -26,6 +26,7 @@ export {
 export {
   runTailorCv,
   renderTailoredDocx,
+  renderTailoredPdf,
   TailorCvOutputSchema,
   type TailorCvOutput,
   type TailorCvHeader,
@@ -38,6 +39,7 @@ export {
 export {
   runTailorCoverLetter,
   renderTailoredCoverLetterDocx,
+  renderTailoredCoverLetterPdf,
   TailorCoverLetterOutputSchema,
   type TailorCoverLetterOutput,
   type CoverLetterHeader,

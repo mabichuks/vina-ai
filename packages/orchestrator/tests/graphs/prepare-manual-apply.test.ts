@@ -32,6 +32,12 @@ function fakeToolKit(): ManualApplyToolKit {
     saveTailoredCoverLetter: vi.fn(async ({ application_id }) => ({
       path: `/tmp/${application_id}-cover.docx`,
     })),
+    saveTailoredCvPdf: vi.fn(async ({ application_id }) => ({
+      path: `/tmp/${application_id}.pdf`,
+    })),
+    saveTailoredCoverLetterPdf: vi.fn(async ({ application_id }) => ({
+      path: `/tmp/${application_id}-cover.pdf`,
+    })),
   };
 }
 

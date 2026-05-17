@@ -5,17 +5,31 @@ import type { SaveTailoredCvInput, SaveTailoredFileResult } from '@vina/orchestr
 
 const SAFE_ID = /^[A-Za-z0-9_-]+$/;
 
-export function saveTailoredCvImpl(
+function writer(
+  subdir: string,
+  extension: 'docx' | 'pdf',
   dataDir: string,
 ): (input: SaveTailoredCvInput) => Promise<SaveTailoredFileResult> {
   return async ({ application_id, docx }) => {
     if (!SAFE_ID.test(application_id)) {
       throw new ValidationError(`invalid application_id: ${application_id}`);
     }
-    const dir = path.join(dataDir, 'files', 'tailored');
+    const dir = path.join(dataDir, 'files', subdir);
     fs.mkdirSync(dir, { recursive: true });
-    const target = path.join(dir, `${application_id}.docx`);
+    const target = path.join(dir, `${application_id}.${extension}`);
     fs.writeFileSync(target, docx, { mode: 0o600 });
     return { path: target };
   };
+}
+
+export function saveTailoredCvImpl(
+  dataDir: string,
+): (input: SaveTailoredCvInput) => Promise<SaveTailoredFileResult> {
+  return writer('tailored', 'docx', dataDir);
+}
+
+export function saveTailoredCvPdfImpl(
+  dataDir: string,
+): (input: SaveTailoredCvInput) => Promise<SaveTailoredFileResult> {
+  return writer('tailored-pdf', 'pdf', dataDir);
 }

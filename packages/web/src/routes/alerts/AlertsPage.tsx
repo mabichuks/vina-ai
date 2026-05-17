@@ -12,6 +12,12 @@ import {
 import { downloadAuthed } from '../../api/client.js';
 import { useUiStore } from '../../store/ui-store.js';
 import { Button } from '../../components/ui/button.js';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '../../components/ui/dropdown-menu.js';
 
 interface ReadyAlertPayload {
   application_id?: string;
@@ -90,29 +96,16 @@ function AlertCard({ alert }: { alert: Alert }): JSX.Element {
 
   const safeName = (s: string): string => s.replace(/[^A-Za-z0-9._-]+/g, '_').slice(0, 60);
 
-  const downloadCv = async (): Promise<void> => {
-    if (!ready?.application_id) return;
+  const downloadFile = async (path: string, filename: string): Promise<void> => {
     try {
-      await downloadAuthed(
-        tailoredCvUrl(ready.application_id),
-        `${safeName(alert.title)}-cv.docx`,
-      );
+      await downloadAuthed(path, filename);
     } catch (err) {
       pushToast({ kind: 'error', message: err instanceof Error ? err.message : String(err) });
     }
   };
 
-  const downloadCover = async (): Promise<void> => {
-    if (!ready?.application_id) return;
-    try {
-      await downloadAuthed(
-        tailoredCoverLetterUrl(ready.application_id),
-        `${safeName(alert.title)}-cover.docx`,
-      );
-    } catch (err) {
-      pushToast({ kind: 'error', message: err instanceof Error ? err.message : String(err) });
-    }
-  };
+  const cvBase = `${safeName(alert.title)}-cv`;
+  const coverBase = `${safeName(alert.title)}-cover`;
 
   return (
     <article className="overflow-hidden rounded-lg border border-border-subtle bg-surface-raised p-4">
@@ -125,7 +118,7 @@ function AlertCard({ alert }: { alert: Alert }): JSX.Element {
             <h2 className="font-medium text-ink-primary">{alert.title}</h2>
           </div>
           <p
-            className={`mt-1 whitespace-pre-wrap break-words text-sm text-ink-secondary ${
+            className={`mt-1 whitespace-pre-wrap text-sm text-ink-secondary [overflow-wrap:anywhere] ${
               expanded ? '' : 'line-clamp-3'
             }`}
           >
@@ -148,21 +141,71 @@ function AlertCard({ alert }: { alert: Alert }): JSX.Element {
       <div className="mt-3 flex flex-wrap items-center gap-2">
         {ready && ready.application_id && (
           <>
-            <button
-              type="button"
-              onClick={() => void downloadCv()}
-              className="rounded-md border border-border-subtle bg-surface-sunken px-3 py-1 text-sm text-ink-primary hover:bg-surface-base"
-            >
-              Download CV
-            </button>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <button
+                  type="button"
+                  className="rounded-md border border-border-subtle bg-surface-sunken px-3 py-1 text-sm text-ink-primary hover:bg-surface-base"
+                >
+                  Download CV
+                </button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent>
+                <DropdownMenuItem
+                  onSelect={() =>
+                    void downloadFile(
+                      `${tailoredCvUrl(ready.application_id!)}?format=docx`,
+                      `${cvBase}.docx`,
+                    )
+                  }
+                >
+                  Download .docx
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  onSelect={() =>
+                    void downloadFile(
+                      `${tailoredCvUrl(ready.application_id!)}?format=pdf`,
+                      `${cvBase}.pdf`,
+                    )
+                  }
+                >
+                  Download .pdf
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
             {ready.tailored_cover_letter_path && (
-              <button
-                type="button"
-                onClick={() => void downloadCover()}
-                className="rounded-md border border-border-subtle bg-surface-sunken px-3 py-1 text-sm text-ink-primary hover:bg-surface-base"
-              >
-                Download cover letter
-              </button>
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <button
+                    type="button"
+                    className="rounded-md border border-border-subtle bg-surface-sunken px-3 py-1 text-sm text-ink-primary hover:bg-surface-base"
+                  >
+                    Download cover letter
+                  </button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent>
+                  <DropdownMenuItem
+                    onSelect={() =>
+                      void downloadFile(
+                        `${tailoredCoverLetterUrl(ready.application_id!)}?format=docx`,
+                        `${coverBase}.docx`,
+                      )
+                    }
+                  >
+                    Download .docx
+                  </DropdownMenuItem>
+                  <DropdownMenuItem
+                    onSelect={() =>
+                      void downloadFile(
+                        `${tailoredCoverLetterUrl(ready.application_id!)}?format=pdf`,
+                        `${coverBase}.pdf`,
+                      )
+                    }
+                  >
+                    Download .pdf
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
             )}
             {ready.external_apply_url && (
               <a

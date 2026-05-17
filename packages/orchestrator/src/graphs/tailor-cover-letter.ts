@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import PDFDocument from 'pdfkit';
 import { ProviderError } from '@vina/shared';
 import { Document, Packer, Paragraph, TextRun } from 'docx';
 import {
@@ -80,4 +81,37 @@ export async function renderTailoredCoverLetterDocx(
 
   const doc = new Document({ sections: [{ children }] });
   return Packer.toBuffer(doc) as unknown as Promise<Buffer>;
+}
+
+/**
+ * PDF mirror of `renderTailoredCoverLetterDocx`. Same content, different
+ * format — produced at the same time and stored alongside, so the user can
+ * pick either via the download dropdown without round-tripping the LLM.
+ */
+export async function renderTailoredCoverLetterPdf(
+  out: TailorCoverLetterOutput,
+  header: CoverLetterHeader,
+): Promise<Buffer> {
+  return new Promise<Buffer>((resolve, reject) => {
+    const doc = new PDFDocument({ size: 'LETTER', margin: 56 });
+    const chunks: Buffer[] = [];
+    doc.on('data', (c: Buffer) => chunks.push(c));
+    doc.on('end', () => resolve(Buffer.concat(chunks)));
+    doc.on('error', reject);
+
+    doc.font('Helvetica-Bold').fontSize(14).text(header.full_name);
+    doc.font('Helvetica').fontSize(10).text(header.email);
+    doc.moveDown(1.5);
+
+    doc.font('Helvetica').fontSize(11).text(out.greeting);
+    doc.moveDown(0.8);
+
+    for (const para of out.body_paragraphs) {
+      doc.font('Helvetica').fontSize(11).text(para, { align: 'left' });
+      doc.moveDown(0.8);
+    }
+
+    doc.font('Helvetica').fontSize(11).text(out.closing);
+    doc.end();
+  });
 }

@@ -81,6 +81,8 @@ export function createPrepareManualApplyHandler(
       setApplicationTailored(deps.db, app.id, {
         tailored_cv_path: result.tailored_cv_path,
         tailored_cover_letter_path: result.tailored_cover_letter_path,
+        tailored_cv_pdf_path: result.tailored_cv_pdf_path,
+        tailored_cover_letter_pdf_path: result.tailored_cover_letter_pdf_path,
         tailored_at: new Date().toISOString(),
         new_status: 'ready_for_manual_apply',
       });

@@ -12,6 +12,12 @@ import {
 import { downloadAuthed } from '../../api/client.js';
 import { useUiStore } from '../../store/ui-store.js';
 import { Button } from '../../components/ui/button.js';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '../../components/ui/dropdown-menu.js';
 
 export function ReadyToApplyPage(): JSX.Element {
   const applications = useApplications();
@@ -137,10 +143,11 @@ function ApplicationCard({
   const applyLabel = job?.original_source ? `Apply on ${job.original_source}` : 'Apply externally';
   // Defensive filename: if the server response 404s (e.g. mid-deploy), the
   // browser would otherwise save the JSON error body using the URL path as
-  // the filename. Pin a sensible name so it's always *.docx.
+  // the filename. Pin a sensible name so the file always ends with the
+  // requested format extension.
   const safeName = (s: string): string => s.replace(/[^A-Za-z0-9._-]+/g, '_').slice(0, 60);
-  const cvFilename = `${safeName(job?.company ?? 'job')}-${safeName(job?.title ?? 'tailored')}-cv.docx`;
-  const coverFilename = `${safeName(job?.company ?? 'job')}-${safeName(job?.title ?? 'tailored')}-cover.docx`;
+  const cvBase = `${safeName(job?.company ?? 'job')}-${safeName(job?.title ?? 'tailored')}-cv`;
+  const coverBase = `${safeName(job?.company ?? 'job')}-${safeName(job?.title ?? 'tailored')}-cover`;
 
   return (
     <article className="rounded-lg border border-border-subtle bg-surface-raised p-4">
@@ -168,23 +175,71 @@ function ApplicationCard({
         {application.tailored_cover_letter_path ? ' · Cover letter ready' : ''}
       </p>
       <div className="mt-3 flex flex-wrap items-center gap-2">
-        <button
-          type="button"
-          onClick={() => void onDownload(tailoredCvUrl(application.id), cvFilename)}
-          className="rounded-md border border-border-subtle bg-surface-sunken px-3 py-1 text-sm text-ink-primary hover:bg-surface-base"
-        >
-          Download CV
-        </button>
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <button
+              type="button"
+              className="rounded-md border border-border-subtle bg-surface-sunken px-3 py-1 text-sm text-ink-primary hover:bg-surface-base"
+            >
+              Download CV
+            </button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent>
+            <DropdownMenuItem
+              onSelect={() =>
+                void onDownload(
+                  `${tailoredCvUrl(application.id)}?format=docx`,
+                  `${cvBase}.docx`,
+                )
+              }
+            >
+              Download .docx
+            </DropdownMenuItem>
+            <DropdownMenuItem
+              onSelect={() =>
+                void onDownload(
+                  `${tailoredCvUrl(application.id)}?format=pdf`,
+                  `${cvBase}.pdf`,
+                )
+              }
+            >
+              Download .pdf
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
         {application.tailored_cover_letter_path && (
-          <button
-            type="button"
-            onClick={() =>
-              void onDownload(tailoredCoverLetterUrl(application.id), coverFilename)
-            }
-            className="rounded-md border border-border-subtle bg-surface-sunken px-3 py-1 text-sm text-ink-primary hover:bg-surface-base"
-          >
-            Download cover letter
-          </button>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <button
+                type="button"
+                className="rounded-md border border-border-subtle bg-surface-sunken px-3 py-1 text-sm text-ink-primary hover:bg-surface-base"
+              >
+                Download cover letter
+              </button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent>
+              <DropdownMenuItem
+                onSelect={() =>
+                  void onDownload(
+                    `${tailoredCoverLetterUrl(application.id)}?format=docx`,
+                    `${coverBase}.docx`,
+                  )
+                }
+              >
+                Download .docx
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                onSelect={() =>
+                  void onDownload(
+                    `${tailoredCoverLetterUrl(application.id)}?format=pdf`,
+                    `${coverBase}.pdf`,
+                  )
+                }
+              >
+                Download .pdf
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
         )}
         {externalUrl && (
           <a
