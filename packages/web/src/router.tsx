@@ -18,6 +18,9 @@ const Jobs = lazy(() =>
 const Applications = lazy(() =>
   import('./routes/pages.js').then((m) => ({ default: m.Applications })),
 );
+const ReadyToApply = lazy(() =>
+  import('./routes/ready/ReadyToApplyPage.js').then((m) => ({ default: m.ReadyToApplyPage })),
+);
 const Alerts = lazy(() =>
   import('./routes/alerts/AlertsPage.js').then((m) => ({ default: m.AlertsPage })),
 );
@@ -105,7 +108,11 @@ export const router = createBrowserRouter([
           },
           {
             path: '/ready',
-            element: <Navigate to="/jobs" replace />,
+            element: (
+              <Suspense fallback={<PageFallback />}>
+                <ReadyToApply />
+              </Suspense>
+            ),
           },
           {
             path: '/alerts',
