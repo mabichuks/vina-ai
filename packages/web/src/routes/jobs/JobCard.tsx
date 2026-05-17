@@ -14,6 +14,12 @@ interface Props {
   onMarkApplied: () => void;
   onSkip: () => void;
   onReopen: () => void;
+  /** Manual-apply pipeline: kicks off tailoring for this job. */
+  onPrepare?: () => void;
+  /** True once an active application exists for this job. */
+  preparing?: boolean;
+  /** True once tailoring has finished and the user can go to /ready. */
+  ready?: boolean;
 }
 
 function applyHref(job: Job): string {
@@ -27,6 +33,9 @@ export function JobCard({
   onMarkApplied,
   onSkip,
   onReopen,
+  onPrepare,
+  preparing,
+  ready,
 }: Props): JSX.Element {
   const isExternal = job.apply_method === 'manual';
   return (
@@ -73,9 +82,30 @@ export function JobCard({
       <div className="mt-3 flex flex-wrap items-center gap-2">
         {variant === 'new' ? (
           <>
-            <Button variant="default" size="sm" onClick={onApply}>
-              {applyLabel(job)}
-            </Button>
+            {isExternal && onPrepare && !preparing && !ready && (
+              <Button variant="default" size="sm" onClick={onPrepare}>
+                Prepare materials
+              </Button>
+            )}
+            {isExternal && preparing && (
+              <span className="inline-flex items-center gap-1.5 rounded-full bg-info-soft px-2 py-0.5 text-xs text-info">
+                <span className="size-1.5 animate-pulse rounded-full bg-info" />
+                Tailoring…
+              </span>
+            )}
+            {isExternal && ready && (
+              <a
+                href="/ready"
+                className="inline-flex items-center gap-1.5 rounded-md border border-border-subtle bg-success-soft px-3 py-1 text-sm text-success"
+              >
+                Ready to apply →
+              </a>
+            )}
+            {(!isExternal || (!onPrepare && !preparing && !ready)) && (
+              <Button variant="default" size="sm" onClick={onApply}>
+                {applyLabel(job)}
+              </Button>
+            )}
             <Button variant="ghost" size="sm" onClick={onMarkApplied}>
               Mark applied
             </Button>
