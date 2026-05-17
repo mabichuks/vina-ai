@@ -47,3 +47,9 @@ export {
   tailorCoverLetterUserPrompt,
   type TailorCoverLetterInput,
 } from './prompts/tailor-cover-letter.js';
+export {
+  runPrepareManualApply,
+  PrepareManualApplyError,
+  type PrepareManualApplyInput,
+  type PrepareManualApplyResult,
+} from './graphs/prepare-manual-apply.js';
