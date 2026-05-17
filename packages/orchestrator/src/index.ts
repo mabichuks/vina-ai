@@ -35,3 +35,15 @@ export {
   tailorCvUserPrompt,
   type TailorCvInput,
 } from './prompts/tailor-cv.js';
+export {
+  runTailorCoverLetter,
+  renderTailoredCoverLetterDocx,
+  TailorCoverLetterOutputSchema,
+  type TailorCoverLetterOutput,
+  type CoverLetterHeader,
+} from './graphs/tailor-cover-letter.js';
+export {
+  TAILOR_COVER_LETTER_SYSTEM,
+  tailorCoverLetterUserPrompt,
+  type TailorCoverLetterInput,
+} from './prompts/tailor-cover-letter.js';
