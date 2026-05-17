@@ -4,7 +4,7 @@ import type { JobStatus } from '@vina/shared';
 import {
   useJobs,
   useLinkedInStatus,
-  useMarkApplied,
+  useMarkJobApplied,
   useReopenJob,
   useSearchPreferences,
   useSkipJob,
@@ -43,7 +43,7 @@ export function JobsPage(): JSX.Element {
     ...(tab === 'new' && { min_score: minScore }),
   });
 
-  const markApplied = useMarkApplied();
+  const markApplied = useMarkJobApplied();
   const skip = useSkipJob();
   const reopen = useReopenJob();
   const pushToast = useUiStore((s) => s.pushToast);
