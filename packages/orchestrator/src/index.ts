@@ -15,3 +15,11 @@ export {
   type SelectorResult,
   type ResolveSelectorInput,
 } from './graphs/resolve-selector.js';
+export {
+  type ManualApplyToolKit,
+  type SaveTailoredCvInput,
+  type SaveTailoredCoverLetterInput,
+  type SaveTailoredFileResult,
+  SaveTailoredCvInputSchema,
+  SaveTailoredCoverLetterInputSchema,
+} from './tools/types.js';
