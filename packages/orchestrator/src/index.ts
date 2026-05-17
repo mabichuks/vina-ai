@@ -23,3 +23,15 @@ export {
   SaveTailoredCvInputSchema,
   SaveTailoredCoverLetterInputSchema,
 } from './tools/types.js';
+export {
+  runTailorCv,
+  renderTailoredDocx,
+  TailorCvOutputSchema,
+  type TailorCvOutput,
+  type TailorCvHeader,
+} from './graphs/tailor-cv.js';
+export {
+  TAILOR_CV_SYSTEM,
+  tailorCvUserPrompt,
+  type TailorCvInput,
+} from './prompts/tailor-cv.js';
