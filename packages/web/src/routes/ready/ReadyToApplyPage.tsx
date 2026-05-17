@@ -118,6 +118,12 @@ function ApplicationCard({ application, job, onMarkApplied, onSkip }: CardProps)
 
   const externalUrl = job?.external_apply_url ?? job?.url ?? null;
   const applyLabel = job?.original_source ? `Apply on ${job.original_source}` : 'Apply externally';
+  // Defensive filename: if the server response 404s (e.g. mid-deploy), the
+  // browser would otherwise save the JSON error body using the URL path as
+  // the filename. Pin a sensible name so it's always *.docx.
+  const safeName = (s: string): string => s.replace(/[^A-Za-z0-9._-]+/g, '_').slice(0, 60);
+  const cvFilename = `${safeName(job?.company ?? 'job')}-${safeName(job?.title ?? 'tailored')}-cv.docx`;
+  const coverFilename = `${safeName(job?.company ?? 'job')}-${safeName(job?.title ?? 'tailored')}-cover.docx`;
 
   return (
     <article className="rounded-lg border border-border-subtle bg-surface-raised p-4">
@@ -147,7 +153,7 @@ function ApplicationCard({ application, job, onMarkApplied, onSkip }: CardProps)
       <div className="mt-3 flex flex-wrap items-center gap-2">
         <a
           href={tailoredCvUrl(application.id)}
-          download
+          download={cvFilename}
           className="rounded-md border border-border-subtle bg-surface-sunken px-3 py-1 text-sm text-ink-primary hover:bg-surface-base"
         >
           Download CV
@@ -155,7 +161,7 @@ function ApplicationCard({ application, job, onMarkApplied, onSkip }: CardProps)
         {application.tailored_cover_letter_path && (
           <a
             href={tailoredCoverLetterUrl(application.id)}
-            download
+            download={coverFilename}
             className="rounded-md border border-border-subtle bg-surface-sunken px-3 py-1 text-sm text-ink-primary hover:bg-surface-base"
           >
             Download cover letter
