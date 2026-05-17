@@ -18,6 +18,7 @@ The milestones below were planned before the LinkedIn end-to-end slice landed an
 | | **Phase B — Manual-apply pipeline.** Wakes the dormant tailor-cv / tailor-cover-letter / prepare-manual-apply graphs and adds the Ready-to-Apply surface. Folds in the original M14, M16, and M19. Spec: `docs/superpowers/specs/2026-05-13-manual-apply-pipeline-design.md`. Plan: `docs/superpowers/plans/2026-05-13-manual-apply-pipeline.md`. |
 | **Deferred indefinitely** | M15 — Apply graph and form-walker (LinkedIn Easy Apply auto-submit). Out of active queue; logged in `SPEC.md` §12. The manual-apply pipeline covers Easy Apply listings via Prepare materials, so auto-submit is no longer load-bearing. Reversing the deferral means writing the apply graph + LinkedIn form walker. |
 | **Unchanged downstream** | M18 (Alerts UI — partially shipped by the LinkedIn slice, balance lands during Phase B), M20 (Chatbot), M21 (Application detail), M22 (Polish, dashboards), M23 (Hardening) |
+| **Pre-release** | **M24 — Installer & release pipeline** (ADR-020). One-line `install.sh` / `install.ps1` against GitHub Release tarballs; tag-push CI to produce the tarball. Design: `docs/installer.md`. Sized small (~2–3 days) and runs after M23, before any public release. |
 
 The milestone sections below remain as written. Where a milestone is superseded by a Phase A/B/C above, a one-line annotation at the top of the milestone records the supersession.
 
@@ -434,6 +435,31 @@ The milestone sections below remain as written. Where a milestone is superseded 
 - Pretty error messages everywhere — no raw stack traces in user-visible surfaces
 
 **Done when:** Running Vina overnight against the fixtures with synthetic failures (random 429s, occasional CAPTCHAs, induced session expiry, simulated SerpAPI 429s) leaves the system in a clean state every morning.
+
+---
+
+## Milestone 24 — Installer and release pipeline
+
+**Goal:** Users install Vina with one command on macOS, Linux, WSL, and Windows; a tag push produces a downloadable release.
+
+Full design lives in `docs/installer.md`. The model is GitHub Release tarball + one-line installer (ADR-020), not npm.
+
+**Tasks.**
+
+- `scripts/install.sh` — bash installer per `docs/installer.md` §3 (Node bootstrap, pnpm via Corepack, tarball download, `pnpm install --prod --frozen-lockfile`, Playwright Chromium, wrapper into `~/.local/bin`, atomic `current` symlink, PATH housekeeping, native-build-tools retry on better-sqlite3 failure, `--dry-run`, `--version`, `--no-onboard`, `--no-playwright`, `--force`)
+- `scripts/install.ps1` — PowerShell installer per `docs/installer.md` §4 (winget/choco/scoop bootstrap, same flow on Windows, junction instead of symlink for `current`, `vina.cmd` wrapper)
+- `.github/workflows/release.yml` — on `push: tags: ['v*']`, builds the monorepo, packs `vina-<X.Y.Z>.tar.gz` (prebuilt `dist/` per workspace + lockfile + migrations, no `node_modules` / source / tests), publishes the tarball plus the two installer scripts as GitHub Release assets
+- Hosting: `vina.ai/install.sh` and `vina.ai/install.ps1` served as plain text, TLS 1.2+, `Cache-Control: max-age=300`, backed by a static host we control. Both scripts honour the `VINA_REPO` env var as an escape hatch for testing forks
+- `vina doctor` prints `INSTALLER_VERSION` so bug reports identify which installer the user ran
+- Cross-distro smoke tests in Docker (Ubuntu, Alpine, Fedora) and a fresh Windows Sandbox session per `docs/installer.md` §8 — run before every release
+
+**Done when:**
+
+- A clean Ubuntu container, a clean Alpine container, a clean Fedora container, a clean macOS machine, and a fresh Windows VM each go from zero to `vina --version` returning the released tag with the documented one-liner
+- Re-running the installer is a no-op (prints "already at vX.Y.Z"); `--force` reinstalls cleanly; `--version v<older>` downgrades cleanly
+- `--dry-run` exits 0 with no filesystem changes; `--no-playwright` finishes without Chromium and `vina doctor` flags the missing browser with an actionable hint
+- Tag push to `main` produces exactly one tarball + two installer-script assets, with the asset filename matching `vina-<X.Y.Z>.tar.gz`
+- README's install section is the one-liner — `npm`, `npx`, and `pnpm` are absent from user-facing copy outside the explicit dev-setup section
 
 ---
 
