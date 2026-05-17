@@ -6,7 +6,8 @@ interface SystemStatus {
   version: string;
   started_at: string;
   scheduler: { running: boolean };
-  queue: { pending: number; running: number };
+  queue: { pending: number; running: number; kinds?: Record<string, number> };
+  ready_to_apply_count?: number;
   active_provider: { kind: string; model: string } | null;
   linkedin_connected: boolean;
   linkedin_last_search_at: string | null;
@@ -34,6 +35,9 @@ export async function statusCommand(): Promise<number> {
     process.stdout.write(
       `Queue: ${detail.queue.pending} pending, ${detail.queue.running} running\n`,
     );
+    const prepDepth = detail.queue.kinds?.['prepare_manual_apply'] ?? 0;
+    process.stdout.write(`Manual-apply queue: ${prepDepth} pending\n`);
+    process.stdout.write(`Ready to apply: ${detail.ready_to_apply_count ?? 0}\n`);
     process.stdout.write(
       `Provider: ${detail.active_provider ? `${detail.active_provider.kind}/${detail.active_provider.model}` : 'none configured'}\n`,
     );
