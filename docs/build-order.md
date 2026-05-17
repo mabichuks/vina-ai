@@ -16,7 +16,7 @@ The milestones below were planned before the LinkedIn end-to-end slice landed an
 | **Skipped (ADR-019)** | ~~M12 (Indeed adapter)~~, ~~M17 (Apply graph for Indeed)~~. Removed from scope. |
 | **Active queue** | **Phase A — Google Jobs via SerpAPI.** Replaces and supersedes the original M13. Spec: `docs/superpowers/specs/2026-05-13-google-jobs-source-design.md`. Plan: `docs/superpowers/plans/2026-05-13-google-jobs-source.md`. |
 | | **Phase B — Manual-apply pipeline.** Wakes the dormant tailor-cv / tailor-cover-letter / prepare-manual-apply graphs and adds the Ready-to-Apply surface. Folds in the original M14, M16, and M19. Spec: `docs/superpowers/specs/2026-05-13-manual-apply-pipeline-design.md`. Plan: `docs/superpowers/plans/2026-05-13-manual-apply-pipeline.md`. |
-| **Deferred (Phase C)** | M15 — Apply graph and form-walker (LinkedIn Easy Apply auto-submit). Code stays dormant; spec and plan come later. |
+| **Deferred indefinitely** | M15 — Apply graph and form-walker (LinkedIn Easy Apply auto-submit). Out of active queue; logged in `SPEC.md` §12. The manual-apply pipeline covers Easy Apply listings via Prepare materials, so auto-submit is no longer load-bearing. Reversing the deferral means writing the apply graph + LinkedIn form walker. |
 | **Unchanged downstream** | M18 (Alerts UI — partially shipped by the LinkedIn slice, balance lands during Phase B), M20 (Chatbot), M21 (Application detail), M22 (Polish, dashboards), M23 (Hardening) |
 
 The milestone sections below remain as written. Where a milestone is superseded by a Phase A/B/C above, a one-line annotation at the top of the milestone records the supersession.
@@ -290,7 +290,7 @@ The milestone sections below remain as written. Where a milestone is superseded 
 
 ## Milestone 15 — Apply graph and form walker (LinkedIn, auto-apply only)
 
-**Status:** **Deferred (Phase C).** Not in the current build queue. Spec and plan land after Phase B ships.
+**Status:** **Deferred indefinitely** (2026-05-17). Out of the active queue. The manual-apply pipeline (Phase B, shipped) covers Easy Apply listings via Prepare materials → tailored CV → user submits, so auto-submit is no longer load-bearing. The tradeoff was: auto-submit adds detection risk on LinkedIn (our highest-value session to preserve) for a marginal time saving over an already-streamlined manual flow. Logged in `SPEC.md` §12. Reversing this milestone means writing the apply graph and the LinkedIn form walker; the orchestrator and adapter interfaces are already shaped to accommodate it.
 
 **Goal:** End-to-end auto-apply works against the LinkedIn fixture for `apply_method='auto'` jobs.
 

@@ -269,8 +269,10 @@ The following user stories drive acceptance for MVP. Each is testable.
 ## 12. Future Considerations (Not MVP)
 
 - Additional sources: Indeed (skipped per ADR-019), Glassdoor, Otta, Welcome to the Jungle, company career pages
+- LinkedIn Easy Apply auto-submit. The form walker / apply graph that would automatically fill and submit Easy Apply listings (originally M15, then deferred to Phase C in `docs/build-order.md`) is deferred indefinitely. Reasoning: the manual-apply pipeline already covers Easy Apply listings via Prepare materials → tailored CV → user submits. Auto-submit adds detection risk on LinkedIn (the highest-value session to preserve) for a marginal time saving over an already-streamlined manual flow. Reversing this means writing the apply graph and the LinkedIn form walker; the orchestrator and adapter interfaces are already shaped to accommodate it.
 - Limited automation for popular ATS systems (Workday, Greenhouse) on the manual-apply path
 - Automated cover-letter generation when none is uploaded
 - Interview tracking
 - Browser extension companion (for one-off applications outside the schedule)
 - Multi-profile support (e.g. applying as different personas for contracting vs full-time)
+- Richer tailored-CV design. Current output is rendered from scratch via `docx`/`pdfkit` and is visually plain. Two avenues considered and deferred: (a) ship 2–3 designer-built `.docx` templates and fill them with `docxtemplater`, converting to PDF via headless LibreOffice — predictable quality, days of work; (b) rewrite the user's uploaded CV in-place by walking its XML and substituting tailored text into existing runs — preserves their own design but fragile across run-splitting, sidebars, tables, and length-driven pagination shifts. Recommended sequencing if revisited: (a) first, then (b) as a v2 upgrade gated to simple single-column layouts.
