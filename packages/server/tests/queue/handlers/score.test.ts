@@ -173,6 +173,9 @@ describe('score handler', () => {
       extracted_text: 'NOT-DEFAULT',
       is_default: false,
     });
+    // insertCv auto-promotes the first CV when no default exists; demote it
+    // here to construct the "no default CV" state this test is exercising.
+    db.exec(`UPDATE cvs SET is_default = 0`);
     const job = insertJob(db, {
       site_id: 'linkedin',
       external_id: 'ext4',
