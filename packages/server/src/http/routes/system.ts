@@ -80,6 +80,23 @@ export async function systemRoutes(app: FastifyInstance, deps: SystemRouteDeps):
 
     const pending = countByStatus(db, 'pending');
     const running = countByStatus(db, 'running');
+    // Break down `pending` by kind so the CLI can surface
+    // "Manual-apply queue: N pending" without a second round-trip.
+    const kindRows = db
+      .prepare(
+        `SELECT kind, COUNT(*) AS n FROM task_queue WHERE status = 'pending' GROUP BY kind`,
+      )
+      .all() as Array<{ kind: string; n: number }>;
+    const queueKinds: Record<string, number> = {};
+    for (const row of kindRows) queueKinds[row.kind] = row.n;
+
+    const readyToApplyCount = (
+      db
+        .prepare(
+          `SELECT COUNT(*) AS n FROM applications WHERE status = 'ready_for_manual_apply'`,
+        )
+        .get() as { n: number }
+    ).n;
 
     // Earliest next_run_at across enabled schedules — null if no schedule has
     // a value yet. Falls back to computing from the cron expression for rows
@@ -111,7 +128,8 @@ export async function systemRoutes(app: FastifyInstance, deps: SystemRouteDeps):
       version,
       started_at: startedAt,
       scheduler: { running: !settings.paused, next_run_at: earliest },
-      queue: { pending, running },
+      queue: { pending, running, kinds: queueKinds },
+      ready_to_apply_count: readyToApplyCount,
       active_provider: provider ? { kind: provider.kind, model: provider.model } : null,
       sources: sitesList.map((s) => ({
         id: s.id,

@@ -25,6 +25,11 @@
     "@langchain/ollama": "^1.2.7",
     "@langchain/openai": "^1.4.5",
     "@vina/shared": "workspace:*",
+    "docx": "^9.6.1",
+    "pdfkit": "^0.18.0",
     "zod": "^4.3.6"
+  },
+  "devDependencies": {
+    "@types/pdfkit": "^0.17.6"
   }
 }

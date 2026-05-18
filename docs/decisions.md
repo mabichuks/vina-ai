@@ -497,3 +497,43 @@ We considered: (1) keep Indeed as planned, (2) cloud-browser the Indeed flow via
 - The Settings → Sites tile lists LinkedIn and Google Jobs only. Indeed does **not** appear as "Coming soon" — it's not planned.
 - Existing references to Indeed in `docs/architecture.md`, `docs/api-spec.md`, `docs/browser-automation.md`, `docs/frontend-designer.md`, and `docs/database-schema.md` are stale; they document historical scope. This ADR supersedes them. Per-doc sweeps to remove Indeed verbiage land in the Google Jobs slice (next phase A).
 - If the cost calculus changes later (e.g. SerpAPI prices out, or a critical user segment is Indeed-heavy), reversing this ADR means writing the Indeed adapter and the Indeed fixture site. The `SiteAdapter` interface is already designed to accommodate it — the decision is operational, not architectural.
+
+## ADR-020: Distribute via GitHub Release tarballs and a one-line installer, not via npm
+
+**Status:** Accepted (2026-05-17).
+
+**Context.** The original framing (CLAUDE.md, README) described Vina as "distributed as an NPM package." That model implied `npm install -g @vina/cli` or `npx vina` as the install surface. As the installer was designed (`docs/installer.md`), three forces pushed against npm:
+
+1. **`better-sqlite3` is fragile across the npm matrix.** Prebuilt binaries exist for common Node majors and libcs, but musl, older glibc, and unusual ABIs fall back to a `node-gyp` source build that needs python3, make, and a C++ toolchain. We need to detect that and install build tools on the user's machine — something `npm install -g` cannot orchestrate on its own.
+2. **Playwright Chromium lives outside `node_modules`.** Even after `npm install` succeeds, the user still needs `playwright install chromium` (~250 MB, per-platform) as a separate step. An npm install completes silently with no browser, and Vina is broken until the user runs a second command.
+3. **The npm install surface doesn't match Vina's UX.** Vina is a local *application*, not a library or developer tool — the install should feel like "one command, then `vina start`", not "install Node, then install pnpm, then `npm install -g`, then `playwright install`, then …".
+
+We considered: (1) keep npm as the primary distribution, (2) ship a single static binary via Bun compile / Node SEA / `pkg`, (3) git clone and build on the user's machine, (4) GitHub Release tarballs + a one-line installer. Option 2 doesn't help — better-sqlite3 doesn't bundle cleanly across libcs and Playwright Chromium dwarfs the binary anyway, so the size/speed win is zero. Option 3 takes minutes and pulls devDependencies on the user's machine — fine for contributors, unacceptable for end users.
+
+**Decision.** Distribute Vina as a single GitHub Release tarball (`vina-X.Y.Z.tar.gz`, ~5–15 MB, prebuilt `dist/` per workspace + lockfile, no `node_modules`). Users install via a one-line installer hosted at `vina.ai`:
+
+```bash
+curl -fsSL https://vina.ai/install.sh | bash       # macOS / Linux / WSL
+powershell -c "irm https://vina.ai/install.ps1 | iex"   # Windows
+```
+
+The installer bootstraps Node ≥ 20 (via brew/apt/dnf/pacman/apk on Unix; winget/choco/scoop on Windows), activates pnpm via Corepack, downloads the tarball, runs `pnpm install --prod --frozen-lockfile`, installs Playwright Chromium, drops a `vina` wrapper into PATH, and atomically flips a `current` symlink for upgrades and rollback. The full design is in `docs/installer.md`.
+
+**Reasons.**
+
+- One user-facing command instead of a four-step npm dance
+- Installer can detect missing build tools and install them on demand (npm can't)
+- Installer pulls Playwright Chromium as part of the same flow — no broken first-run state
+- Atomic upgrade and rollback via a `current` symlink — `npm install -g` has no equivalent
+- Decouples the user's mental model from npm entirely; Vina is "an app the user installs", not "a Node CLI on the npm registry"
+- The tarball ships per-platform Node-native modules resolved on the user's actual machine, sidestepping the cross-libc fragility a single binary would inherit
+
+**Consequences.**
+
+- Vina is not published to the npm registry. `npm install -g @vina/cli` and `npx vina` are not supported.
+- `package.json` `name` fields remain `@vina/*` because pnpm workspaces still need them for internal resolution, but those names are workspace-local — they never appear on registry.npmjs.org.
+- The release pipeline (`.github/workflows/release.yml`) is now a load-bearing artifact, not optional CI polish. Tag-push must produce `vina-X.Y.Z.tar.gz` reliably or the installer cannot run.
+- `vina.ai/install.sh` and `vina.ai/install.ps1` are user-visible URLs we must keep alive. They are backed by a static host we control (Cloudflare Pages / Vercel / Netlify / S3+CloudFront) with `Cache-Control: max-age=300` so fixes propagate within minutes.
+- The installer scripts themselves are also published as release assets, so a `vina.ai` outage doesn't block users who already know the GitHub URL.
+- `CLAUDE.md`'s "distributed as an NPM package" line is superseded by this ADR and has been updated.
+- If we ever reverse this (e.g. the install pain stays low enough that npm becomes viable again), reversing means publishing the `@vina/*` workspaces with prepared `bin` fields and dropping the installer scripts. The architecture supports either path; this ADR is operational.

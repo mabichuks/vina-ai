@@ -241,6 +241,23 @@ function checkDataDir(): CheckResult {
   }
 }
 
+function checkTailoredCvDir(): CheckResult {
+  const dir = path.join(dataDir, 'files', 'tailored');
+  try {
+    fs.mkdirSync(dir, { recursive: true });
+    const probe = path.join(dir, '.write-probe');
+    fs.writeFileSync(probe, '');
+    fs.unlinkSync(probe);
+    return { name: `Tailored CV directory writable (${dir})`, ok: true };
+  } catch (err) {
+    return {
+      name: 'Tailored CV directory writable',
+      ok: false,
+      remediation: `Could not write to ${dir}: ${(err as Error).message}`,
+    };
+  }
+}
+
 async function checkDaemonReachable(): Promise<CheckResult> {
   const pid = readPidFile();
   const status = readStatus();
@@ -276,6 +293,7 @@ export async function doctorCommand(): Promise<number> {
   const checks: (CheckResult | Promise<CheckResult>)[] = [
     checkNodeVersion(),
     checkDataDir(),
+    checkTailoredCvDir(),
     checkDaemonReachable(),
     checkChromium(),
     checkLinkedInProfileDir(),

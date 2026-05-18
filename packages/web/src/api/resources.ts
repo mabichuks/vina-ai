@@ -1,6 +1,13 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import {
+  useInfiniteQuery,
+  useMutation,
+  useQuery,
+  useQueryClient,
+} from '@tanstack/react-query';
 import type {
   Alert,
+  Application,
+  ApplicationStatus,
   CoverLetter,
   Cv,
   Job,
@@ -122,6 +129,32 @@ export function useUploadCv(): {
     mutate: (file, label, isDefault = false) => mut.mutateAsync({ file, label, isDefault }),
     isPending: mut.isPending,
   };
+}
+
+export function useSetDefaultCv(): {
+  mutate: (id: string) => Promise<Cv>;
+  isPending: boolean;
+} {
+  const qc = useQueryClient();
+  const mut = useMutation<Cv, Error, string>({
+    mutationFn: (id) => api<Cv>(`/api/cvs/${id}/default`, { method: 'POST', body: {} }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['cvs'] }),
+  });
+  return { mutate: (id) => mut.mutateAsync(id), isPending: mut.isPending };
+}
+
+export function useDeleteCv(): {
+  mutate: (id: string) => Promise<void>;
+  isPending: boolean;
+} {
+  const qc = useQueryClient();
+  const mut = useMutation<void, Error, string>({
+    mutationFn: async (id) => {
+      await api(`/api/cvs/${id}`, { method: 'DELETE' });
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['cvs'] }),
+  });
+  return { mutate: (id) => mut.mutateAsync(id), isPending: mut.isPending };
 }
 
 /* ------------------------------------------------------------------ */
@@ -423,6 +456,59 @@ export function useJobs(filters: JobsFilters): { data: Job[]; isLoading: boolean
   return { data: q.data?.items ?? [], isLoading: q.isLoading };
 }
 
+/**
+ * Infinite-scroll jobs query. Auto-fetches the next page on `fetchNextPage()`;
+ * the caller wires a sentinel via `IntersectionObserver` (or a "Load more"
+ * button). Capped server-side at `page_size <= 100`; the UI passes 25 by
+ * default to keep DOM weight bounded.
+ *
+ * Page numbers are 1-indexed (matches the REST API). `hasNextPage` is derived
+ * by checking whether the last page returned a full `page_size` — when it
+ * returns fewer, we've hit the end.
+ */
+export function useInfiniteJobs(filters: Omit<JobsFilters, 'page'>): {
+  pages: Job[];
+  isLoading: boolean;
+  isFetchingNextPage: boolean;
+  hasNextPage: boolean;
+  fetchNextPage: () => void;
+} {
+  const pageSize = filters.page_size ?? 25;
+  const baseQs = (page: number): string => {
+    const qs = new URLSearchParams();
+    if (filters.status) {
+      qs.set(
+        'status',
+        Array.isArray(filters.status) ? filters.status.join(',') : filters.status,
+      );
+    }
+    if (filters.min_score !== undefined) qs.set('min_score', String(filters.min_score));
+    qs.set('page', String(page));
+    qs.set('page_size', String(pageSize));
+    return qs.toString();
+  };
+
+  const q = useInfiniteQuery<JobsListResponse, Error>({
+    queryKey: ['jobs-infinite', { ...filters, page_size: pageSize }],
+    queryFn: ({ pageParam }) =>
+      api<JobsListResponse>(`/api/jobs?${baseQs(pageParam as number)}`),
+    initialPageParam: 1,
+    getNextPageParam: (lastPage) => {
+      if (lastPage.items.length < pageSize) return undefined;
+      return lastPage.page + 1;
+    },
+  });
+
+  const flat: Job[] = (q.data?.pages ?? []).flatMap((p) => p.items);
+  return {
+    pages: flat,
+    isLoading: q.isLoading,
+    isFetchingNextPage: q.isFetchingNextPage,
+    hasNextPage: q.hasNextPage ?? false,
+    fetchNextPage: () => void q.fetchNextPage(),
+  };
+}
+
 function useJobStatusMutation(suffix: 'applied' | 'skip' | 'scored'): {
   mutate: (id: string) => Promise<Job>;
   isPending: boolean;
@@ -435,7 +521,14 @@ function useJobStatusMutation(suffix: 'applied' | 'skip' | 'scored'): {
   return { mutate: (id) => mut.mutateAsync(id), isPending: mut.isPending };
 }
 
-export const useMarkApplied = (): ReturnType<typeof useJobStatusMutation> =>
+/**
+ * Legacy job-status mutation kept for the existing Jobs page action. The
+ * manual-apply pipeline introduces a richer `useMarkApplied` below that
+ * targets the application row + auto-resolves the alert; new call sites
+ * should prefer that. This stays for JobsPage compatibility until that
+ * surface migrates to applications.
+ */
+export const useMarkJobApplied = (): ReturnType<typeof useJobStatusMutation> =>
   useJobStatusMutation('applied');
 export const useSkipJob = (): ReturnType<typeof useJobStatusMutation> =>
   useJobStatusMutation('skip');
@@ -666,4 +759,111 @@ export function useDisconnectGoogleJobs(): {
     },
   });
   return { mutate: () => mut.mutateAsync(), isPending: mut.isPending };
+}
+
+/* ------------------------------------------------------------------ */
+/* Applications (manual-apply pipeline)                                 */
+/* ------------------------------------------------------------------ */
+
+interface UseApplicationsOpts {
+  status?: ApplicationStatus;
+  pageSize?: number;
+}
+
+export function useApplications(opts: UseApplicationsOpts = {}): {
+  data: Application[];
+  isLoading: boolean;
+} {
+  const status = opts.status ?? 'ready_for_manual_apply';
+  const q = useQuery<{ items: Application[] }>({
+    queryKey: ['applications', status],
+    queryFn: () =>
+      api<{ items: Application[] }>(
+        `/api/applications?status=${status}&page_size=${opts.pageSize ?? 50}`,
+      ),
+  });
+  return { data: q.data?.items ?? [], isLoading: q.isLoading };
+}
+
+export function useApplication(id: string | null): {
+  data: Application | null;
+  isLoading: boolean;
+} {
+  const q = useQuery<Application>({
+    queryKey: ['applications', id],
+    queryFn: () => api<Application>(`/api/applications/${id}`),
+    enabled: id !== null,
+  });
+  return { data: q.data ?? null, isLoading: q.isLoading };
+}
+
+export function useMarkApplied(): {
+  mutate: (id: string, notes?: string) => Promise<Application>;
+  isPending: boolean;
+} {
+  const qc = useQueryClient();
+  const mut = useMutation<Application, Error, { id: string; notes?: string }>({
+    mutationFn: ({ id, notes }) =>
+      api<Application>(`/api/applications/${id}/mark-applied`, {
+        method: 'POST',
+        body: { notes },
+      }),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ['applications'] });
+      void qc.invalidateQueries({ queryKey: ['alerts'] });
+      void qc.invalidateQueries({ queryKey: ['jobs'] });
+    },
+  });
+  return { mutate: (id, notes) => mut.mutateAsync({ id, notes }), isPending: mut.isPending };
+}
+
+export function useSkipApplication(): {
+  mutate: (id: string, reason?: string) => Promise<Application>;
+  isPending: boolean;
+} {
+  const qc = useQueryClient();
+  const mut = useMutation<Application, Error, { id: string; reason?: string }>({
+    mutationFn: ({ id, reason }) =>
+      api<Application>(`/api/applications/${id}/skip`, {
+        method: 'POST',
+        body: { reason },
+      }),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ['applications'] });
+      void qc.invalidateQueries({ queryKey: ['alerts'] });
+      void qc.invalidateQueries({ queryKey: ['jobs'] });
+    },
+  });
+  return { mutate: (id, reason) => mut.mutateAsync({ id, reason }), isPending: mut.isPending };
+}
+
+export function usePrepareJob(): {
+  mutate: (jobId: string) => Promise<{ application_id: string; status: string; deduped: boolean }>;
+  isPending: boolean;
+} {
+  const qc = useQueryClient();
+  const mut = useMutation<
+    { application_id: string; status: string; deduped: boolean },
+    Error,
+    string
+  >({
+    mutationFn: (jobId) =>
+      api<{ application_id: string; status: string; deduped: boolean }>(
+        `/api/jobs/${jobId}/prepare`,
+        { method: 'POST', body: {} },
+      ),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ['applications'] });
+      void qc.invalidateQueries({ queryKey: ['jobs'] });
+    },
+  });
+  return { mutate: (id) => mut.mutateAsync(id), isPending: mut.isPending };
+}
+
+export function tailoredCvUrl(applicationId: string): string {
+  return `/api/applications/${applicationId}/tailored-cv`;
+}
+
+export function tailoredCoverLetterUrl(applicationId: string): string {
+  return `/api/applications/${applicationId}/tailored-cover-letter`;
 }

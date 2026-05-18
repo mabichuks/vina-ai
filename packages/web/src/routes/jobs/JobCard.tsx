@@ -1,5 +1,6 @@
 import type { Job } from '@vina/shared';
 import { Button } from '../../components/ui/button.js';
+import { LoadingDots } from '../../components/ui/loading-dots.js';
 
 function applyLabel(job: Job): string {
   if (job.apply_method === 'auto') return 'Apply on LinkedIn';
@@ -14,6 +15,12 @@ interface Props {
   onMarkApplied: () => void;
   onSkip: () => void;
   onReopen: () => void;
+  /** Manual-apply pipeline: kicks off tailoring for this job. */
+  onPrepare?: () => void;
+  /** True once an active application exists for this job. */
+  preparing?: boolean;
+  /** True once tailoring has finished and the user can go to /ready. */
+  ready?: boolean;
 }
 
 function applyHref(job: Job): string {
@@ -27,6 +34,9 @@ export function JobCard({
   onMarkApplied,
   onSkip,
   onReopen,
+  onPrepare,
+  preparing,
+  ready,
 }: Props): JSX.Element {
   const isExternal = job.apply_method === 'manual';
   return (
@@ -61,8 +71,8 @@ export function JobCard({
           // Pinned-to-bottom worklist row that's still being scored. The
           // pulse hints that work is in progress without needing a spinner.
           <span className="inline-flex items-center gap-1.5 rounded-full bg-info-soft px-2 py-0.5 text-info">
-            <span className="size-1.5 animate-pulse rounded-full bg-info" />
-            Scoring…
+            Scoring
+            <LoadingDots />
           </span>
         )}
         {job.salary_text && <span className="text-ink-muted">{job.salary_text}</span>}
@@ -73,7 +83,34 @@ export function JobCard({
       <div className="mt-3 flex flex-wrap items-center gap-2">
         {variant === 'new' ? (
           <>
-            <Button variant="default" size="sm" onClick={onApply}>
+            {/* Prepare materials is the *recommended* primary action for
+                manual jobs, but the user can always bypass it and apply
+                directly with their default CV. Apply stays visible as a
+                secondary action for that path. */}
+            {isExternal && onPrepare && !preparing && !ready && (
+              <Button variant="default" size="sm" onClick={onPrepare}>
+                Prepare materials
+              </Button>
+            )}
+            {isExternal && preparing && (
+              <span className="inline-flex items-center gap-1.5 rounded-full bg-info-soft px-2 py-0.5 text-xs text-info">
+                Tailoring
+                <LoadingDots />
+              </span>
+            )}
+            {isExternal && ready && (
+              <a
+                href="/ready"
+                className="inline-flex items-center gap-1.5 rounded-md border border-border-subtle bg-success-soft px-3 py-1 text-sm text-success"
+              >
+                Ready to apply →
+              </a>
+            )}
+            <Button
+              variant={isExternal && onPrepare && !preparing && !ready ? 'ghost' : 'default'}
+              size="sm"
+              onClick={onApply}
+            >
               {applyLabel(job)}
             </Button>
             <Button variant="ghost" size="sm" onClick={onMarkApplied}>

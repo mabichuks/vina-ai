@@ -122,3 +122,33 @@ async function apiOnce<T>(
 
   return (await res.json()) as T;
 }
+
+/**
+ * Download a binary file from an authenticated endpoint. The native
+ * `<a download href="...">` pattern doesn't work for bearer-token APIs — the
+ * browser doesn't attach our auth header, the server returns 401 JSON, and
+ * the browser obediently saves the JSON error body as a file with the URL's
+ * trailing path as the filename. This helper fetches with auth, blobs the
+ * response, and triggers a download via a temporary `<a>` so the file lands
+ * with the right name and type.
+ */
+export async function downloadAuthed(path: string, filename: string): Promise<void> {
+  const token = getToken();
+  const headers: Record<string, string> = {};
+  if (token) headers.authorization = `Bearer ${token}`;
+  const res = await fetch(path, { headers });
+  if (!res.ok) {
+    await parseErrorAndThrow(res);
+  }
+  const blob = await res.blob();
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  // Defer revocation by one tick so the browser actually starts the download
+  // before the URL goes away.
+  setTimeout(() => URL.revokeObjectURL(url), 0);
+}

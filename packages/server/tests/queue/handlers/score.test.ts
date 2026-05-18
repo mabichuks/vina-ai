@@ -173,6 +173,9 @@ describe('score handler', () => {
       extracted_text: 'NOT-DEFAULT',
       is_default: false,
     });
+    // insertCv auto-promotes the first CV when no default exists; demote it
+    // here to construct the "no default CV" state this test is exercising.
+    db.exec(`UPDATE cvs SET is_default = 0`);
     const job = insertJob(db, {
       site_id: 'linkedin',
       external_id: 'ext4',
@@ -194,5 +197,107 @@ describe('score handler', () => {
     const userMsg = captured.messages?.find((m) => m.role === 'user');
     expect(String(userMsg?.content)).not.toContain('## CV');
     expect(String(userMsg?.content)).not.toContain('NOT-DEFAULT');
+  });
+});
+
+describe('score handler — autonomous-mode auto-enqueue', () => {
+  function seedManualJob(externalId: string, applyMethod: 'manual' | 'auto' = 'manual') {
+    return insertJob(db, {
+      site_id: 'linkedin',
+      external_id: externalId,
+      url: 'https://x',
+      apply_method: applyMethod,
+      title: 'T',
+      company: 'C',
+      description: 'd',
+      external_apply_url: 'https://greenhouse.io/apply',
+    });
+  }
+
+  function autonomousHandler(scoreResult: number) {
+    return createScoreHandler({
+      db,
+      bus: createEventBus(),
+      buildModel: async () => fakeScorer(scoreResult, 'ok'),
+    });
+  }
+
+  it('enqueues prepare_manual_apply when mode=autonomous + score>=threshold + apply_method=manual', async () => {
+    insertCv(db, {
+      label: 'main',
+      original_filename: 'cv.pdf',
+      mime_type: 'application/pdf',
+      file_path: '/tmp/cv.pdf',
+      extracted_text: 'x',
+      is_default: true,
+    });
+    const { updateSettings } = await import('../../../src/db/repositories/settings.js');
+    updateSettings(db, { mode: 'autonomous' });
+    const { upsertSearchPreferences } = await import(
+      '../../../src/db/repositories/search-preferences.js'
+    );
+    upsertSearchPreferences(db, { score_threshold: 70 });
+
+    const job = seedManualJob('auto-1');
+    await autonomousHandler(82)({ job_id: job.id });
+
+    const { listPending } = await import('../../../src/db/repositories/task-queue.js');
+    const pending = listPending(db);
+    expect(pending.find((t) => t.kind === 'prepare_manual_apply')).toBeDefined();
+  });
+
+  it('does NOT enqueue when mode=supervised', async () => {
+    insertCv(db, {
+      label: 'main',
+      original_filename: 'cv.pdf',
+      mime_type: 'application/pdf',
+      file_path: '/tmp/cv.pdf',
+      extracted_text: 'x',
+      is_default: true,
+    });
+    const { updateSettings } = await import('../../../src/db/repositories/settings.js');
+    updateSettings(db, { mode: 'supervised' });
+    const job = seedManualJob('auto-2');
+    await autonomousHandler(82)({ job_id: job.id });
+    const { listPending } = await import('../../../src/db/repositories/task-queue.js');
+    expect(listPending(db).find((t) => t.kind === 'prepare_manual_apply')).toBeUndefined();
+  });
+
+  it('does NOT enqueue when score < threshold', async () => {
+    insertCv(db, {
+      label: 'main',
+      original_filename: 'cv.pdf',
+      mime_type: 'application/pdf',
+      file_path: '/tmp/cv.pdf',
+      extracted_text: 'x',
+      is_default: true,
+    });
+    const { updateSettings } = await import('../../../src/db/repositories/settings.js');
+    updateSettings(db, { mode: 'autonomous' });
+    const { upsertSearchPreferences } = await import(
+      '../../../src/db/repositories/search-preferences.js'
+    );
+    upsertSearchPreferences(db, { score_threshold: 90 });
+    const job = seedManualJob('auto-3');
+    await autonomousHandler(60)({ job_id: job.id });
+    const { listPending } = await import('../../../src/db/repositories/task-queue.js');
+    expect(listPending(db).find((t) => t.kind === 'prepare_manual_apply')).toBeUndefined();
+  });
+
+  it('does NOT enqueue when apply_method=auto (Phase C territory)', async () => {
+    insertCv(db, {
+      label: 'main',
+      original_filename: 'cv.pdf',
+      mime_type: 'application/pdf',
+      file_path: '/tmp/cv.pdf',
+      extracted_text: 'x',
+      is_default: true,
+    });
+    const { updateSettings } = await import('../../../src/db/repositories/settings.js');
+    updateSettings(db, { mode: 'autonomous' });
+    const job = seedManualJob('auto-4', 'auto');
+    await autonomousHandler(82)({ job_id: job.id });
+    const { listPending } = await import('../../../src/db/repositories/task-queue.js');
+    expect(listPending(db).find((t) => t.kind === 'prepare_manual_apply')).toBeUndefined();
   });
 });

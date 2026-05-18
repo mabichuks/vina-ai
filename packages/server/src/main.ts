@@ -23,6 +23,9 @@ import {
 import { createEventBus } from './events/bus.js';
 import { createSearchHandler } from './queue/handlers/search.js';
 import { createScoreHandler } from './queue/handlers/score.js';
+import { createPrepareManualApplyHandler } from './queue/handlers/prepare-manual-apply.js';
+import { createManualApplyToolKit } from './orchestrator/tools/index.js';
+import { updateApplicationStatus } from './db/repositories/applications.js';
 import { createWorker, type TaskHandler, type TaskHandlers } from './queue/worker.js';
 import { runResolveSelector, type StructuredScorer } from '@vina/orchestrator';
 import { createScheduler } from './scheduler/scheduler.js';
@@ -153,6 +156,14 @@ export async function bootServer(overrides: Partial<ServerConfig> = {}): Promise
         buildModel: () => getActiveChatModel(db),
       }),
     ),
+    prepare_manual_apply: adapt(
+      createPrepareManualApplyHandler({
+        db,
+        bus,
+        buildModel: () => getActiveChatModel(db),
+        toolKit: createManualApplyToolKit({ dataDir: config.dataDir }),
+      }),
+    ),
   };
 
   const worker = createWorker({
@@ -167,6 +178,34 @@ export async function bootServer(overrides: Partial<ServerConfig> = {}): Promise
           title: 'Scoring failed',
           description: reason,
           payload: { task_id: task.id },
+        });
+      } else if (task.kind === 'prepare_manual_apply') {
+        const payload = (() => {
+          try {
+            return JSON.parse(task.payload) as { application_id?: string };
+          } catch {
+            return {};
+          }
+        })();
+        // Best-effort: transition the application to 'failed' so the UI
+        // doesn't show a stuck "Tailoring…" card.
+        if (payload.application_id) {
+          try {
+            updateApplicationStatus(db, payload.application_id, 'failed', {
+              failure_reason: reason,
+            });
+          } catch {
+            // Application may have been deleted between enqueue and terminal
+            // failure; the alert below is enough.
+          }
+        }
+        insertAlert(db, {
+          kind: 'apply_failed',
+          severity: 'error',
+          title: 'Tailoring failed',
+          description: reason,
+          application_id: payload.application_id ?? null,
+          payload: { task_id: task.id, kind: 'prepare_manual_apply' },
         });
       }
     },

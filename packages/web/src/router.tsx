@@ -18,11 +18,16 @@ const Jobs = lazy(() =>
 const Applications = lazy(() =>
   import('./routes/pages.js').then((m) => ({ default: m.Applications })),
 );
+const ReadyToApply = lazy(() =>
+  import('./routes/ready/ReadyToApplyPage.js').then((m) => ({ default: m.ReadyToApplyPage })),
+);
 const Alerts = lazy(() =>
   import('./routes/alerts/AlertsPage.js').then((m) => ({ default: m.AlertsPage })),
 );
 const Chat = lazy(() => import('./routes/pages.js').then((m) => ({ default: m.Chat })));
-const Profile = lazy(() => import('./routes/pages.js').then((m) => ({ default: m.Profile })));
+const Profile = lazy(() =>
+  import('./routes/profile/ProfilePage.js').then((m) => ({ default: m.ProfilePage })),
+);
 const Settings = lazy(() =>
   import('./routes/settings/SettingsPage.js').then((m) => ({ default: m.SettingsPage })),
 );
@@ -105,7 +110,11 @@ export const router = createBrowserRouter([
           },
           {
             path: '/ready',
-            element: <Navigate to="/jobs" replace />,
+            element: (
+              <Suspense fallback={<PageFallback />}>
+                <ReadyToApply />
+              </Suspense>
+            ),
           },
           {
             path: '/alerts',

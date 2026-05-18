@@ -15,3 +15,43 @@ export {
   type SelectorResult,
   type ResolveSelectorInput,
 } from './graphs/resolve-selector.js';
+export {
+  type ManualApplyToolKit,
+  type SaveTailoredCvInput,
+  type SaveTailoredCoverLetterInput,
+  type SaveTailoredFileResult,
+  SaveTailoredCvInputSchema,
+  SaveTailoredCoverLetterInputSchema,
+} from './tools/types.js';
+export {
+  runTailorCv,
+  renderTailoredDocx,
+  renderTailoredPdf,
+  TailorCvOutputSchema,
+  type TailorCvOutput,
+  type TailorCvHeader,
+} from './graphs/tailor-cv.js';
+export {
+  TAILOR_CV_SYSTEM,
+  tailorCvUserPrompt,
+  type TailorCvInput,
+} from './prompts/tailor-cv.js';
+export {
+  runTailorCoverLetter,
+  renderTailoredCoverLetterDocx,
+  renderTailoredCoverLetterPdf,
+  TailorCoverLetterOutputSchema,
+  type TailorCoverLetterOutput,
+  type CoverLetterHeader,
+} from './graphs/tailor-cover-letter.js';
+export {
+  TAILOR_COVER_LETTER_SYSTEM,
+  tailorCoverLetterUserPrompt,
+  type TailorCoverLetterInput,
+} from './prompts/tailor-cover-letter.js';
+export {
+  runPrepareManualApply,
+  PrepareManualApplyError,
+  type PrepareManualApplyInput,
+  type PrepareManualApplyResult,
+} from './graphs/prepare-manual-apply.js';

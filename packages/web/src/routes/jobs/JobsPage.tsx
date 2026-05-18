@@ -1,10 +1,12 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import type { JobStatus } from '@vina/shared';
 import {
-  useJobs,
+  useApplications,
+  useInfiniteJobs,
   useLinkedInStatus,
-  useMarkApplied,
+  useMarkJobApplied,
+  usePrepareJob,
   useReopenJob,
   useSearchPreferences,
   useSkipJob,
@@ -38,15 +40,47 @@ export function JobsPage(): JSX.Element {
   const linkedin = useLinkedInStatus({ pollMs: 5000 });
   const minScore = prefs.data?.score_threshold ?? 70;
 
-  const jobs = useJobs({
+  const jobs = useInfiniteJobs({
     status: STATUS_FILTER_FOR_TAB[tab],
     ...(tab === 'new' && { min_score: minScore }),
+    page_size: 25,
   });
 
-  const markApplied = useMarkApplied();
+  // IntersectionObserver-driven infinite scroll: when the sentinel scrolls
+  // into view we ask for the next page. The sentinel sits below the last
+  // card; if there's nothing more to load it never fires.
+  const sentinelRef = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    const el = sentinelRef.current;
+    if (!el) return undefined;
+    if (!jobs.hasNextPage) return undefined;
+    const obs = new IntersectionObserver(
+      (entries) => {
+        if (entries.some((e) => e.isIntersecting) && !jobs.isFetchingNextPage) {
+          jobs.fetchNextPage();
+        }
+      },
+      { rootMargin: '200px' },
+    );
+    obs.observe(el);
+    return () => obs.disconnect();
+  }, [jobs.hasNextPage, jobs.isFetchingNextPage, jobs.fetchNextPage]);
+
+  const markApplied = useMarkJobApplied();
   const skip = useSkipJob();
   const reopen = useReopenJob();
+  const prepare = usePrepareJob();
   const pushToast = useUiStore((s) => s.pushToast);
+
+  // For each manual-apply job, surface "Tailoring…" or "Ready to apply" badges
+  // off of the application status. One query covers both the in-flight and
+  // ready states (status filter widens to 'queued' so newly-enqueued tailoring
+  // shows up immediately; ready_for_manual_apply is the terminal pre-apply
+  // state).
+  const tailoringApps = useApplications({ status: 'queued', pageSize: 100 });
+  const readyApps = useApplications({ status: 'ready_for_manual_apply', pageSize: 100 });
+  const preparingJobIds = new Set<string>(tailoringApps.data.map((a) => a.job_id));
+  const readyJobIds = new Set<string>(readyApps.data.map((a) => a.job_id));
 
   const sessionExpired =
     linkedin.data !== null && !linkedin.data.connected && linkedin.data.error !== null;
@@ -98,7 +132,7 @@ export function JobsPage(): JSX.Element {
 
       {jobs.isLoading ? (
         <p className="text-sm text-ink-secondary">Loading…</p>
-      ) : jobs.data.length === 0 ? (
+      ) : jobs.pages.length === 0 ? (
         <p className="text-sm text-ink-secondary">
           {tab === 'new'
             ? 'No new jobs yet. Try Search now once LinkedIn is connected.'
@@ -108,11 +142,27 @@ export function JobsPage(): JSX.Element {
         </p>
       ) : (
         <ul className="space-y-3">
-          {jobs.data.map((job) => (
+          {jobs.pages.map((job) => (
             <li key={job.id}>
               <JobCard
                 job={job}
                 variant={tab}
+                preparing={preparingJobIds.has(job.id)}
+                ready={readyJobIds.has(job.id)}
+                onPrepare={async () => {
+                  try {
+                    await prepare.mutate(job.id);
+                    pushToast({
+                      kind: 'info',
+                      message: 'Tailoring started. Watch the Ready to apply tab.',
+                    });
+                  } catch (err) {
+                    pushToast({
+                      kind: 'error',
+                      message: err instanceof Error ? err.message : String(err),
+                    });
+                  }
+                }}
                 onApply={() => window.open(applyHref(job), '_blank', 'noreferrer')}
                 onMarkApplied={async () => {
                   await markApplied.mutate(job.id);
@@ -129,6 +179,18 @@ export function JobsPage(): JSX.Element {
               />
             </li>
           ))}
+          <li>
+            {/* Intersection sentinel — when this enters the viewport we ask
+                for the next page. Empty by design; the spacing comes from the
+                outer ul's space-y. */}
+            <div ref={sentinelRef} />
+            {jobs.isFetchingNextPage && (
+              <p className="text-center text-xs text-ink-muted">Loading more…</p>
+            )}
+            {!jobs.hasNextPage && jobs.pages.length > 0 && (
+              <p className="text-center text-xs text-ink-muted">End of list.</p>
+            )}
+          </li>
         </ul>
       )}
     </section>

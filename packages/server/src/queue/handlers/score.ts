@@ -6,6 +6,8 @@ import { findJobById, updateJobScore, updateJobStatus } from '../../db/repositor
 import { findProfile } from '../../db/repositories/profile.js';
 import { listCvs } from '../../db/repositories/cvs.js';
 import { getOrInitSearchPreferences } from '../../db/repositories/search-preferences.js';
+import { getOrInitSettings } from '../../db/repositories/settings.js';
+import { enqueueManualApplyForJob } from '../manual-apply-enqueuer.js';
 import type { EventBus } from '../../events/bus.js';
 
 const log = createLogger('handler.score');
@@ -87,5 +89,25 @@ export function createScoreHandler(
     deps.bus.emit('jobs:updated', { ids: [job.id] });
     deps.bus.emit('score:job_completed', { job_id: job.id, score: result.score });
     log.info({ job_id: job.id, score: result.score }, 'job scored');
+
+    // Autonomy hook: in autonomous mode, any manual-apply job that clears the
+    // user's score threshold goes straight into the tailoring pipeline. The
+    // shared enqueuer is idempotent — a second pass from a re-score won't
+    // duplicate the application/task pair.
+    const settings = getOrInitSettings(deps.db);
+    if (
+      settings.mode === 'autonomous' &&
+      result.score >= prefs.score_threshold &&
+      job.apply_method === 'manual'
+    ) {
+      try {
+        enqueueManualApplyForJob(deps.db, deps.bus, job.id);
+        log.info({ job_id: job.id }, 'autonomous-mode: enqueued prepare_manual_apply');
+      } catch (err) {
+        // Don't fail the score task on enqueue failure (e.g. no default CV).
+        // The alert surface tells the user what's missing.
+        log.warn({ err, job_id: job.id }, 'autonomous enqueue skipped');
+      }
+    }
   };
 }

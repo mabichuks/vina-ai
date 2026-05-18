@@ -28,6 +28,9 @@ const INVALIDATIONS: Record<string, ReadonlyArray<readonly unknown[]>> = {
   'alert:created': [['alerts']],
   'alert:resolved': [['alerts']],
   'alert:dismissed': [['alerts']],
+  'application:ready_for_manual_apply': [['applications'], ['alerts'], ['jobs']],
+  'application:applied_manually': [['applications'], ['alerts'], ['jobs']],
+  'application:skipped': [['applications'], ['alerts'], ['jobs']],
 };
 
 function invalidateQueriesFor(eventType: string): void {
