@@ -71,3 +71,10 @@ export {
   type Skill,
   type SkillMeta,
 } from './skills/loader.js';
+export {
+  createPromptLoader,
+  resolveDefaultsDir as resolvePromptDefaultsDir,
+  type PromptDoc,
+  type PromptLoader,
+  type CreatePromptLoaderOptions,
+} from './prompts/loader.js';
