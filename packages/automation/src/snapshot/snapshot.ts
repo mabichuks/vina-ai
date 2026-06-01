@@ -43,6 +43,25 @@ export interface RawAccessibilityNode {
 }
 
 const OPTION_ROLES = new Set(['option', 'menuitem']);
+/**
+ * Selector-shaped roles whose option list may be nested deeper than direct
+ * children — native `<select>` wraps `<option>`s in a `MenuListPopup`, ARIA
+ * comboboxes commonly use an inner `listbox`. For these, we collect option
+ * names from the whole subtree; for everything else we stay strict (direct
+ * children only) so a stray `option` deep inside an unrelated container
+ * doesn't leak up.
+ */
+const SELECTOR_ROLES = new Set(['combobox', 'listbox', 'menu']);
+
+function collectSubtreeOptions(node: UiNode): string[] {
+  const out: string[] = [];
+  function visit(n: UiNode): void {
+    if (OPTION_ROLES.has(n.role) && n.name.length > 0) out.push(n.name);
+    for (const c of n.children ?? []) visit(c);
+  }
+  for (const c of node.children ?? []) visit(c);
+  return out;
+}
 
 function rawToUi(raw: RawAccessibilityNode, allocate: () => UiRef): UiNode {
   // Trim accessible names per the W3C accname spec — Chrome leaves trailing
@@ -60,9 +79,9 @@ function rawToUi(raw: RawAccessibilityNode, allocate: () => UiRef): UiNode {
   if (raw.children && raw.children.length > 0) {
     const children = raw.children.map((c) => rawToUi(c, allocate));
     node.children = children;
-    const optionNames = children
-      .filter((c) => OPTION_ROLES.has(c.role) && c.name)
-      .map((c) => c.name);
+    const optionNames = SELECTOR_ROLES.has(node.role)
+      ? collectSubtreeOptions(node)
+      : children.filter((c) => OPTION_ROLES.has(c.role) && c.name).map((c) => c.name);
     if (optionNames.length > 0) {
       node.options = optionNames;
     }

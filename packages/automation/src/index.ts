@@ -17,6 +17,13 @@ export {
   type SiteAdapter,
 } from './adapters/adapter.js';
 export { actOnSession, snapshotSession } from './adapters/session-actions.js';
+export { walkForm } from './forms/form-walker.js';
+export {
+  CANONICAL_KEYS,
+  matchCanonicalKey,
+  type CanonicalKeySpec,
+} from './forms/field-map.js';
+export { type FormField, type FormFieldKind } from './forms/types.js';
 export { type JobDetail, type RawListing } from './adapters/types.js';
 export { firstVisible, getHref, isExternalUrl } from './detect/apply-method.js';
 export {
