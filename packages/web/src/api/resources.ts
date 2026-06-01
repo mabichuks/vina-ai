@@ -22,6 +22,8 @@ import type {
   SearchPreferencesInput,
   Settings,
   SettingsUpdate,
+  SkillDetail,
+  SkillSummary,
 } from '@vina/shared';
 import { api } from './client.js';
 
@@ -926,6 +928,73 @@ export function useRevertPrompt(): {
       qc.invalidateQueries({ queryKey: ['prompts'] });
       qc.invalidateQueries({ queryKey: ['prompt', id] });
     },
+  });
+  return { mutate: (id) => mut.mutateAsync(id), isPending: mut.isPending };
+}
+
+/* ------------------------------------------------------------------ */
+/* Skills                                                              */
+/* ------------------------------------------------------------------ */
+
+export function useSkills(): { data: SkillSummary[]; isLoading: boolean } {
+  const q = useQuery<{ items: SkillSummary[] }>({
+    queryKey: ['skills'],
+    queryFn: () => api<{ items: SkillSummary[] }>('/api/skills'),
+  });
+  return { data: q.data?.items ?? [], isLoading: q.isLoading };
+}
+
+export function useSkill(id: string | null): {
+  data: SkillDetail | null;
+  isLoading: boolean;
+} {
+  const q = useQuery<SkillDetail>({
+    queryKey: ['skill', id],
+    queryFn: () => api<SkillDetail>(`/api/skills/${id!}`),
+    enabled: id !== null,
+  });
+  return { data: q.data ?? null, isLoading: q.isLoading };
+}
+
+export function useWriteSkill(): {
+  mutate: (input: { id: string; body: string }) => Promise<SkillDetail>;
+  isPending: boolean;
+} {
+  const qc = useQueryClient();
+  const mut = useMutation<SkillDetail, Error, { id: string; body: string }>({
+    mutationFn: ({ id, body }) =>
+      api<SkillDetail>(`/api/skills/${id}`, { method: 'PUT', body: { body } }),
+    onSuccess: (_d, vars) => {
+      qc.invalidateQueries({ queryKey: ['skills'] });
+      qc.invalidateQueries({ queryKey: ['skill', vars.id] });
+    },
+  });
+  return { mutate: (input) => mut.mutateAsync(input), isPending: mut.isPending };
+}
+
+export function useCreateSkill(): {
+  mutate: (input: { id: string; body: string }) => Promise<SkillDetail>;
+  isPending: boolean;
+} {
+  const qc = useQueryClient();
+  const mut = useMutation<SkillDetail, Error, { id: string; body: string }>({
+    mutationFn: ({ id, body }) =>
+      api<SkillDetail>(`/api/skills/${id}`, { method: 'POST', body: { body } }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['skills'] }),
+  });
+  return { mutate: (input) => mut.mutateAsync(input), isPending: mut.isPending };
+}
+
+export function useDeleteSkill(): {
+  mutate: (id: string) => Promise<void>;
+  isPending: boolean;
+} {
+  const qc = useQueryClient();
+  const mut = useMutation<void, Error, string>({
+    mutationFn: async (id) => {
+      await api(`/api/skills/${id}`, { method: 'DELETE' });
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['skills'] }),
   });
   return { mutate: (id) => mut.mutateAsync(id), isPending: mut.isPending };
 }

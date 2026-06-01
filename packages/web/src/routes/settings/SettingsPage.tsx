@@ -1,6 +1,7 @@
 import { PromptsTile } from './PromptsTile.js';
 import { SearchPreferencesTile } from './SearchPreferencesTile.js';
 import { SitesTile } from './SitesTile.js';
+import { SkillsTile } from './SkillsTile.js';
 
 export function SettingsPage(): JSX.Element {
   return (
@@ -11,6 +12,7 @@ export function SettingsPage(): JSX.Element {
       <SitesTile />
       <SearchPreferencesTile />
       <PromptsTile />
+      <SkillsTile />
     </section>
   );
 }
