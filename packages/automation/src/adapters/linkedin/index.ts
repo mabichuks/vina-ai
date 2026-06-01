@@ -4,6 +4,17 @@ import { firstVisible, getHref, isExternalUrl } from '../../detect/apply-method.
 import { sleepBetweenListings } from '../../browser/humanise.js';
 import type { SiteAdapter } from '../adapter.js';
 import { actOnSession, snapshotSession } from '../session-actions.js';
+import {
+  advanceLinkedInStep,
+  closeLinkedInApplication,
+  fillLinkedInField,
+  inspectLinkedInFields,
+  startLinkedInApplication,
+  submitLinkedInApplication,
+  takeLinkedInScreenshot,
+  uploadLinkedInCoverLetter,
+  uploadLinkedInCv,
+} from './application.js';
 import type { JobDetail, RawListing } from '../types.js';
 import {
   APPLY_BUTTON_ROOT_SELECTOR,
@@ -326,6 +337,35 @@ export const linkedInAdapter: SiteAdapter = {
   },
   async act(session, ref, action, value) {
     return actOnSession(session, ref, action, value);
+  },
+
+  // M15 form-driving surface — see `application.ts`.
+  startApplication(page, listing) {
+    return startLinkedInApplication(page, listing);
+  },
+  inspectFields(session) {
+    return inspectLinkedInFields(session);
+  },
+  fillField(session, ref, value) {
+    return fillLinkedInField(session, ref, value);
+  },
+  uploadCv(session, path) {
+    return uploadLinkedInCv(session, path);
+  },
+  uploadCoverLetter(session, path) {
+    return uploadLinkedInCoverLetter(session, path);
+  },
+  advanceStep(session) {
+    return advanceLinkedInStep(session);
+  },
+  submit(session) {
+    return submitLinkedInApplication(session);
+  },
+  takeScreenshot(session) {
+    return takeLinkedInScreenshot(session);
+  },
+  closeApplication(session) {
+    return closeLinkedInApplication(session);
   },
 };
 

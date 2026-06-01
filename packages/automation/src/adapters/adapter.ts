@@ -2,6 +2,7 @@ import type { Page } from 'playwright';
 import type { SearchPreferences } from '@vina/shared';
 import type { JobDetail, RawListing } from './types.js';
 import type { UiRef, UiTree } from '../snapshot/snapshot.js';
+import type { FormField } from '../forms/types.js';
 
 /**
  * In-progress application context. Carries the `Page` the form is being
@@ -20,6 +21,11 @@ export interface ApplicationSession {
 
 /** Actions `SiteAdapter.act` can dispatch against a ref. */
 export type ActAction = 'click' | 'check' | 'select';
+
+/** Result of `SiteAdapter.submit`. The graph reads `reason` for alerts. */
+export type SubmitResult =
+  | { ok: true }
+  | { ok: false; reason: 'captcha' | 'session_expired' | 'other'; detail?: string };
 
 /**
  * Contract for a browser-kind site adapter (LinkedIn in M11, Indeed in
@@ -107,4 +113,53 @@ export interface SiteAdapter {
     action: ActAction,
     value?: string,
   ): Promise<void>;
+
+  // --- M15 form-driving surface -------------------------------------------
+
+  /**
+   * Open the Easy Apply / Quick Apply form for the listing. Navigates to
+   * the listing URL, clicks the Easy Apply button, and waits for the
+   * modal/form to mount. Returns a session with a fresh `formId`.
+   */
+  startApplication(page: Page, listing: RawListing): Promise<ApplicationSession>;
+
+  /**
+   * Enumerate the visible form fields. Wraps `snapshot` + `walkForm`;
+   * adapters with poor-a11y widgets may post-filter or augment.
+   */
+  inspectFields(session: ApplicationSession): Promise<FormField[]>;
+
+  /**
+   * Fill a single text/textarea/email/phone/url/number field by ref. For
+   * non-text kinds use `act` (`check`/`select`/`click`).
+   */
+  fillField(
+    session: ApplicationSession,
+    ref: UiRef,
+    value: string,
+  ): Promise<void>;
+
+  /** Upload the tailored CV via the form's file input. */
+  uploadCv(session: ApplicationSession, path: string): Promise<void>;
+  /** Upload the tailored cover letter via the form's file input. */
+  uploadCoverLetter(session: ApplicationSession, path: string): Promise<void>;
+
+  /**
+   * Click the form's Continue / Next / Review button. Returns
+   * `advanced: true` if a button was found and clicked. The graph uses
+   * this to detect multi-step forms (browser-apply skill, step cap = 5).
+   */
+  advanceStep(session: ApplicationSession): Promise<{ advanced: boolean }>;
+
+  /**
+   * Click Submit and report outcome. The adapter checks for captcha and
+   * session-expired states as part of the post-submit verification.
+   */
+  submit(session: ApplicationSession): Promise<SubmitResult>;
+
+  /** PNG screenshot of the page, base64-encoded for alert attachment. */
+  takeScreenshot(session: ApplicationSession): Promise<{ pngBase64: string }>;
+
+  /** Cleanup — closes any modal or auxiliary page opened during apply. */
+  closeApplication(session: ApplicationSession): Promise<void>;
 }

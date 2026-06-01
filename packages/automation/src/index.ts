@@ -15,6 +15,7 @@ export {
   type ActAction,
   type ApplicationSession,
   type SiteAdapter,
+  type SubmitResult,
 } from './adapters/adapter.js';
 export { actOnSession, snapshotSession } from './adapters/session-actions.js';
 export { walkForm } from './forms/form-walker.js';
