@@ -11,6 +11,7 @@ export * from './schemas/job.js';
 export * from './schemas/llm.js';
 export * from './schemas/preferences.js';
 export * from './schemas/profile.js';
+export * from './schemas/prompt.js';
 export * from './schemas/settings.js';
 export * from './schemas/site.js';
 export * from './schemas/task.js';

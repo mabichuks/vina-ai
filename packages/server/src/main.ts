@@ -31,6 +31,7 @@ import { runResolveSelector, type StructuredScorer } from '@vina/orchestrator';
 import { createScheduler } from './scheduler/scheduler.js';
 import { createLinkedInConnectService } from './services/linkedin-connect-service.js';
 import { getActiveChatModel } from './services/llm-service.js';
+import { createPromptsService } from './services/prompts-service.js';
 
 const log = createLogger('main');
 
@@ -125,6 +126,8 @@ export async function bootServer(overrides: Partial<ServerConfig> = {}): Promise
     dataDir: config.dataDir,
   });
 
+  const prompts = await createPromptsService({ dataDir: config.dataDir });
+
   // M10 ships `search` and `score`. Other TaskKinds (tailor, apply,
   // prepare_manual_apply, resume) intentionally have no entry — the worker
   // marks them `failed: unhandled_kind` (no retry) until M14+ provides
@@ -154,6 +157,7 @@ export async function bootServer(overrides: Partial<ServerConfig> = {}): Promise
         db,
         bus,
         buildModel: () => getActiveChatModel(db),
+        promptLoader: prompts.loader,
       }),
     ),
     prepare_manual_apply: adapt(
@@ -162,6 +166,7 @@ export async function bootServer(overrides: Partial<ServerConfig> = {}): Promise
         bus,
         buildModel: () => getActiveChatModel(db),
         toolKit: createManualApplyToolKit({ dataDir: config.dataDir }),
+        promptLoader: prompts.loader,
       }),
     ),
   };
@@ -221,6 +226,7 @@ export async function bootServer(overrides: Partial<ServerConfig> = {}): Promise
     bus,
     browserManager,
     linkedInConnectService,
+    prompts,
     poke: () => worker.poke(),
   });
 

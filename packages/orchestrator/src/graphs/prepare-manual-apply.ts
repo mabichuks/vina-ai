@@ -12,6 +12,7 @@ import {
   type CoverLetterHeader,
 } from './tailor-cover-letter.js';
 import type { ManualApplyToolKit } from '../tools/types.js';
+import type { PromptLoader } from '../prompts/loader.js';
 
 export interface PrepareManualApplyInput {
   application_id: string;
@@ -51,7 +52,9 @@ export async function runPrepareManualApply(
   input: PrepareManualApplyInput,
   model: StructuredScorer,
   toolKit: ManualApplyToolKit,
+  opts: { promptLoader?: PromptLoader } = {},
 ): Promise<PrepareManualApplyResult> {
+  const childOpts = opts.promptLoader ? { promptLoader: opts.promptLoader } : {};
   // Node 1: tailor_cv — single LLM call, two deterministic renders. We render
   // DOCX and PDF in parallel from the same structured output so the user gets
   // both download formats without a second model round-trip.
@@ -68,6 +71,7 @@ export async function runPrepareManualApply(
         },
       },
       model,
+      childOpts,
     );
     const header: TailorCvHeader = {
       full_name: input.user_profile.full_name,
@@ -112,6 +116,7 @@ export async function runPrepareManualApply(
           },
         },
         model,
+        childOpts,
       );
       const header: CoverLetterHeader = {
         full_name: input.user_profile.full_name,

@@ -16,6 +16,7 @@ import {
   createLinkedInConnectService,
   type LinkedInConnectService,
 } from '../../src/services/linkedin-connect-service.js';
+import { createPromptsService } from '../../src/services/prompts-service.js';
 import { freshTestDb } from '../db/helpers.js';
 
 export interface TestAppHandle {
@@ -55,6 +56,7 @@ export async function buildTestApp(): Promise<TestAppHandle> {
     pollIntervalMs: 50,
     timeoutMs: 5_000,
   });
+  const prompts = await createPromptsService({ dataDir });
   const app = await buildApp({
     db,
     config,
@@ -63,6 +65,7 @@ export async function buildTestApp(): Promise<TestAppHandle> {
     bus,
     browserManager,
     linkedInConnectService,
+    prompts,
     poke: () => undefined,
   });
 
