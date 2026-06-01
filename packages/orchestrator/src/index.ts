@@ -55,3 +55,19 @@ export {
   type PrepareManualApplyInput,
   type PrepareManualApplyResult,
 } from './graphs/prepare-manual-apply.js';
+export {
+  decideUnresolvedField,
+  FallbackDecisionSchema,
+  _resetBrowserApplySkillCache,
+  type ApplyFallbackInput,
+  type ApplyFallbackMessages,
+  type FallbackDecision,
+  type StructuredApplyDecider,
+} from './graphs/apply-fallback.js';
+export {
+  loadSkill,
+  parseSkill,
+  resolveSkillPath,
+  type Skill,
+  type SkillMeta,
+} from './skills/loader.js';
