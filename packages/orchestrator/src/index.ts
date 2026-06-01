@@ -68,9 +68,17 @@ export {
   loadSkill,
   parseSkill,
   resolveSkillPath,
-  type Skill,
+  type Skill as SkillFile,
   type SkillMeta,
 } from './skills/loader.js';
+export {
+  createSkillRegistry,
+  resolveSkillsDefaultsDir,
+  type CreateSkillRegistryOptions,
+  type Skill,
+  type SkillRegistry,
+  type SkillSummary,
+} from './skills/registry.js';
 export {
   createPromptLoader,
   resolveDefaultsDir as resolvePromptDefaultsDir,
