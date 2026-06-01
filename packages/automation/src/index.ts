@@ -19,6 +19,14 @@ export {
 export { actOnSession, snapshotSession } from './adapters/session-actions.js';
 export { walkForm } from './forms/form-walker.js';
 export {
+  resolveFieldValue,
+  type AnswerEntry,
+  type ResolveContext,
+  type ResolveProfile,
+  type ResolveResult,
+  type ResolveSource,
+} from './forms/field-resolver.js';
+export {
   CANONICAL_KEYS,
   matchCanonicalKey,
   type CanonicalKeySpec,
