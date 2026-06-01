@@ -2,11 +2,9 @@ import { z } from 'zod';
 import PDFDocument from 'pdfkit';
 import { ProviderError } from '@vina/shared';
 import { Document, Packer, Paragraph, HeadingLevel, TextRun } from 'docx';
-import {
-  TAILOR_CV_SYSTEM,
-  tailorCvUserPrompt,
-  type TailorCvInput,
-} from '../prompts/tailor-cv.js';
+import { tailorCvUserPrompt, type TailorCvInput } from '../prompts/tailor-cv.js';
+import { getDefaultPromptLoader } from '../prompts/default-loader.js';
+import type { PromptLoader } from '../prompts/loader.js';
 import type { StructuredScorer, ScoreMessages } from './score-job.js';
 
 export const TailorCvOutputSchema = z.object({
@@ -27,6 +25,7 @@ function truncate(text: string, max: number): string {
 export async function runTailorCv(
   input: TailorCvInput,
   model: StructuredScorer,
+  opts: { promptLoader?: PromptLoader } = {},
 ): Promise<TailorCvOutput> {
   const trimmed: TailorCvInput = {
     ...input,
@@ -34,9 +33,11 @@ export async function runTailorCv(
     job: { ...input.job, description: truncate(input.job.description, MAX_JOB_CHARS) },
   };
 
+  const loader = opts.promptLoader ?? getDefaultPromptLoader();
+  const system = await loader.render('tailor-cv');
   const structured = model.withStructuredOutput(TailorCvOutputSchema);
   const messages: ScoreMessages = [
-    { role: 'system', content: TAILOR_CV_SYSTEM },
+    { role: 'system', content: system },
     { role: 'user', content: tailorCvUserPrompt(trimmed) },
   ];
 

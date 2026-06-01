@@ -78,3 +78,7 @@ export {
   type PromptLoader,
   type CreatePromptLoaderOptions,
 } from './prompts/loader.js';
+export {
+  getDefaultPromptLoader,
+  _resetDefaultPromptLoader,
+} from './prompts/default-loader.js';

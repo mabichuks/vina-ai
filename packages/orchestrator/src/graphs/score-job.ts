@@ -1,7 +1,9 @@
 import { z } from 'zod';
 import { ProviderError } from '@vina/shared';
 import type { Runnable } from '@langchain/core/runnables';
-import { SCORE_SYSTEM, scoreUserPrompt, type ScoreInput } from '../prompts/score.js';
+import { scoreUserPrompt, type ScoreInput } from '../prompts/score.js';
+import { getDefaultPromptLoader } from '../prompts/default-loader.js';
+import type { PromptLoader } from '../prompts/loader.js';
 
 /**
  * Output schema enforced via `withStructuredOutput`. Score is clamped to
@@ -36,10 +38,13 @@ const MAX_ATTEMPTS = 2;
 export async function runScoreJob(
   input: ScoreInput,
   model: StructuredScorer,
+  opts: { promptLoader?: PromptLoader } = {},
 ): Promise<ScoreResult> {
+  const loader = opts.promptLoader ?? getDefaultPromptLoader();
+  const system = await loader.render('score');
   const structured = model.withStructuredOutput(ScoreSchema);
   const messages: ScoreMessages = [
-    { role: 'system', content: SCORE_SYSTEM },
+    { role: 'system', content: system },
     { role: 'user', content: scoreUserPrompt(input) },
   ];
 
