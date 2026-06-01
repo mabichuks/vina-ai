@@ -1,19 +1,38 @@
 import type { Page } from 'playwright';
 import type { SearchPreferences } from '@vina/shared';
 import type { JobDetail, RawListing } from './types.js';
+import type { UiRef, UiTree } from '../snapshot/snapshot.js';
+
+/**
+ * In-progress application context. Carries the `Page` the form is being
+ * driven on plus the most recent UI snapshot. `latestSnapshot` is set by
+ * `snapshot()` and read by `act()` to map refs back to (role, name) for
+ * label-based re-resolution on a stale ref (ADR-022).
+ */
+export interface ApplicationSession {
+  /** The Playwright Page driving this application. */
+  page: Page;
+  /** Opaque identifier surfaced to the orchestrator. */
+  formId: string;
+  /** Most recent snapshot taken via `SiteAdapter.snapshot`. */
+  latestSnapshot?: UiTree;
+}
+
+/** Actions `SiteAdapter.act` can dispatch against a ref. */
+export type ActAction = 'click' | 'check' | 'select';
 
 /**
  * Contract for a browser-kind site adapter (LinkedIn in M11, Indeed in
- * M12). M11-subset: discovery only — `id`, `loginUrl`, the predicates,
- * `search`, `openListing`, and `detectApplyMethod`. The form-walker
- * methods (`startApplication`, `inspectFields`, `fillField`, `uploadCv`,
- * `uploadCoverLetter`, `submit`, `takeScreenshot`) extend this interface
- * in M15 and may revisit the discovery method shapes if `ApplicationSession`
- * integration requires it.
+ * M12). Discovery surface (`id`, `loginUrl`, predicates, `search`,
+ * `openListing`, `detectApplyMethod`) plus the snapshot/act surface from
+ * ADR-022. The remaining form-walker methods (`startApplication`,
+ * `inspectFields`, `fillField`, `uploadCv`, `uploadCoverLetter`, `submit`,
+ * `takeScreenshot`) extend this interface in M15.
  *
  * Adapter implementations are plain `const` exports (no factory needed —
  * adapters hold no closure state); they import helpers from
- * `detect/apply-method.ts` and `browser/humanise.ts` directly.
+ * `detect/apply-method.ts`, `browser/humanise.ts`, and `adapters/session-actions.ts`
+ * directly.
  */
 export interface SiteAdapter {
   readonly id: string;
@@ -67,4 +86,25 @@ export interface SiteAdapter {
     | { method: 'auto' }
     | { method: 'manual'; externalApplyUrl: string | null }
   >;
+
+  /**
+   * Capture the page's accessibility tree as a ref-keyed `UiTree` (ADR-022).
+   * Also stores the result on `session.latestSnapshot` so subsequent `act`
+   * calls can map refs back to (role, name). Refs are valid only within
+   * the returned tree.
+   */
+  snapshot(session: ApplicationSession): Promise<UiTree>;
+
+  /**
+   * Dispatch an action against the element referred to by `ref` in the
+   * session's latest snapshot (ADR-022). On failure the implementation
+   * re-snapshots once and re-resolves the original (role, name) before
+   * giving up. `value` is required for `action === 'select'`.
+   */
+  act(
+    session: ApplicationSession,
+    ref: UiRef,
+    action: ActAction,
+    value?: string,
+  ): Promise<void>;
 }

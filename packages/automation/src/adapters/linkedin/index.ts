@@ -3,6 +3,7 @@ import type { SearchPreferences, WorkModel } from '@vina/shared';
 import { firstVisible, getHref, isExternalUrl } from '../../detect/apply-method.js';
 import { sleepBetweenListings } from '../../browser/humanise.js';
 import type { SiteAdapter } from '../adapter.js';
+import { actOnSession, snapshotSession } from '../session-actions.js';
 import type { JobDetail, RawListing } from '../types.js';
 import {
   APPLY_BUTTON_ROOT_SELECTOR,
@@ -316,6 +317,15 @@ export const linkedInAdapter: SiteAdapter = {
       return { method: 'manual', externalApplyUrl: null };
     }
     return { method: 'manual', externalApplyUrl: href };
+  },
+
+  // ADR-022: snapshot/act surface. LinkedIn delegates to the shared helper
+  // — the deterministic walker (M15) and LLM fallback both speak this API.
+  async snapshot(session) {
+    return snapshotSession(session);
+  },
+  async act(session, ref, action, value) {
+    return actOnSession(session, ref, action, value);
   },
 };
 

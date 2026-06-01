@@ -11,7 +11,12 @@ export {
   pause,
   sleepBetweenListings,
 } from './browser/humanise.js';
-export { type SiteAdapter } from './adapters/adapter.js';
+export {
+  type ActAction,
+  type ApplicationSession,
+  type SiteAdapter,
+} from './adapters/adapter.js';
+export { actOnSession, snapshotSession } from './adapters/session-actions.js';
 export { type JobDetail, type RawListing } from './adapters/types.js';
 export { firstVisible, getHref, isExternalUrl } from './detect/apply-method.js';
 export {
