@@ -16,6 +16,8 @@ import type {
   LlmProviderInput,
   Profile,
   ProfileInput,
+  PromptDetail,
+  PromptSummary,
   SearchPreferences,
   SearchPreferencesInput,
   Settings,
@@ -866,4 +868,64 @@ export function tailoredCvUrl(applicationId: string): string {
 
 export function tailoredCoverLetterUrl(applicationId: string): string {
   return `/api/applications/${applicationId}/tailored-cover-letter`;
+}
+
+/* ------------------------------------------------------------------ */
+/* Prompts                                                             */
+/* ------------------------------------------------------------------ */
+
+export function usePrompts(): { data: PromptSummary[]; isLoading: boolean } {
+  const q = useQuery<{ items: PromptSummary[] }>({
+    queryKey: ['prompts'],
+    queryFn: () => api<{ items: PromptSummary[] }>('/api/prompts'),
+  });
+  return { data: q.data?.items ?? [], isLoading: q.isLoading };
+}
+
+export function usePrompt(id: string | null): {
+  data: PromptDetail | null;
+  isLoading: boolean;
+} {
+  const q = useQuery<PromptDetail>({
+    queryKey: ['prompt', id],
+    queryFn: () => api<PromptDetail>(`/api/prompts/${id!}`),
+    enabled: id !== null,
+  });
+  return { data: q.data ?? null, isLoading: q.isLoading };
+}
+
+export function useSavePromptOverride(): {
+  mutate: (input: { id: string; body: string }) => Promise<PromptDetail>;
+  isPending: boolean;
+} {
+  const qc = useQueryClient();
+  const mut = useMutation<PromptDetail, Error, { id: string; body: string }>({
+    mutationFn: ({ id, body }) =>
+      api<PromptDetail>(`/api/prompts/${id}`, { method: 'PUT', body: { body } }),
+    onSuccess: (_data, vars) => {
+      qc.invalidateQueries({ queryKey: ['prompts'] });
+      qc.invalidateQueries({ queryKey: ['prompt', vars.id] });
+    },
+  });
+  return {
+    mutate: (input) => mut.mutateAsync(input),
+    isPending: mut.isPending,
+  };
+}
+
+export function useRevertPrompt(): {
+  mutate: (id: string) => Promise<void>;
+  isPending: boolean;
+} {
+  const qc = useQueryClient();
+  const mut = useMutation<void, Error, string>({
+    mutationFn: async (id) => {
+      await api(`/api/prompts/${id}`, { method: 'DELETE' });
+    },
+    onSuccess: (_v, id) => {
+      qc.invalidateQueries({ queryKey: ['prompts'] });
+      qc.invalidateQueries({ queryKey: ['prompt', id] });
+    },
+  });
+  return { mutate: (id) => mut.mutateAsync(id), isPending: mut.isPending };
 }
