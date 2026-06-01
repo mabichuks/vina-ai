@@ -32,6 +32,7 @@ import { createScheduler } from './scheduler/scheduler.js';
 import { createLinkedInConnectService } from './services/linkedin-connect-service.js';
 import { getActiveChatModel } from './services/llm-service.js';
 import { createPromptsService } from './services/prompts-service.js';
+import { createSkillsService } from './services/skills-service.js';
 
 const log = createLogger('main');
 
@@ -127,6 +128,7 @@ export async function bootServer(overrides: Partial<ServerConfig> = {}): Promise
   });
 
   const prompts = await createPromptsService({ dataDir: config.dataDir });
+  const skills = await createSkillsService({ dataDir: config.dataDir });
 
   // M10 ships `search` and `score`. Other TaskKinds (tailor, apply,
   // prepare_manual_apply, resume) intentionally have no entry — the worker
@@ -227,6 +229,7 @@ export async function bootServer(overrides: Partial<ServerConfig> = {}): Promise
     browserManager,
     linkedInConnectService,
     prompts,
+    skills,
     poke: () => worker.poke(),
   });
 

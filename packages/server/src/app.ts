@@ -15,6 +15,7 @@ import { llmProviderRoutes } from './http/routes/llm-providers.js';
 import { profileRoutes } from './http/routes/profile.js';
 import { promptRoutes } from './http/routes/prompts.js';
 import { scheduleRoutes } from './http/routes/schedules.js';
+import { skillRoutes } from './http/routes/skills.js';
 import { searchRoutes } from './http/routes/searches.js';
 import { searchPreferencesRoutes } from './http/routes/search-preferences.js';
 import { settingsRoutes } from './http/routes/settings.js';
@@ -25,6 +26,7 @@ import { MAX_UPLOAD_BYTES } from './http/upload-limits.js';
 import { registerWebSocket } from './http/ws.js';
 import type { EventBus } from './events/bus.js';
 import type { PromptsService } from './services/prompts-service.js';
+import type { SkillsService } from './services/skills-service.js';
 
 export interface BuildAppDeps {
   db: DatabaseType;
@@ -35,6 +37,7 @@ export interface BuildAppDeps {
   browserManager: BrowserManagerHandle;
   linkedInConnectService: LinkedInConnectService;
   prompts: PromptsService;
+  skills: SkillsService;
   poke: () => void;
 }
 
@@ -59,6 +62,7 @@ export async function buildApp(deps: BuildAppDeps): Promise<FastifyInstance> {
     await scheduleRoutes(api, { db: deps.db });
     await settingsRoutes(api, { db: deps.db });
     await promptRoutes(api, { prompts: deps.prompts });
+    await skillRoutes(api, { skills: deps.skills });
     await llmProviderRoutes(api, { db: deps.db });
     await siteRoutes(api, {
       db: deps.db,

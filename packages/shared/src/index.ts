@@ -14,4 +14,5 @@ export * from './schemas/profile.js';
 export * from './schemas/prompt.js';
 export * from './schemas/settings.js';
 export * from './schemas/site.js';
+export * from './schemas/skill.js';
 export * from './schemas/task.js';
