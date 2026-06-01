@@ -15,6 +15,15 @@ export { type SiteAdapter } from './adapters/adapter.js';
 export { type JobDetail, type RawListing } from './adapters/types.js';
 export { firstVisible, getHref, isExternalUrl } from './detect/apply-method.js';
 export {
+  accessibilityNodeToUiTree,
+  takeSnapshot,
+  type RawAccessibilityNode,
+  type UiNode,
+  type UiRef,
+  type UiTree,
+} from './snapshot/snapshot.js';
+export { findByLabel, resolveRef, walkTree } from './snapshot/refs.js';
+export {
   createBrowserManager,
   type BrowserManagerHandle,
   type BrowserManagerOptions,
