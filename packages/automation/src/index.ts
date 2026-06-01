@@ -35,6 +35,19 @@ export { type FormField, type FormFieldKind } from './forms/types.js';
 export { type JobDetail, type RawListing } from './adapters/types.js';
 export { firstVisible, getHref, isExternalUrl } from './detect/apply-method.js';
 export {
+  detectCaptcha,
+  detectCaptchaOnPage,
+  type CaptchaDetection,
+  type CaptchaKind,
+  type DetectablePage,
+} from './detect/captcha.js';
+export {
+  isSessionExpired,
+  isSessionExpiredOnPage,
+  type SessionDetectablePage,
+  type SessionExpiredHeuristics,
+} from './detect/session.js';
+export {
   accessibilityNodeToUiTree,
   takeSnapshot,
   type RawAccessibilityNode,
