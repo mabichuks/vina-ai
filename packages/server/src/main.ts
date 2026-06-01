@@ -23,6 +23,7 @@ import {
 import { createEventBus } from './events/bus.js';
 import { createSearchHandler } from './queue/handlers/search.js';
 import { createScoreHandler } from './queue/handlers/score.js';
+import { createApplyHandler } from './queue/handlers/apply.js';
 import { createPrepareManualApplyHandler } from './queue/handlers/prepare-manual-apply.js';
 import { createManualApplyToolKit } from './orchestrator/tools/index.js';
 import { updateApplicationStatus } from './db/repositories/applications.js';
@@ -169,6 +170,18 @@ export async function bootServer(overrides: Partial<ServerConfig> = {}): Promise
         buildModel: () => getActiveChatModel(db),
         toolKit: createManualApplyToolKit({ dataDir: config.dataDir }),
         promptLoader: prompts.loader,
+      }),
+    ),
+    apply: adapt(
+      createApplyHandler({
+        db,
+        bus,
+        browserManager,
+        adapters: { linkedin: linkedInAdapter },
+        manualApplyToolKit: createManualApplyToolKit({ dataDir: config.dataDir }),
+        buildModel: () => getActiveChatModel(db),
+        promptLoader: prompts.loader,
+        skillRegistry: skills.registry,
       }),
     ),
   };

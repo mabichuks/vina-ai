@@ -25,9 +25,14 @@ export {
 } from './tools/types.js';
 export {
   type AutoApplyToolKit,
+  type FieldResolution,
+  type FormField,
+  type FormFieldKind,
   type JobSlice,
   type NewAlertInput,
+  type ResolveSource,
   type SubmitOutcome,
+  type UiRef,
 } from './tools/auto-apply-toolkit.js';
 export {
   runApply,
