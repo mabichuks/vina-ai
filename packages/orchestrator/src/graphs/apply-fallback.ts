@@ -1,7 +1,8 @@
 import { z } from 'zod';
 import type { Runnable } from '@langchain/core/runnables';
 import { ProviderError } from '@vina/shared';
-import { loadSkill, resolveSkillPath, type Skill } from '../skills/loader.js';
+import { getDefaultSkillRegistry } from '../skills/default-registry.js';
+import type { SkillRegistry } from '../skills/registry.js';
 
 /**
  * Input to a single fallback decision. The deterministic walker hands us
@@ -79,24 +80,21 @@ function buildUserPrompt(input: ApplyFallbackInput): string {
   return parts.join('\n');
 }
 
-let cachedSkill: Skill | null = null;
-
-async function loadBrowserApplySkill(): Promise<Skill> {
-  if (cachedSkill) return cachedSkill;
-  const skillPath = resolveSkillPath('browser-apply', import.meta.url);
-  cachedSkill = await loadSkill(skillPath);
-  return cachedSkill;
-}
-
 /**
- * Reset the cached skill body. Tests that mock the loader use this to
- * pick up a different SKILL.md file between cases.
+ * Deprecated test seam from Chunk 5 — kept as a no-op so existing tests
+ * still call it without effect. The skill body now flows through the
+ * `SkillRegistry`'s own cache (invalidated via `registry.invalidate`).
  */
 export function _resetBrowserApplySkillCache(): void {
-  cachedSkill = null;
+  // Intentionally empty — registry handles caching.
 }
 
 const MAX_ATTEMPTS = 2;
+
+export interface DecideUnresolvedFieldOptions {
+  /** Override the default skill registry — server-side overrides flow here. */
+  skillRegistry?: SkillRegistry;
+}
 
 /**
  * Decide an action for a single unresolved field. Pre-loads the
@@ -107,9 +105,24 @@ const MAX_ATTEMPTS = 2;
 export async function decideUnresolvedField(
   input: ApplyFallbackInput,
   model: StructuredApplyDecider,
+  opts: DecideUnresolvedFieldOptions = {},
 ): Promise<FallbackDecision> {
-  const skill = await loadBrowserApplySkill();
-  const system = `${APPLY_FALLBACK_PREAMBLE}\n\n--- browser-apply skill (v${skill.meta.version ?? 1}) ---\n${skill.body}`;
+  const registry = opts.skillRegistry ?? getDefaultSkillRegistry();
+  const skill = await registry.load('browser-apply');
+  // Pull the descriptions of every other skill that applies to the `apply`
+  // graph so the model has the option to call them out — body stays untouched
+  // to respect the apply token budget.
+  const applicableIndex = await registry.index('apply');
+  const sibling = applicableIndex.filter((s) => s.id !== 'browser-apply');
+  const siblingBlock =
+    sibling.length > 0
+      ? `\n\n--- other applicable skills (descriptions only) ---\n${sibling
+          .map((s) => `- ${s.id} (v${s.version}): ${s.description}`)
+          .join('\n')}`
+      : '';
+  const system =
+    `${APPLY_FALLBACK_PREAMBLE}\n\n--- browser-apply skill (v${skill.version}) ---\n${skill.body}` +
+    siblingBlock;
   const messages: ApplyFallbackMessages = [
     { role: 'system', content: system },
     { role: 'user', content: buildUserPrompt(input) },

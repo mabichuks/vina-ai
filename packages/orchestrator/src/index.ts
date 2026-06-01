@@ -61,6 +61,7 @@ export {
   _resetBrowserApplySkillCache,
   type ApplyFallbackInput,
   type ApplyFallbackMessages,
+  type DecideUnresolvedFieldOptions,
   type FallbackDecision,
   type StructuredApplyDecider,
 } from './graphs/apply-fallback.js';
@@ -79,6 +80,18 @@ export {
   type SkillRegistry,
   type SkillSummary,
 } from './skills/registry.js';
+export {
+  getDefaultSkillRegistry,
+  _resetDefaultSkillRegistry,
+} from './skills/default-registry.js';
+export {
+  createSkillTools,
+  LoadSkillInputSchema,
+  ListSkillsInputSchema,
+  type LoadSkillInput,
+  type ListSkillsInput,
+  type SkillTools,
+} from './tools/skill-tools.js';
 export {
   createPromptLoader,
   resolveDefaultsDir as resolvePromptDefaultsDir,
