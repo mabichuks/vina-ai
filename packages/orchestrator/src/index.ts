@@ -1,5 +1,5 @@
 export { buildModel, type ProviderConfig } from './providers/registry.js';
-export { SCORE_SYSTEM, scoreUserPrompt, type ScoreInput } from './prompts/score.js';
+export { scoreUserPrompt, type ScoreInput } from './prompts/score.js';
 export {
   runScoreJob,
   ScoreSchema,
@@ -31,11 +31,7 @@ export {
   type TailorCvOutput,
   type TailorCvHeader,
 } from './graphs/tailor-cv.js';
-export {
-  TAILOR_CV_SYSTEM,
-  tailorCvUserPrompt,
-  type TailorCvInput,
-} from './prompts/tailor-cv.js';
+export { tailorCvUserPrompt, type TailorCvInput } from './prompts/tailor-cv.js';
 export {
   runTailorCoverLetter,
   renderTailoredCoverLetterDocx,
@@ -45,7 +41,6 @@ export {
   type CoverLetterHeader,
 } from './graphs/tailor-cover-letter.js';
 export {
-  TAILOR_COVER_LETTER_SYSTEM,
   tailorCoverLetterUserPrompt,
   type TailorCoverLetterInput,
 } from './prompts/tailor-cover-letter.js';

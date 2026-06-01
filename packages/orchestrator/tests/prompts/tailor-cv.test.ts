@@ -1,9 +1,11 @@
+import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
-import {
-  TAILOR_CV_SYSTEM,
-  tailorCvUserPrompt,
-  type TailorCvInput,
-} from '../../src/prompts/tailor-cv.js';
+import { createPromptLoader } from '../../src/prompts/loader.js';
+import { tailorCvUserPrompt, type TailorCvInput } from '../../src/prompts/tailor-cv.js';
+
+const loader = createPromptLoader({
+  defaultsDir: fileURLToPath(new URL('../../prompts/', import.meta.url)),
+});
 
 const BASE: TailorCvInput = {
   job: {
@@ -15,14 +17,16 @@ const BASE: TailorCvInput = {
   user_profile: { full_name: 'Pat Doe', bio: 'Generalist engineer.' },
 };
 
-describe('TAILOR_CV_SYSTEM', () => {
-  it('forbids fact invention explicitly', () => {
-    expect(TAILOR_CV_SYSTEM).toMatch(/do not (invent|fabricate|make up)/i);
+describe('tailor-cv system prompt (loaded from prompts/tailor-cv.md)', () => {
+  it('forbids fact invention explicitly', async () => {
+    const body = await loader.render('tailor-cv');
+    expect(body).toMatch(/do not (invent|fabricate|make up)/i);
   });
 
-  it('shows a worked example of acceptable rephrasing', () => {
-    expect(TAILOR_CV_SYSTEM).toMatch(/example/i);
-    expect(TAILOR_CV_SYSTEM).toMatch(/rephrase/i);
+  it('shows a worked example of acceptable rephrasing', async () => {
+    const body = await loader.render('tailor-cv');
+    expect(body).toMatch(/example/i);
+    expect(body).toMatch(/rephrase/i);
   });
 });
 
