@@ -1,6 +1,10 @@
 export type { BrowserContext, Page } from 'playwright';
 export { getChromiumInfo, type ChromiumInfo } from './browser/chromium-info.js';
-export { launchSiteContext, type LaunchSiteContextOptions } from './browser/launch.js';
+export {
+  launchCdpSession,
+  type LaunchCdpOptions,
+  type CdpSessionHandle,
+} from './browser/cdp.js';
 export {
   LISTING_MAX_MS,
   LISTING_MIN_MS,

@@ -1,6 +1,6 @@
 import type { Database as DatabaseType } from 'better-sqlite3';
-import type { BrowserContext, BrowserManagerHandle, Page, SiteAdapter } from '@vina/automation';
-import { launchSiteContext } from '@vina/automation';
+import type { BrowserManagerHandle, CdpSessionHandle, Page, SiteAdapter } from '@vina/automation';
+import { launchCdpSession } from '@vina/automation';
 import { createLogger } from '@vina/shared';
 import type { EventBus } from '../events/bus.js';
 import { findSiteById, updateSiteEnabled, updateSiteSession } from '../db/repositories/sites.js';
@@ -65,8 +65,8 @@ export function createLinkedInConnectService(
   let attempting = false;
   let lastError: string | null = null;
   let page: Page | null = null;
-  /** Owned context when we launched headed ourselves; null when reusing the manager. */
-  let ownedCtx: BrowserContext | null = null;
+  /** Owned managed-CDP session when we launched headed ourselves; null when reusing the manager. */
+  let ownedSession: CdpSessionHandle | null = null;
   let stopPoll: (() => void) | null = null;
 
   // Subscribe to session-expired events from the search worker. The DB's
@@ -99,9 +99,9 @@ export function createLinkedInConnectService(
       await page.close().catch(() => undefined);
       page = null;
     }
-    if (ownedCtx) {
-      await ownedCtx.close().catch(() => undefined);
-      ownedCtx = null;
+    if (ownedSession) {
+      await ownedSession.close().catch(() => undefined);
+      ownedSession = null;
     }
   }
 
@@ -129,12 +129,12 @@ export function createLinkedInConnectService(
         // see and interact with the login form. Playwright disallows two
         // contexts on one profile dir, hence the explicit close first.
         await opts.browserManager.closeContext(SITE_ID);
-        ownedCtx = await launchSiteContext({
+        ownedSession = await launchCdpSession({
           siteId: SITE_ID,
           dataDir: opts.dataDir,
           headless: false,
         });
-        page = await ownedCtx.newPage();
+        page = await ownedSession.context.newPage();
       }
       const loginUrl = opts.loginUrlOverride ?? opts.adapter.loginUrl;
       await page.goto(loginUrl);
