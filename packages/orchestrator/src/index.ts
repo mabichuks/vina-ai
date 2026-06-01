@@ -24,6 +24,20 @@ export {
   SaveTailoredCoverLetterInputSchema,
 } from './tools/types.js';
 export {
+  type AutoApplyToolKit,
+  type JobSlice,
+  type NewAlertInput,
+  type SubmitOutcome,
+} from './tools/auto-apply-toolkit.js';
+export {
+  runApply,
+  type ApplyEvent,
+  type ApplyInput,
+  type ApplyOutcome,
+  type ApplyResult,
+  type RunApplyOptions,
+} from './graphs/apply.js';
+export {
   runTailorCv,
   renderTailoredDocx,
   renderTailoredPdf,
