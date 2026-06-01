@@ -22,6 +22,7 @@ function toResponse(row: SettingsRow): Settings {
     mode: row.mode,
     approval: row.approval,
     browser_headful: row.browser_headful,
+    browser_stealth: row.browser_stealth,
     paused: row.paused,
     active_llm_provider_id: row.active_llm_provider_id,
     has_serpapi_key: row.encrypted_serpapi_key !== null,
@@ -70,6 +71,9 @@ export async function settingsRoutes(
       ...(input.approval !== undefined && { approval: input.approval }),
       ...(input.browser_headful !== undefined && {
         browser_headful: input.browser_headful,
+      }),
+      ...(input.browser_stealth !== undefined && {
+        browser_stealth: input.browser_stealth,
       }),
       ...(input.paused !== undefined && { paused: input.paused }),
       ...(input.active_llm_provider_id !== undefined && {

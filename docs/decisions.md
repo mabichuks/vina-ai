@@ -277,7 +277,7 @@ For manual-apply jobs (Google Jobs and external redirects), the approval setting
 
 ## ADR-013: No fingerprint masking, no anti-detection beyond legitimate session
 
-**Status:** Accepted.
+**Status:** Superseded by ADR-021.
 
 **Context.** There's a spectrum of bot-detection avoidance, from "none" to "full stealth-plugin masking". We have to pick a posture.
 
@@ -537,3 +537,137 @@ The installer bootstraps Node ≥ 20 (via brew/apt/dnf/pacman/apk on Unix; winge
 - The installer scripts themselves are also published as release assets, so a `vina.ai` outage doesn't block users who already know the GitHub URL.
 - `CLAUDE.md`'s "distributed as an NPM package" line is superseded by this ADR and has been updated.
 - If we ever reverse this (e.g. the install pain stays low enough that npm becomes viable again), reversing means publishing the `@vina/*` workspaces with prepared `bin` fields and dropping the installer scripts. The architecture supports either path; this ADR is operational.
+
+## ADR-021: Permit anti-detection / stealth masking (supersedes ADR-013)
+
+**Status:** Accepted. Supersedes ADR-013.
+
+**Context.** ADR-013 committed Vina to legitimate techniques only — real session,
+humanised timing, real locale, per-site caps — and explicitly refused
+`navigator.webdriver` masking, stealth plugins, and user-agent spoofing, framing
+Vina as acting openly on the user's behalf and declining to enter a
+bot-detection arms race.
+
+In practice, LinkedIn and Indeed detection has tightened to the point where the
+"legitimate only" posture causes a material rate of triggered challenges and
+silent application failures for some users, undercutting the core promise of
+hands-off auto-apply. We are revising the posture.
+
+We considered:
+
+1. Keep ADR-013 unchanged (legitimate techniques only).
+2. Permit masking, on by default for everyone.
+3. Permit masking, available but opt-in and off by default.
+
+**Decision.** Option 3. Anti-detection / stealth masking is now a permitted and
+supported capability, but it is **off by default** and **opt-in** per the user's
+choice. When disabled (the default), Vina behaves exactly as ADR-013 described.
+When enabled, Vina may apply masking techniques such as:
+
+- `navigator.webdriver` and related automation-flag suppression
+- a stealth/evasion layer (e.g. `playwright-extra` + stealth plugin or equivalent)
+- consistent, plausible user-agent / client-hint alignment with the launched browser
+
+The "real session" model is unchanged and remains load-bearing: Vina still drives
+the user's genuine, persistent, logged-in context (ADR-003, and the persistent
+contexts in `browser-automation.md`). Masking is layered on top of that real
+session, not a replacement for it. Manual CAPTCHA solving (ADR-007) is unchanged
+and remains the only CAPTCHA strategy — masking reduces how often challenges
+fire; it does not solve them.
+
+**Reasons.**
+- Restores hands-off reliability for users who hit detection under the strict posture.
+- Opt-in keeps the conservative default for users who prefer it, and makes the
+  trade-off the user's explicit choice rather than ours.
+- Off-by-default mitigates a real failure mode: a long-established account that
+  has always presented a consistent fingerprint suddenly presenting a masked one
+  is itself an anomaly. Users enable masking deliberately, ideally early in an
+  account's automation history rather than mid-stream.
+- Keeps masking and CAPTCHA strategy as independent decisions; we change only
+  the detection-avoidance posture, not the no-third-party-solver stance.
+
+**Consequences.**
+- A new setting, `browser_stealth` (default `false`), gates all masking behaviour.
+- `browser-automation.md` §10 is rewritten from "we do not mask" to "masking is
+  an opt-in layer"; the default-off behaviour matches the old §10 exactly.
+- We take on the stealth dependency surface (e.g. `playwright-extra`) only when
+  the setting is enabled; the default install path is unaffected.
+- We accept that masking is an arms race; we do not commit to keeping any
+  specific evasion working, and we document that enabling it is best-effort.
+- Per-site application caps (ADR-013's legitimate measures) remain regardless of
+  the stealth setting — they are good practice, not a workaround.
+- Onboarding and Settings must explain the trade-off honestly, including the
+  established-account caution above.
+
+## ADR-022: Managed CDP transport with a snapshot/act interaction model
+
+**Status:** Accepted.
+
+**Context.** The automation layer currently drives sites via Playwright's
+`launchPersistentContext` and per-site CSS/role selectors. Two problems recur:
+LinkedIn's generated class names change and break selectors
+(`selector_missing`), and adding a new site means writing a full selector-based
+adapter. Our own LLM-guided-automation exploration concluded we want a
+perceive → reason → act loop (DOM/accessibility tree + screenshot → decide next
+action), which is the same model OpenClaw uses for its browser tool.
+
+We considered, for the interaction model:
+
+1. Keep selector-based deterministic walking only.
+2. Replace it with a per-step LLM loop over snapshots (OpenClaw's pure pattern).
+3. Deterministic-first with an LLM fallback, both operating over a shared
+   snapshot/ref primitive.
+
+And, for where the browser runs (see also ADR-002, ADR-003):
+
+A. Keep `launchPersistentContext`.
+B. Managed CDP: Vina launches Chromium locally with a debug port bound to
+   loopback and attaches Playwright over CDP, against a persistent user-data dir.
+C. Attach to the user's everyday signed-in Chrome over CDP.
+
+**Decision.** Interaction model: option 3 (deterministic-first, LLM fallback,
+shared snapshot/ref primitive). Transport: option B (managed CDP), with option C
+(attach to real Chrome) deferred as a possible future opt-in advanced mode, not
+built now.
+
+Concretely:
+- The browser manager launches a local Chromium with `--remote-debugging-port`
+  bound to `127.0.0.1` and connects via `chromium.connectOverCDP`, keeping the
+  same persistent user-data dir and session reuse as today.
+- `SiteAdapter` gains `snapshot(session)` returning a ref-keyed accessibility
+  tree. Actions resolve elements by `ref`, with label-based re-resolution on a
+  stale ref.
+- The form-walker stays deterministic for fields it can classify and resolve
+  (zero LLM calls on a standard Easy Apply form). Only unclassifiable fields or
+  unexpected UI states fall back to a single-step LLM decision over
+  snapshot + screenshot, respecting the apply graph's token budget.
+- The operating procedure (snapshot → resolve → fill → re-snapshot after change
+  → recover stale ref once → escalate blockers) lives in the `browser-apply`
+  skill, not hard-coded — the apply graph pre-loads it.
+
+**Reasons.**
+- Accessibility-tree refs survive class-name churn that breaks CSS selectors —
+  directly addresses the dominant `selector_missing` failure.
+- Deterministic-first keeps standard applications fast, free, and reproducible in
+  tests; the LLM is spent only where deterministic logic runs out.
+- Managed CDP changes only the attach mechanism — the browser is still local and
+  the session still the user's — so it carries no privacy or posture cost
+  (ADR-002 intact) and enables a clean attach/detach and the snapshot/act loop.
+- Deferring real-Chrome attach avoids its isolation/autonomy/stability downsides
+  while leaving the door open for a supervised opt-in later.
+
+**Consequences.**
+- `browser-automation.md` §2 changes from `launchPersistentContext` to
+  launch-with-CDP-port + `connectOverCDP`; the persistent user-data dir is unchanged.
+- `SiteAdapter` interface gains `snapshot`; `fillField`/actions gain ref
+  resolution with one stale-ref retry. Adapters keep a thin layer of
+  site-specific selectors for widgets that expose poor accessibility nodes
+  (custom dropdowns, some radio/checkbox groups) — refs handle the rest.
+- The CDP debug port is an unauthenticated control channel; it MUST bind to
+  loopback only, never `0.0.0.0`, and must not be exposed (aligns with ADR-002).
+- The apply graph pre-loads the `browser-apply` skill (capability-vs-procedure
+  split; see the skill-system instruction).
+- Existing E2E fixtures stay valid because the deterministic walker is preserved;
+  new fixtures are added for snapshot/ref resolution and stale-ref recovery.
+- Real-Chrome attach is explicitly out of scope for this ADR; revisiting it
+  requires a new ADR.

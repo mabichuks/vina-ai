@@ -337,3 +337,19 @@ describe('005_tailored_pdf_paths', () => {
     db.close();
   });
 });
+
+describe('006_browser_stealth', () => {
+  it('adds browser_stealth column to settings defaulting to 0 (opt-in masking per ADR-021)', () => {
+    const db = freshDb();
+    const cols = db.prepare(`PRAGMA table_info(settings)`).all() as {
+      name: string;
+      dflt_value: string | null;
+      notnull: number;
+    }[];
+    const col = cols.find((c) => c.name === 'browser_stealth');
+    expect(col).toBeDefined();
+    expect(col?.notnull).toBe(1);
+    expect(col?.dflt_value).toBe('0');
+    db.close();
+  });
+});

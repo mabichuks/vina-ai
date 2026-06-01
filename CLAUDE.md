@@ -20,18 +20,20 @@ CV tailoring uses a configurable LLM (Anthropic, OpenAI, or local Ollama). The u
 Read these documents in this order before making non-trivial changes:
 
 1. `SPEC.md` — product spec, scope, user stories
-2. `docs/decisions.md` — architectural decisions and the reasoning behind them (read this before questioning a choice). Note ADR-015 (SerpAPI for Google Jobs), ADR-016 (manual-apply pipeline) for the source-routing logic, and ADR-020 (GitHub-Release tarball distribution, not npm)
+2. `docs/decisions.md` — architectural decisions and the reasoning behind them (read this before questioning a choice). Note ADR-015 (SerpAPI for Google Jobs), ADR-016 (manual-apply pipeline) for the source-routing logic, ADR-020 (GitHub-Release tarball distribution, not npm), ADR-021 (opt-in stealth masking, supersedes ADR-013), and ADR-022 (managed CDP + snapshot/act interaction model)
 3. `docs/architecture.md` — system architecture and component boundaries
 4. `docs/database-schema.md` — data model
 5. `docs/backend-designer.md` — backend service design
 6. `docs/langgraph-orchestrator.md` — AI workflow and tool definitions
-7. `docs/browser-automation.md` — Playwright and site-adapter design
-8. `docs/api-spec.md` — REST and WebSocket contract
-9. `docs/frontend-designer.md` — UI structure and components
-10. `docs/theme.md` — visual design system (tokens, typography, motion)
-11. `docs/cli-spec.md` — CLI commands and process management
-12. `docs/installer.md` — `install.sh` / `install.ps1` design, GitHub-Release tarball model, release pipeline
-13. `docs/build-order.md` — recommended implementation sequence
+7. `docs/prompt-system.md` — prompt loader, frontmatter contract, override and CRUD model
+8. `docs/skill-system.md` — capability-vs-procedure split, skill registry, chatbot authoring
+9. `docs/browser-automation.md` — Playwright and site-adapter design (managed CDP + snapshot/act per ADR-022; opt-in stealth per ADR-021)
+10. `docs/api-spec.md` — REST and WebSocket contract
+11. `docs/frontend-designer.md` — UI structure and components
+12. `docs/theme.md` — visual design system (tokens, typography, motion)
+13. `docs/cli-spec.md` — CLI commands and process management
+14. `docs/installer.md` — `install.sh` / `install.ps1` design, GitHub-Release tarball model, release pipeline
+15. `docs/build-order.md` — recommended implementation sequence
 
 If a change touches multiple areas, re-read the relevant specs and keep them in sync. Specs are the source of truth — code that disagrees with the spec is a bug. If a spec is wrong, update the spec first, in the same change, with reasoning.
 

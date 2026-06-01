@@ -93,7 +93,7 @@ Never returns the SerpAPI key. Returns `{ ..., has_serpapi_key: boolean }`.
 
 ### `PATCH /api/settings`
 
-Body fields all optional: `mode`, `approval`, `browser_headful`, `paused`, `active_llm_provider_id`, `serpapi_key` (when set, server validates by making a minimal call before saving).
+Body fields all optional: `mode`, `approval`, `browser_headful`, `browser_stealth` (opt-in anti-detection masking, default `false`; ADR-021), `paused`, `active_llm_provider_id`, `serpapi_key` (when set, server validates by making a minimal call before saving).
 
 ### `DELETE /api/settings/serpapi-key`
 

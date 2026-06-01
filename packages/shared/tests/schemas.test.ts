@@ -90,6 +90,7 @@ describe('preferences / settings schemas', () => {
       mode: 'autonomous' as const,
       approval: 'review-first' as const,
       browser_headful: false,
+      browser_stealth: false,
       paused: false,
       active_llm_provider_id: null,
       has_serpapi_key: true,
@@ -100,6 +101,32 @@ describe('preferences / settings schemas', () => {
     expect(SettingsUpdateSchema.parse({ serpapi_key: 'sk_x' })).toEqual({ serpapi_key: 'sk_x' });
     expect(SettingsUpdateSchema.parse({ serpapi_key: null })).toEqual({ serpapi_key: null });
     expect(() => SettingsUpdateSchema.parse({ approval: 'maybe' })).toThrow();
+  });
+
+  it('settings carry browser_stealth (opt-in anti-detection, ADR-021); update accepts it optionally', () => {
+    const settings = {
+      id: 'app' as const,
+      mode: 'autonomous' as const,
+      approval: 'review-first' as const,
+      browser_headful: false,
+      browser_stealth: false,
+      paused: false,
+      active_llm_provider_id: null,
+      has_serpapi_key: true,
+      updated_at: '2026-04-28T12:00:00Z',
+    };
+    // Round-trip: response carries browser_stealth and preserves the boolean.
+    expect(SettingsSchema.parse(settings)).toEqual(settings);
+    expect(SettingsSchema.parse({ ...settings, browser_stealth: true })).toEqual({
+      ...settings,
+      browser_stealth: true,
+    });
+    // Required in the response — a missing browser_stealth is rejected.
+    const { browser_stealth: _omit, ...withoutStealth } = settings;
+    expect(() => SettingsSchema.parse(withoutStealth)).toThrow();
+    // Update schema accepts browser_stealth optionally; rejects non-boolean.
+    expect(SettingsUpdateSchema.parse({ browser_stealth: true })).toEqual({ browser_stealth: true });
+    expect(() => SettingsUpdateSchema.parse({ browser_stealth: 'yes' })).toThrow();
   });
 });
 

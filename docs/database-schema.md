@@ -88,6 +88,7 @@ Single-row global app settings.
 | `mode`                   | TEXT NOT NULL CHECK        | `'autonomous'` or `'supervised'`                 |
 | `approval`               | TEXT NOT NULL CHECK        | `'auto-apply'` or `'review-first'`               |
 | `browser_headful`        | INTEGER NOT NULL DEFAULT 0 | If 1, Playwright is visible                      |
+| `browser_stealth`        | INTEGER NOT NULL DEFAULT 0 | If 1, opt-in anti-detection masking (ADR-021)    |
 | `paused`                 | INTEGER NOT NULL DEFAULT 0 | If 1, scheduler is paused                        |
 | `active_llm_provider_id` | TEXT                       | FK → `llm_providers.id`                          |
 | `encrypted_serpapi_key`  | BLOB                       | nullable; only present if Google Jobs is enabled |

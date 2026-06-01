@@ -11,6 +11,7 @@ export interface SettingsRow {
   mode: OperatingMode;
   approval: ApprovalSetting;
   browser_headful: boolean;
+  browser_stealth: boolean;
   paused: boolean;
   active_llm_provider_id: string | null;
   encrypted_serpapi_key: Buffer | null;
@@ -22,6 +23,7 @@ interface RawSettingsRow {
   mode: OperatingMode;
   approval: ApprovalSetting;
   browser_headful: number;
+  browser_stealth: number;
   paused: number;
   active_llm_provider_id: string | null;
   encrypted_serpapi_key: Buffer | null;
@@ -34,6 +36,7 @@ function rowToSettings(row: RawSettingsRow): SettingsRow {
     mode: row.mode,
     approval: row.approval,
     browser_headful: row.browser_headful === 1,
+    browser_stealth: row.browser_stealth === 1,
     paused: row.paused === 1,
     active_llm_provider_id: row.active_llm_provider_id,
     encrypted_serpapi_key: row.encrypted_serpapi_key,
@@ -46,6 +49,7 @@ const DEFAULTS: Omit<SettingsRow, 'updated_at'> = {
   mode: 'supervised',
   approval: 'review-first',
   browser_headful: false,
+  browser_stealth: false,
   paused: false,
   active_llm_provider_id: null,
   encrypted_serpapi_key: null,
@@ -60,14 +64,15 @@ export function getOrInitSettings(db: DatabaseType): SettingsRow {
   const now = new Date().toISOString();
   db.prepare(
     `INSERT INTO settings
-       (id, mode, approval, browser_headful, paused,
+       (id, mode, approval, browser_headful, browser_stealth, paused,
         active_llm_provider_id, encrypted_serpapi_key, updated_at)
-     VALUES ('app', @mode, @approval, @browser_headful, @paused,
+     VALUES ('app', @mode, @approval, @browser_headful, @browser_stealth, @paused,
              @active_llm_provider_id, @encrypted_serpapi_key, @updated_at)`,
   ).run({
     mode: DEFAULTS.mode,
     approval: DEFAULTS.approval,
     browser_headful: DEFAULTS.browser_headful ? 1 : 0,
+    browser_stealth: DEFAULTS.browser_stealth ? 1 : 0,
     paused: DEFAULTS.paused ? 1 : 0,
     active_llm_provider_id: DEFAULTS.active_llm_provider_id,
     encrypted_serpapi_key: DEFAULTS.encrypted_serpapi_key,
@@ -86,6 +91,7 @@ export interface SettingsUpdatePatch {
   mode?: OperatingMode;
   approval?: ApprovalSetting;
   browser_headful?: boolean;
+  browser_stealth?: boolean;
   paused?: boolean;
   active_llm_provider_id?: string | null;
   encrypted_serpapi_key?: Buffer | null;
@@ -101,6 +107,9 @@ export function updateSettings(db: DatabaseType, patch: SettingsUpdatePatch): Se
     ...(patch.browser_headful !== undefined && {
       browser_headful: patch.browser_headful,
     }),
+    ...(patch.browser_stealth !== undefined && {
+      browser_stealth: patch.browser_stealth,
+    }),
     ...(patch.paused !== undefined && { paused: patch.paused }),
     ...(patch.active_llm_provider_id !== undefined && {
       active_llm_provider_id: patch.active_llm_provider_id,
@@ -114,7 +123,8 @@ export function updateSettings(db: DatabaseType, patch: SettingsUpdatePatch): Se
   db.prepare(
     `UPDATE settings SET
        mode=@mode, approval=@approval,
-       browser_headful=@browser_headful, paused=@paused,
+       browser_headful=@browser_headful, browser_stealth=@browser_stealth,
+       paused=@paused,
        active_llm_provider_id=@active_llm_provider_id,
        encrypted_serpapi_key=@encrypted_serpapi_key,
        updated_at=@updated_at
@@ -123,6 +133,7 @@ export function updateSettings(db: DatabaseType, patch: SettingsUpdatePatch): Se
     mode: next.mode,
     approval: next.approval,
     browser_headful: next.browser_headful ? 1 : 0,
+    browser_stealth: next.browser_stealth ? 1 : 0,
     paused: next.paused ? 1 : 0,
     active_llm_provider_id: next.active_llm_provider_id,
     encrypted_serpapi_key: next.encrypted_serpapi_key,

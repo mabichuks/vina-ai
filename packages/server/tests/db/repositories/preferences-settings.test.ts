@@ -39,6 +39,22 @@ describe('settings repository', () => {
     db.close();
   });
 
+  it('browser_stealth defaults to false; partial update toggles it and preserves other fields', () => {
+    const db = freshTestDb();
+    const seed = getOrInitSettings(db);
+    expect(seed.browser_stealth).toBe(false);
+
+    const enabled = updateSettings(db, { browser_stealth: true });
+    expect(enabled.browser_stealth).toBe(true);
+    expect(enabled.browser_headful).toBe(seed.browser_headful);
+    expect(enabled.paused).toBe(seed.paused);
+
+    // Untouched field stays as set.
+    updateSettings(db, { paused: true });
+    expect(getOrInitSettings(db).browser_stealth).toBe(true);
+    db.close();
+  });
+
   it('round-trips a ciphertext serpapi key; null clears, undefined leaves alone', () => {
     const db = freshTestDb();
     const cipher = Buffer.from([0xde, 0xad, 0xbe, 0xef]);
