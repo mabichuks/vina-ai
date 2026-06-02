@@ -250,7 +250,7 @@ describe('runApply — LLM fallback', () => {
     expect(toolKit.calls.fillField).toEqual([{ ref: 'r1', value: '0' }]);
   });
 
-  it('raises missing_field alert when the LLM declines', async () => {
+  it('raises missing_field alert when the LLM declines on a required field', async () => {
     const fields: FormField[] = [
       { ref: 'r1', label: 'Highest qualification', kind: 'text', required: true },
     ];
@@ -269,6 +269,24 @@ describe('runApply — LLM fallback', () => {
     );
     expect(toolKit.calls.submit).toBe(0);
     expect(toolKit.calls.closeApplication).toBe(1);
+  });
+
+  it('leaves an OPTIONAL field blank when the LLM declines, and continues to submit', async () => {
+    const fields: FormField[] = [
+      { ref: 'r1', label: 'Job preferences', kind: 'text', required: false },
+    ];
+    const toolKit = makeToolKit({ steps: [{ fields }] });
+    const decider = new FakeDecider({
+      action: 'skip',
+      value: null,
+      reason: 'profile has no information about job preferences',
+    });
+    const result = await runApply(APPLY_INPUT, decider, toolKit);
+    expect(result.outcome).toBe('submitted');
+    // No fillField, no alert, no awaiting_user.
+    expect(toolKit.calls.fillField).toEqual([]);
+    expect(toolKit.calls.alerts.some((a) => a.kind === 'missing_field')).toBe(false);
+    expect(toolKit.calls.submit).toBe(1);
   });
 });
 

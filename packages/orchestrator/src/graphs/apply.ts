@@ -338,7 +338,20 @@ async function fillStep(input: FillStepInput): Promise<FillStepOutcome> {
       continue;
     }
 
-    // LLM declined — raise missing_field and stop.
+    // LLM declined. Per the browser-apply skill, only escalate when the
+    // field is required — optional fields stay blank and the loop
+    // continues. The no-fabrication rule is the reason the LLM said no;
+    // forcing the user to answer something the form doesn't require
+    // would be worse UX than leaving it empty.
+    if (!field.required) {
+      record('field_skipped_optional', {
+        ref: field.ref,
+        label: field.label,
+        reason: decision.reason,
+      });
+      continue;
+    }
+
     record('field_unresolved', {
       ref: field.ref,
       label: field.label,
