@@ -86,11 +86,38 @@ const ALREADY_APPLIED_SELECTORS = [
   'button:has-text("View application")',
 ] as const;
 
+/**
+ * Buttons LinkedIn shows in dismissable upsell overlays that can cover
+ * the Easy Apply button on first visit (Premium trial prompts, AI feature
+ * intros). Clicking these makes the underlying job page interactive.
+ */
+const OVERLAY_DISMISS_SELECTORS = [
+  'button:has-text("Not now")',
+  'button:has-text("No thanks")',
+  'button:has-text("Maybe later")',
+  'button[aria-label="Dismiss"]',
+  'button[aria-label="Close"]',
+] as const;
+
 async function alreadyApplied(page: Page): Promise<boolean> {
   for (const sel of ALREADY_APPLIED_SELECTORS) {
     if ((await page.locator(sel).count()) > 0) return true;
   }
   return false;
+}
+
+async function dismissOverlays(page: Page): Promise<number> {
+  let dismissed = 0;
+  for (const sel of OVERLAY_DISMISS_SELECTORS) {
+    const btn = page.locator(sel).first();
+    if ((await btn.count()) > 0 && (await btn.isVisible().catch(() => false))) {
+      await btn.click().catch(() => undefined);
+      dismissed++;
+      // Small settle so the next iteration sees the updated DOM.
+      await new Promise((r) => setTimeout(r, 200));
+    }
+  }
+  return dismissed;
 }
 
 /**
@@ -124,39 +151,53 @@ export async function startLinkedInApplication(
     return { page, formId: newId() };
   }
 
-  if (await alreadyApplied(page)) {
-    throw new Error(
-      "Easy Apply is unavailable: LinkedIn shows you've already applied to this job",
+  // Poll for up to 15s for the Easy Apply button. Within each iteration
+  // also dismiss any overlay (Premium upsell, AI features intro) that
+  // might be covering it, and check for already-applied state. The
+  // polling is needed because LinkedIn's job page is a SPA and the
+  // primary CTA renders after the initial domcontentloaded fires.
+  const deadline = Date.now() + 15_000;
+  let lastTrigger: Awaited<ReturnType<typeof findElementByGoal>> = null;
+  while (Date.now() < deadline) {
+    await dismissOverlays(page);
+
+    if (await firstPresent(page, APPLY_FORM_ROOT_SELECTORS)) {
+      return { page, formId: newId() };
+    }
+    if (await alreadyApplied(page)) {
+      throw new Error(
+        "Easy Apply is unavailable: LinkedIn shows you've already applied to this job",
+      );
+    }
+    lastTrigger = await findElementByGoal(
+      page,
+      'easy_apply',
+      EASY_APPLY_TRIGGER_SELECTORS,
     );
+    if (lastTrigger) break;
+    await new Promise((r) => setTimeout(r, 500));
   }
 
-  const trigger = await findElementByGoal(
-    page,
-    'easy_apply',
-    EASY_APPLY_TRIGGER_SELECTORS,
-  );
-  if (!trigger) {
-    // No button visible — listing may be closed, already-applied, or
-    // requires re-login. Log a diagnostic snapshot of visible buttons.
+  if (!lastTrigger) {
     const tree = await takeSnapshot(page);
     const buttons = (await import('../element-locator.js'))
       .listAllButtons(tree)
       .slice(0, 30);
     log.warn(
       { visibleButtons: buttons, url: page.url() },
-      'Easy Apply button not found on job detail page',
+      'Easy Apply button not found after 15s polling',
     );
     throw new Error(
-      'Easy Apply button not visible on the job detail page — the listing may be closed, already applied to, or your LinkedIn session may need a refresh',
+      'Easy Apply button not visible after 15s — the listing may be closed, the session may need a refresh, or LinkedIn is showing an overlay that does not match our dismiss patterns',
     );
   }
 
-  log.debug({ tier: trigger.tier }, 'easy apply trigger resolved');
-  await trigger.locator.click();
+  log.debug({ tier: lastTrigger.tier }, 'easy apply trigger resolved');
+  await lastTrigger.locator.click();
 
   // Wait for the form root to appear (modal or in-page form).
   let formRootFound = false;
-  for (let attempt = 0; attempt < 30; attempt++) {
+  for (let attempt = 0; attempt < 50; attempt++) {
     if (await firstPresent(page, APPLY_FORM_ROOT_SELECTORS)) {
       formRootFound = true;
       break;
@@ -165,7 +206,7 @@ export async function startLinkedInApplication(
   }
   if (!formRootFound) {
     throw new Error(
-      'Clicked Easy Apply but the application modal did not open within 3s',
+      'Clicked Easy Apply but the application modal did not open within 5s',
     );
   }
   return { page, formId: newId() };

@@ -235,7 +235,7 @@ describe('M15 — end-to-end apply against fixture (Done-when)', () => {
       await handler({ application_id: app.id });
 
       const pausedApp = findApplicationById(db, app.id);
-      expect(pausedApp?.status).toBe('awaiting_approval');
+      expect(pausedApp?.status).toBe('awaiting_user');
 
       const alerts = listAlerts(db, { status: 'open' });
       const missingField = alerts.find((a) => a.kind === 'missing_field');

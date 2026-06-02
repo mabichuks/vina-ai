@@ -165,7 +165,10 @@ export function createApplyHandler(
       updateApplicationStatus(deps.db, app.id, 'awaiting_approval');
       // Alert already created by the graph via toolKit.createAlert.
     } else if (result.outcome === 'awaiting_user') {
-      updateApplicationStatus(deps.db, app.id, 'awaiting_approval', {
+      // missing_field / captcha / session_expired — different status from
+      // review_first's awaiting_approval. Both are "needs the user" but
+      // for distinct reasons.
+      updateApplicationStatus(deps.db, app.id, 'awaiting_user', {
         failure_reason: result.reason ?? null,
       });
       // Alert already created by the graph.

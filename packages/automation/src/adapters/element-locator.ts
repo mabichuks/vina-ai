@@ -108,18 +108,31 @@ export function findGoalNodeInTree(tree: UiTree, goal: ButtonGoal): UiNode | nul
 }
 
 /**
- * Return every interactive button in the tree (role=button/link) with
- * its accessible name. Used as diagnostic when no goal matches — the
- * caller logs the result so the user can see what buttons WERE on the
- * page when LinkedIn ate the expected one.
+ * Roles to include in the diagnostic when no goal matches. Widened
+ * beyond button + link because LinkedIn sometimes wraps clickable CTAs
+ * in `image` (the company logo of the Easy Apply pill) or `region`
+ * (modal containers). Capturing more roles means the next failure log
+ * tells us what's actually on the page rather than hiding the answer.
  */
+const DIAGNOSTIC_INTERESTING_ROLES = new Set([
+  'button',
+  'link',
+  'menuitem',
+  'tab',
+  'cell',
+  'image',
+  'region',
+  'group',
+  'banner',
+]);
+
 export function listAllButtons(tree: UiTree): Array<{ role: string; name: string }> {
   const out: Array<{ role: string; name: string }> = [];
   walkTree(tree, (node) => {
-    if (node.role === 'button' || node.role === 'link') {
-      const name = node.name.trim();
-      if (name) out.push({ role: node.role, name });
-    }
+    if (!DIAGNOSTIC_INTERESTING_ROLES.has(node.role)) return;
+    const name = node.name.trim();
+    if (!name) return;
+    out.push({ role: node.role, name });
   });
   return out;
 }
