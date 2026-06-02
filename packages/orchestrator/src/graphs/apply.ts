@@ -325,7 +325,7 @@ async function fillStep(input: FillStepInput): Promise<FillStepOutcome> {
         { err, field: field.label, applicationId },
         'apply-fallback model call failed; treating as skip',
       );
-      decision = { action: 'skip', reason: `LLM fallback failed: ${detail}` };
+      decision = { action: 'skip', value: null, reason: `LLM fallback failed: ${detail}` };
     }
     if (decision.action === 'fill' && decision.value) {
       await toolKit.fillField({ formId, ref: field.ref, value: decision.value });

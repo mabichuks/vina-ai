@@ -147,7 +147,7 @@ class FakeDecider implements StructuredApplyDecider {
   }
 }
 
-const NEVER_DECIDE = new FakeDecider({ action: 'skip', reason: 'never asked' });
+const NEVER_DECIDE = new FakeDecider({ action: 'skip', value: null, reason: 'never asked' });
 
 describe('runApply — happy path', () => {
   it('submits when every field resolves from profile', async () => {
@@ -257,6 +257,7 @@ describe('runApply — LLM fallback', () => {
     const toolKit = makeToolKit({ steps: [{ fields }] });
     const decider = new FakeDecider({
       action: 'skip',
+      value: null,
       reason: 'profile lacks education data',
     });
     const result = await runApply(APPLY_INPUT, decider, toolKit);

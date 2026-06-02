@@ -227,7 +227,7 @@ describe('M15 — end-to-end apply against fixture (Done-when)', () => {
         // saved answer).
         buildModel: async () =>
           fifoModel([
-            { action: 'skip', reason: 'profile lacks education data' },
+            { action: 'skip', value: null, reason: 'profile lacks education data' },
           ]) as unknown as never,
       });
 

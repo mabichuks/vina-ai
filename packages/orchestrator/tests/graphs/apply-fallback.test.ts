@@ -67,7 +67,7 @@ describe('decideUnresolvedField', () => {
   it('returns a skip decision when the model declines to answer', async () => {
     const decider = new FakeDecider({
       kind: 'reply',
-      reply: { action: 'skip', reason: 'profile does not specify Rust experience' },
+      reply: { action: 'skip', value: null, reason: 'profile does not specify Rust experience' },
     });
     const result = await decideUnresolvedField(SAMPLE_INPUT, decider);
     expect(result.action).toBe('skip');
@@ -97,7 +97,7 @@ describe('decideUnresolvedField', () => {
   it('pre-loads the browser-apply skill into the system prompt', async () => {
     const decider = new FakeDecider({
       kind: 'reply',
-      reply: { action: 'skip', reason: 'ok' },
+      reply: { action: 'skip', value: null, reason: 'ok' },
     });
     await decideUnresolvedField(SAMPLE_INPUT, decider);
     const [system] = decider.lastMessages!;
@@ -110,7 +110,7 @@ describe('decideUnresolvedField', () => {
   it('includes the field label, kind, required flag, and options in the user prompt', async () => {
     const decider = new FakeDecider({
       kind: 'reply',
-      reply: { action: 'skip', reason: 'ok' },
+      reply: { action: 'skip', value: null, reason: 'ok' },
     });
     await decideUnresolvedField(
       {

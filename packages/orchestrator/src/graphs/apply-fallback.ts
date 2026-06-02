@@ -28,21 +28,30 @@ export interface ApplyFallbackInput {
  * select; `skip` means the LLM cannot answer — the caller raises a
  * `missing_field` alert (per the browser-apply skill).
  *
- * Shape note: this is a plain `z.object`, not a discriminated union,
- * because OpenAI's structured-outputs mode requires the JSON Schema root
- * to be `type: "object"` (it rejects `oneOf`). `value` is optional and
- * checked at runtime — must be present when `action='fill'`.
+ * Shape constraints for OpenAI's strict structured-outputs mode:
+ *   - Root must be `type: "object"` (so no `z.discriminatedUnion`).
+ *   - Every key in `properties` must appear in `required` (so no
+ *     `.optional()` — `value` is nullable but always present; pass
+ *     `null` when skipping).
+ * The "fill needs a real value" rule is a runtime refine; refines don't
+ * affect the JSON Schema OpenAI sees.
  */
 export const FallbackDecisionSchema = z
   .object({
     action: z.enum(['fill', 'skip']),
-    value: z.string().nullable().optional(),
+    value: z.string().nullable(),
     reason: z.string(),
   })
-  .refine((d) => d.action === 'skip' || (typeof d.value === 'string' && d.value.length > 0), {
-    message: "action='fill' requires a non-empty value",
-    path: ['value'],
-  });
+  .refine(
+    (d) =>
+      d.action === 'skip'
+        ? true
+        : typeof d.value === 'string' && d.value.length > 0,
+    {
+      message: "action='fill' requires a non-empty value",
+      path: ['value'],
+    },
+  );
 export type FallbackDecision = z.infer<typeof FallbackDecisionSchema>;
 
 export type ApplyFallbackMessages = ReadonlyArray<{
