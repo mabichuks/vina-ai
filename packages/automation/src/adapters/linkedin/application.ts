@@ -1,5 +1,5 @@
 import type { Locator, Page } from 'playwright';
-import { newId } from '@vina/shared';
+import { createLogger, newId } from '@vina/shared';
 import type {
   ApplicationSession,
   SubmitResult,
@@ -10,7 +10,10 @@ import { takeSnapshot, type UiRef } from '../../snapshot/snapshot.js';
 import { resolveRef } from '../../snapshot/refs.js';
 import { detectCaptchaOnPage } from '../../detect/captcha.js';
 import { isSessionExpiredOnPage } from '../../detect/session.js';
+import { findElementByGoal } from '../element-locator.js';
 import type { RawListing } from '../types.js';
+
+const log = createLogger('automation.linkedin.application');
 
 /** Selectors for the Easy Apply button on the job detail page. */
 const EASY_APPLY_TRIGGER_SELECTORS = [
@@ -78,8 +81,12 @@ async function firstPresent(
 /**
  * Open the apply form on `page`. The flow:
  *   1. Navigate to the listing URL.
- *   2. If an Easy Apply button is present, click it.
- *   3. Wait for any of the apply-form roots to mount.
+ *   2. Locate the Easy Apply button (selectors → accessibility tree).
+ *   3. Click it (if found) and wait for the form root to mount.
+ *
+ * The selector→a11y two-tier resolution (ADR-022) means the open step
+ * survives LinkedIn renaming its data-testids or class names — the
+ * "Easy Apply" button is still named "Easy Apply" in the a11y tree.
  */
 export async function startLinkedInApplication(
   page: Page,
@@ -88,9 +95,14 @@ export async function startLinkedInApplication(
   if (!page.url().includes(listing.url)) {
     await page.goto(listing.url, { waitUntil: 'domcontentloaded' });
   }
-  const trigger = await firstPresent(page, EASY_APPLY_TRIGGER_SELECTORS);
+  const trigger = await findElementByGoal(
+    page,
+    'easy_apply',
+    EASY_APPLY_TRIGGER_SELECTORS,
+  );
   if (trigger) {
-    await trigger.click();
+    log.debug({ tier: trigger.tier }, 'easy apply trigger resolved');
+    await trigger.locator.click();
   }
   // Wait for the form root to appear (modal or in-page form).
   for (let attempt = 0; attempt < 30; attempt++) {
@@ -168,12 +180,52 @@ export async function fillLinkedInField(
   await locator.fill(value);
 }
 
+/**
+ * Heuristic: LinkedIn Easy Apply usually pre-attaches the resume on the
+ * user's profile. The modal renders something like "Resume.pdf · 12 KB"
+ * with a "Replace" / "Remove" button, and no empty file input. When we
+ * detect this, skip our upload entirely — the user explicitly asked for
+ * the profile resume to be used when present.
+ */
+async function existingResumeAttached(page: Page): Promise<boolean> {
+  // Test-fixture marker first (used by integration tests).
+  if (
+    (await page.locator('[data-vina-fixture="existing-resume"]').count()) > 0
+  ) {
+    return true;
+  }
+  // Filename-like text — Playwright's text engine accepts /regex/flags.
+  if ((await page.locator('text=/Resume.*\\.(pdf|docx?)/i').count()) > 0) {
+    return true;
+  }
+  if ((await page.locator('text=/CV.*\\.(pdf|docx?)/i').count()) > 0) {
+    return true;
+  }
+  // A "Replace" / "Remove" button without a visible empty file input
+  // means LinkedIn currently has a resume attached.
+  const replaceBtn = page.locator(
+    'button:has-text("Replace"), button:has-text("Remove")',
+  );
+  if ((await replaceBtn.count()) > 0) {
+    const visibleFileInput = await page.locator('input[type="file"]:visible').count();
+    if (visibleFileInput === 0) return true;
+  }
+  return false;
+}
+
 export async function uploadLinkedInCv(
   session: ApplicationSession,
   path: string,
 ): Promise<void> {
+  if (await existingResumeAttached(session.page)) {
+    log.info('uploadCv: existing resume detected on LinkedIn profile — keeping it');
+    return;
+  }
   const input = await firstPresent(session.page, CV_FILE_SELECTORS);
-  if (!input) throw new Error('uploadCv: no file input found');
+  if (!input) {
+    log.info('uploadCv: no file input visible — skipping (likely pre-attached)');
+    return;
+  }
   await input.setInputFiles(path);
 }
 
@@ -185,16 +237,24 @@ export async function uploadLinkedInCoverLetter(
     (await firstPresent(session.page, COVER_LETTER_FILE_SELECTORS)) ??
     // Fallback: many forms have a single "additional documents" file input.
     (await firstPresent(session.page, ['input[type="file"]:nth-of-type(2)']));
-  if (!input) throw new Error('uploadCoverLetter: no file input found');
+  if (!input) {
+    log.info('uploadCoverLetter: no file input found — skipping');
+    return;
+  }
   await input.setInputFiles(path);
 }
 
 export async function advanceLinkedInStep(
   session: ApplicationSession,
 ): Promise<{ advanced: boolean }> {
-  const button = await firstPresent(session.page, ADVANCE_BUTTON_SELECTORS);
+  const button = await findElementByGoal(
+    session.page,
+    'advance',
+    ADVANCE_BUTTON_SELECTORS,
+  );
   if (!button) return { advanced: false };
-  await button.click();
+  log.debug({ tier: button.tier }, 'advance button resolved');
+  await button.locator.click();
   // Best-effort: wait for the DOM to settle before the next inspectFields.
   await session.page.waitForLoadState('domcontentloaded', { timeout: 5_000 }).catch(() => undefined);
   return { advanced: true };
@@ -214,11 +274,16 @@ export async function submitLinkedInApplication(
   ) {
     return { ok: false, reason: 'session_expired' };
   }
-  const button = await firstPresent(session.page, SUBMIT_BUTTON_SELECTORS);
+  const button = await findElementByGoal(
+    session.page,
+    'submit',
+    SUBMIT_BUTTON_SELECTORS,
+  );
   if (!button) {
     return { ok: false, reason: 'other', detail: 'no submit button found' };
   }
-  await button.click();
+  log.debug({ tier: button.tier }, 'submit button resolved');
+  await button.locator.click();
   // Post-click verification: success indicator, or captcha/session_expired
   // surfacing now that the click triggered them.
   for (let attempt = 0; attempt < 50; attempt++) {
