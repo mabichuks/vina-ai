@@ -55,11 +55,26 @@ const COVER_LETTER_FILE_SELECTORS = [
   'input[type="file"][data-vina-field="cover_letter"]',
 ] as const;
 
+/**
+ * Selectors that signal "submit succeeded" on the post-submit screen.
+ * Cast wide because LinkedIn changes the confirmation copy and structure
+ * between cohorts — `:has-text` matches substring so trailing names
+ * ("Your application was sent to Acme") still hit.
+ */
 const SUBMIT_SUCCESS_SELECTORS = [
   '[data-vina-fixture="apply-success"]',
   'h2:has-text("Application submitted")',
   'h2:has-text("Your application was sent")',
+  'h2:has-text("Application sent")',
+  'h3:has-text("Application sent")',
+  'h3:has-text("Your application was sent")',
   'div:has-text("Application sent")',
+  'div:has-text("Your application was sent")',
+  'div[role="alertdialog"]:has-text("submitted")',
+  'div[role="dialog"]:has-text("submitted")',
+  // LinkedIn's post-submit modal usually exposes a Done button.
+  'button:has-text("Done")',
+  'button[aria-label="Dismiss"]:has-text("Done")',
 ] as const;
 
 const LINKEDIN_SESSION_HEURISTICS = {
@@ -429,10 +444,23 @@ export async function submitLinkedInApplication(
     return { ok: false, reason: 'other', detail };
   }
   log.debug({ tier: button.tier }, 'submit button resolved');
+
+  // Snapshot pre-click state so we can detect "form root disappeared"
+  // as a success signal even when LinkedIn's confirmation copy doesn't
+  // match any of our text patterns.
+  const formRootBefore = await firstPresent(session.page, APPLY_FORM_ROOT_SELECTORS);
+  const hadFormRootBefore = formRootBefore !== null;
+
   await button.locator.click();
-  // Post-click verification: success indicator, or captcha/session_expired
-  // surfacing now that the click triggered them.
-  for (let attempt = 0; attempt < 50; attempt++) {
+
+  // Post-click verification, polled over 10s. Multiple parallel signals:
+  //  1. Explicit success indicator (copy / heading / Done button).
+  //  2. Captcha surfaced now that we clicked.
+  //  3. Session expired now that we clicked.
+  //  4. Form root that was present is GONE — LinkedIn closed the modal
+  //     after a successful submit, even without a confirmation screen
+  //     we recognised.
+  for (let attempt = 0; attempt < 100; attempt++) {
     if (await firstPresent(session.page, SUBMIT_SUCCESS_SELECTORS)) {
       return { ok: true };
     }
@@ -445,9 +473,25 @@ export async function submitLinkedInApplication(
     ) {
       return { ok: false, reason: 'session_expired' };
     }
+    // Form-root-gone heuristic: only meaningful if we had one before
+    // clicking. Wait a few cycles after the click before trusting it so
+    // mid-submit DOM churn doesn't trigger a false positive.
+    if (hadFormRootBefore && attempt > 5) {
+      const formRootAfter = await firstPresent(
+        session.page,
+        APPLY_FORM_ROOT_SELECTORS,
+      );
+      if (formRootAfter === null) {
+        log.info(
+          { formId: session.formId },
+          'submit success inferred from form root disappearance',
+        );
+        return { ok: true };
+      }
+    }
     await new Promise((r) => setTimeout(r, 100));
   }
-  return { ok: false, reason: 'other', detail: 'no success indicator within 5s' };
+  return { ok: false, reason: 'other', detail: 'no success indicator within 10s' };
 }
 
 export async function takeLinkedInScreenshot(
