@@ -14,8 +14,15 @@ import { listAlerts, resolveAlert } from '../../db/repositories/alerts.js';
 import type { EventBus } from '../../events/bus.js';
 import { parse } from '../parse.js';
 
+/**
+ * `status=all` is a sentinel meaning "no filter" — the Applications page
+ * uses it to surface every in-flight + terminal application in one list.
+ * Existing callers (Ready-to-Apply page) still pass an explicit status.
+ */
 const ListQuerySchema = z.object({
-  status: z.enum(APPLICATION_STATUSES).optional(),
+  status: z
+    .union([z.enum(APPLICATION_STATUSES), z.literal('all')])
+    .optional(),
   page: z.coerce.number().int().min(1).default(1),
   page_size: z.coerce.number().int().min(1).max(100).default(50),
 });
@@ -69,13 +76,33 @@ export async function applicationRoutes(
 
   app.get('/api/applications', async (req) => {
     const q = parse(ListQuerySchema, req.query, 'query');
-    const status = q.status ?? 'ready_for_manual_apply';
+    const filter = q.status ?? 'ready_for_manual_apply';
     const items = listApplications(db, {
-      status,
+      ...(filter !== 'all' && { status: filter }),
       limit: q.page_size,
       offset: (q.page - 1) * q.page_size,
     });
-    return { items, page: q.page, page_size: q.page_size };
+    // Embed a thin job slice per application so the list page doesn't
+    // need a second N round-trips. The fields are the minimum the UI
+    // shows: title, company, score, apply method, listing URL.
+    const enriched = items.map((it) => {
+      const job = findJobById(db, it.job_id);
+      return {
+        ...it,
+        job: job
+          ? {
+              id: job.id,
+              title: job.title,
+              company: job.company,
+              location: job.location,
+              match_score: job.match_score,
+              apply_method: job.apply_method,
+              url: job.url,
+            }
+          : null,
+      };
+    });
+    return { items: enriched, page: q.page, page_size: q.page_size };
   });
 
   app.get('/api/applications/:id', async (req) => {

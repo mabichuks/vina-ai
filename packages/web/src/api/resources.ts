@@ -7,6 +7,7 @@ import {
 import type {
   Alert,
   Application,
+  ApplicationListItem,
   ApplicationStatus,
   CoverLetter,
   Cv,
@@ -770,21 +771,25 @@ export function useDisconnectGoogleJobs(): {
 /* ------------------------------------------------------------------ */
 
 interface UseApplicationsOpts {
-  status?: ApplicationStatus;
+  /** `'all'` returns every application regardless of status. */
+  status?: ApplicationStatus | 'all';
   pageSize?: number;
+  /** Optional auto-refetch interval (ms) so the page stays fresh as tasks run. */
+  refetchIntervalMs?: number;
 }
 
 export function useApplications(opts: UseApplicationsOpts = {}): {
-  data: Application[];
+  data: ApplicationListItem[];
   isLoading: boolean;
 } {
   const status = opts.status ?? 'ready_for_manual_apply';
-  const q = useQuery<{ items: Application[] }>({
+  const q = useQuery<{ items: ApplicationListItem[] }>({
     queryKey: ['applications', status],
     queryFn: () =>
-      api<{ items: Application[] }>(
+      api<{ items: ApplicationListItem[] }>(
         `/api/applications?status=${status}&page_size=${opts.pageSize ?? 50}`,
       ),
+    ...(opts.refetchIntervalMs ? { refetchInterval: opts.refetchIntervalMs } : {}),
   });
   return { data: q.data?.items ?? [], isLoading: q.isLoading };
 }

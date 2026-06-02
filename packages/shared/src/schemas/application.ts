@@ -24,6 +24,26 @@ export const ApplicationSchema = z.object({
 });
 export type Application = z.infer<typeof ApplicationSchema>;
 
+/**
+ * Thin job slice embedded in the `GET /api/applications` response so the
+ * Applications page can render rows without a second N round-trips per app.
+ */
+export const ApplicationListJobSchema = z.object({
+  id: z.string().min(1),
+  title: z.string().min(1),
+  company: z.string(),
+  location: z.string().nullable(),
+  match_score: z.number().int().nullable(),
+  apply_method: z.enum(APPLY_METHODS),
+  url: z.string().min(1),
+});
+export type ApplicationListJob = z.infer<typeof ApplicationListJobSchema>;
+
+export const ApplicationListItemSchema = ApplicationSchema.extend({
+  job: ApplicationListJobSchema.nullable(),
+});
+export type ApplicationListItem = z.infer<typeof ApplicationListItemSchema>;
+
 export const ApplicationEventSchema = z.object({
   id: z.string().min(1),
   application_id: z.string().min(1),

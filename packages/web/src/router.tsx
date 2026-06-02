@@ -16,7 +16,9 @@ const Jobs = lazy(() =>
   import('./routes/jobs/JobsPage.js').then((m) => ({ default: m.JobsPage })),
 );
 const Applications = lazy(() =>
-  import('./routes/pages.js').then((m) => ({ default: m.Applications })),
+  import('./routes/applications/ApplicationsPage.js').then((m) => ({
+    default: m.ApplicationsPage,
+  })),
 );
 const ReadyToApply = lazy(() =>
   import('./routes/ready/ReadyToApplyPage.js').then((m) => ({ default: m.ReadyToApplyPage })),
