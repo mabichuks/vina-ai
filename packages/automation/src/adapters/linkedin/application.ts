@@ -158,9 +158,17 @@ export async function inspectLinkedInFields(
 }
 
 /**
- * Type `value` into the field with `ref`. Resolves through the latest
- * snapshot (`act`'s stale-ref retry semantics apply). Locator-based
- * `.fill()` rather than `.type()` — faster and survives input shadows.
+ * Apply `value` to the field with `ref`. Dispatches by role:
+ *  - textbox / searchbox / spinbutton → `.fill(value)`
+ *  - combobox / listbox → `.selectOption({ label })`, falling back to value
+ *  - checkbox → `.check()` / `.uncheck()` based on a truthy value
+ *  - radio → `.check()` (caller is responsible for picking the right radio
+ *    by name; the ref already points at the desired one)
+ *
+ * Pre-Chunk-21 versions of this always called `.fill()`, which threw on
+ * `<select>` elements (Chrome surfaces them as `combobox`). The graph
+ * was happy to send LLM-resolved text to a combobox field and the whole
+ * task died on a Playwright type error.
  */
 export async function fillLinkedInField(
   session: ApplicationSession,
@@ -177,6 +185,28 @@ export async function fillLinkedInField(
       exact: true,
     })
     .first();
+
+  if (node.role === 'combobox' || node.role === 'listbox') {
+    // Try label first (visible text the LLM/resolver gave us), then value
+    // (the underlying HTML <option value="…">). Both can match real options.
+    try {
+      await locator.selectOption({ label: value });
+    } catch {
+      await locator.selectOption(value);
+    }
+    return;
+  }
+  if (node.role === 'checkbox' || node.role === 'switch') {
+    const truthy = /^(true|yes|on|1|checked|agree)$/i.test(value);
+    if (truthy) await locator.check();
+    else await locator.uncheck();
+    return;
+  }
+  if (node.role === 'radio') {
+    await locator.check();
+    return;
+  }
+  // textbox, searchbox, spinbutton, slider, and the rest — text-like.
   await locator.fill(value);
 }
 

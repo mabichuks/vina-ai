@@ -118,15 +118,41 @@ export function createApplyHandler(
       buildModel: deps.buildModel,
     });
 
-    const result = await runApply(
-      { applicationId: app.id, jobId: app.job_id, cvId: app.cv_id },
-      model as unknown as StructuredApplyDecider,
-      toolKit,
-      {
-        ...(deps.promptLoader ? { promptLoader: deps.promptLoader } : {}),
-        ...(deps.skillRegistry ? { skillRegistry: deps.skillRegistry } : {}),
-      },
-    );
+    let result: ApplyResult;
+    try {
+      result = await runApply(
+        { applicationId: app.id, jobId: app.job_id, cvId: app.cv_id },
+        model as unknown as StructuredApplyDecider,
+        toolKit,
+        {
+          ...(deps.promptLoader ? { promptLoader: deps.promptLoader } : {}),
+          ...(deps.skillRegistry ? { skillRegistry: deps.skillRegistry } : {}),
+        },
+      );
+    } catch (err) {
+      // Defence in depth: any unexpected exception inside runApply (selector
+      // throws, browser disconnects, Playwright type errors) should still
+      // mark the application failed and raise an alert — not silently die
+      // with the task in `failed` state while the application stays queued.
+      const detail = err instanceof Error ? err.message : String(err);
+      log.error(
+        { err, application_id: app.id },
+        'apply task threw unexpectedly',
+      );
+      updateApplicationStatus(deps.db, app.id, 'failed', {
+        failure_reason: detail.slice(0, 500),
+      });
+      insertAlert(deps.db, {
+        kind: 'apply_failed',
+        severity: 'error',
+        title: `Apply failed: ${job.title} @ ${job.company}`,
+        description: detail.slice(0, 1000),
+        application_id: app.id,
+        payload: { error: detail.slice(0, 2000) },
+      });
+      deps.bus.emit('jobs:updated', { ids: [app.job_id] });
+      throw err;
+    }
 
     recordApplyEvents(deps.db, app.id, result.events);
 
