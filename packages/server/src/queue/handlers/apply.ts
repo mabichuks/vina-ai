@@ -170,9 +170,23 @@ export function createApplyHandler(
       });
       // Alert already created by the graph.
     } else {
-      // outcome === 'failed'
+      // outcome === 'failed' — open_form / tailoring / other graph-level
+      // failure. Some paths inside the graph raise their own alerts (step
+      // cap exceeded, submit_failed). Others don't (tailoring throw,
+      // openJobApplication throw). Raise unconditionally here so every
+      // failed outcome has a visible alert.
+      const detail =
+        result.failureDetail ?? result.reason ?? 'apply failed without detail';
       updateApplicationStatus(deps.db, app.id, 'failed', {
-        failure_reason: result.failureDetail ?? result.reason ?? 'other',
+        failure_reason: detail.slice(0, 500),
+      });
+      insertAlert(deps.db, {
+        kind: 'apply_failed',
+        severity: 'error',
+        title: `Apply failed: ${job.title} @ ${job.company}`,
+        description: detail.slice(0, 1000),
+        application_id: app.id,
+        payload: { reason: result.reason ?? 'other' },
       });
     }
     deps.bus.emit('jobs:updated', { ids: [app.job_id] });

@@ -41,14 +41,14 @@ function listing(): RawListing {
 const RENAMED_FORM = `<!doctype html>
 <html lang="en"><head><title>Renamed Easy Apply</title></head>
 <body>
-  <main>
+  <form data-vina-fixture="easy-apply">
     <section class="totally-renamed-2026-container">
       <label>First name <input type="text"></label>
       <label>Email <input type="email"></label>
       <button class="totally-renamed-2026-class" type="button" id="continue-btn">Continue</button>
       <button class="totally-renamed-2026-class" type="button" id="submit-btn" hidden>Submit application</button>
     </section>
-  </main>
+  </form>
   <script>
     document.getElementById('continue-btn').addEventListener('click', () => {
       document.getElementById('continue-btn').setAttribute('hidden', '');

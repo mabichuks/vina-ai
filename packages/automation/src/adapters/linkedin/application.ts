@@ -78,15 +78,32 @@ async function firstPresent(
   return null;
 }
 
+/** Selectors / accessible names that signal "you've already applied". */
+const ALREADY_APPLIED_SELECTORS = [
+  'text=/applied\\s*\\d*\\s*(day|hour|minute|week|month)s?\\s*ago/i',
+  'text=/^applied$/i',
+  'text=/you applied/i',
+  'button:has-text("View application")',
+] as const;
+
+async function alreadyApplied(page: Page): Promise<boolean> {
+  for (const sel of ALREADY_APPLIED_SELECTORS) {
+    if ((await page.locator(sel).count()) > 0) return true;
+  }
+  return false;
+}
+
 /**
  * Open the apply form on `page`. The flow:
  *   1. Navigate to the listing URL.
- *   2. Locate the Easy Apply button (selectors → accessibility tree).
- *   3. Click it (if found) and wait for the form root to mount.
- *
- * The selector→a11y two-tier resolution (ADR-022) means the open step
- * survives LinkedIn renaming its data-testids or class names — the
- * "Easy Apply" button is still named "Easy Apply" in the a11y tree.
+ *   2. If a form root is already in the DOM (fixture path, or
+ *      page-variant that renders the form inline), short-circuit.
+ *   3. Detect "already applied" / closed listings up front and throw with
+ *      a clear message — the graph turns this into an `apply_failed`
+ *      alert instead of silently walking the page chrome looking for a
+ *      non-existent submit button.
+ *   4. Locate the Easy Apply button (selectors → accessibility tree).
+ *   5. Click it and wait for the form root to mount.
  */
 export async function startLinkedInApplication(
   page: Page,
@@ -95,19 +112,61 @@ export async function startLinkedInApplication(
   if (!page.url().includes(listing.url)) {
     await page.goto(listing.url, { waitUntil: 'domcontentloaded' });
   }
+  // Settle: LinkedIn's job detail is a SPA, page.goto returns before the
+  // detail panel renders. Wait briefly for content to appear.
+  await page
+    .waitForLoadState('networkidle', { timeout: 5_000 })
+    .catch(() => undefined);
+
+  // Short-circuit: if a form root is already in the DOM (fixture pages,
+  // some inline-form variants), no trigger click is needed.
+  if (await firstPresent(page, APPLY_FORM_ROOT_SELECTORS)) {
+    return { page, formId: newId() };
+  }
+
+  if (await alreadyApplied(page)) {
+    throw new Error(
+      "Easy Apply is unavailable: LinkedIn shows you've already applied to this job",
+    );
+  }
+
   const trigger = await findElementByGoal(
     page,
     'easy_apply',
     EASY_APPLY_TRIGGER_SELECTORS,
   );
-  if (trigger) {
-    log.debug({ tier: trigger.tier }, 'easy apply trigger resolved');
-    await trigger.locator.click();
+  if (!trigger) {
+    // No button visible — listing may be closed, already-applied, or
+    // requires re-login. Log a diagnostic snapshot of visible buttons.
+    const tree = await takeSnapshot(page);
+    const buttons = (await import('../element-locator.js'))
+      .listAllButtons(tree)
+      .slice(0, 30);
+    log.warn(
+      { visibleButtons: buttons, url: page.url() },
+      'Easy Apply button not found on job detail page',
+    );
+    throw new Error(
+      'Easy Apply button not visible on the job detail page — the listing may be closed, already applied to, or your LinkedIn session may need a refresh',
+    );
   }
+
+  log.debug({ tier: trigger.tier }, 'easy apply trigger resolved');
+  await trigger.locator.click();
+
   // Wait for the form root to appear (modal or in-page form).
+  let formRootFound = false;
   for (let attempt = 0; attempt < 30; attempt++) {
-    if (await firstPresent(page, APPLY_FORM_ROOT_SELECTORS)) break;
+    if (await firstPresent(page, APPLY_FORM_ROOT_SELECTORS)) {
+      formRootFound = true;
+      break;
+    }
     await new Promise((r) => setTimeout(r, 100));
+  }
+  if (!formRootFound) {
+    throw new Error(
+      'Clicked Easy Apply but the application modal did not open within 3s',
+    );
   }
   return { page, formId: newId() };
 }
