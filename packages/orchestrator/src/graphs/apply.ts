@@ -301,20 +301,33 @@ async function fillStep(input: FillStepInput): Promise<FillStepOutcome> {
       continue;
     }
 
-    // Unknown — fall back to the LLM (one decision per field).
-    const decision = await decideUnresolvedField(
-      {
-        profileContext,
-        field: {
-          label: field.label,
-          kind: field.kind,
-          required: field.required,
-          ...(field.options ? { options: field.options } : {}),
+    // Unknown — fall back to the LLM (one decision per field). If the
+    // model call itself fails (provider rejects schema, rate limit, etc.)
+    // treat it as a "skip with detail" so the graph still completes
+    // gracefully with an alert rather than throwing up the stack.
+    let decision: Awaited<ReturnType<typeof decideUnresolvedField>>;
+    try {
+      decision = await decideUnresolvedField(
+        {
+          profileContext,
+          field: {
+            label: field.label,
+            kind: field.kind,
+            required: field.required,
+            ...(field.options ? { options: field.options } : {}),
+          },
         },
-      },
-      model,
-    );
-    if (decision.action === 'fill') {
+        model,
+      );
+    } catch (err) {
+      const detail = err instanceof Error ? err.message : String(err);
+      log.warn(
+        { err, field: field.label, applicationId },
+        'apply-fallback model call failed; treating as skip',
+      );
+      decision = { action: 'skip', reason: `LLM fallback failed: ${detail}` };
+    }
+    if (decision.action === 'fill' && decision.value) {
       await toolKit.fillField({ formId, ref: field.ref, value: decision.value });
       record('field_filled', {
         ref: field.ref,
