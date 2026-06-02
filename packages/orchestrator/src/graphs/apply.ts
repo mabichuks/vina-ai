@@ -99,7 +99,10 @@ export async function runApply(
   record('inputs_loaded');
 
   // -- ensure_tailored -------------------------------------------------------
-  let tailoredCvPath: string;
+  // The toolkit returns { tailoredCvPath: null } for sites that don't
+  // require an upload (LinkedIn Easy Apply pre-attaches the profile CV).
+  // When null, the graph skips both the tailor work and the upload step.
+  let tailoredCvPath: string | null;
   try {
     const tailored = await toolKit.ensureTailoredCv({
       applicationId: input.applicationId,
@@ -107,7 +110,11 @@ export async function runApply(
       cvId: input.cvId,
     });
     tailoredCvPath = tailored.tailoredCvPath;
-    record('tailored', { tailoredCvPath });
+    if (tailoredCvPath === null) {
+      record('tailoring_skipped', { reason: 'site_uses_profile_cv' });
+    } else {
+      record('tailored', { tailoredCvPath });
+    }
   } catch (err) {
     const detail = err instanceof Error ? err.message : String(err);
     log.warn({ err, applicationId: input.applicationId }, 'tailoring failed');
@@ -126,14 +133,19 @@ export async function runApply(
     const approved = await toolKit.isApplicationApproved(input.applicationId);
     if (!approved) {
       record('awaiting_approval');
+      const alertTitle = tailoredCvPath
+        ? `Tailored CV ready — approve to submit ${job.title} @ ${job.company}`
+        : `Approve to submit ${job.title} @ ${job.company}`;
+      const alertDescription = tailoredCvPath
+        ? 'Review the tailored CV; the application will submit once you approve.'
+        : 'This site uses your profile CV — the application will submit once you approve.';
       await toolKit.createAlert({
         kind: 'awaiting_approval',
         severity: 'action_required',
-        title: `Tailored CV ready — approve to submit ${job.title} @ ${job.company}`,
-        description:
-          'Review the tailored CV; the application will submit once you approve.',
+        title: alertTitle,
+        description: alertDescription,
         applicationId: input.applicationId,
-        payload: { tailoredCvPath },
+        payload: tailoredCvPath ? { tailoredCvPath } : { usesProfileCv: true },
       });
       return {
         outcome: 'awaiting_approval',
@@ -182,11 +194,15 @@ export async function runApply(
         return { ...fillResult.result, events };
       }
 
-      // Upload the tailored CV when a file field is present and not yet handled.
+      // Upload the tailored CV when a file field is present AND we have
+      // one. Sites that pre-attach the profile resume (LinkedIn) set
+      // tailoredCvPath=null; the upload step is skipped entirely.
       const cvFileField = fields.find((f) => f.kind === 'file');
-      if (cvFileField) {
+      if (cvFileField && tailoredCvPath !== null) {
         await toolKit.uploadCv({ formId, path: tailoredCvPath });
         record('cv_uploaded');
+      } else if (cvFileField && tailoredCvPath === null) {
+        record('cv_upload_skipped', { reason: 'no_tailored_cv' });
       }
 
       // Submit-or-advance: if there's another step, advance; else submit.

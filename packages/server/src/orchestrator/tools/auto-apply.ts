@@ -39,6 +39,18 @@ import type { ManualApplyToolKit } from '@vina/orchestrator';
 
 const log = createLogger('auto-apply-toolkit');
 
+/**
+ * Site IDs whose Easy Apply / Quick Apply flow uses the resume the user
+ * already uploaded to their site profile, rather than asking for a file
+ * upload on each application. For these, `ensureTailoredCv` returns null
+ * and the graph skips both the tailor and upload steps.
+ */
+const SITES_USING_PROFILE_RESUME = new Set<string>(['linkedin']);
+
+function siteUsesProfileResume(siteId: string): boolean {
+  return SITES_USING_PROFILE_RESUME.has(siteId);
+}
+
 export interface CreateAutoApplyToolKitOptions {
   db: DatabaseType;
   browserManager: BrowserManagerHandle;
@@ -147,13 +159,21 @@ export function createAutoApplyToolKit(
       return result;
     },
 
-    async ensureTailoredCv(input): Promise<{ tailoredCvPath: string }> {
+    async ensureTailoredCv(input): Promise<{ tailoredCvPath: string | null }> {
       const existing = findApplicationById(opts.db, input.applicationId);
       if (existing?.tailored_cv_path) {
         return { tailoredCvPath: existing.tailored_cv_path };
       }
       const job = findJobById(opts.db, input.jobId);
       if (!job) throw new NotFoundError(`Job ${input.jobId} not found`);
+
+      // Sites whose Easy Apply pre-attaches the user's profile resume
+      // don't need tailoring or upload — short-circuit before we spend
+      // LLM tokens producing a CV we'll never send.
+      if (siteUsesProfileResume(job.site_id)) {
+        return { tailoredCvPath: null };
+      }
+
       const cv = findCvById(opts.db, input.cvId);
       if (!cv) throw new ConflictError('Application CV missing — upload one in Profile');
       const profile = findProfile(opts.db);

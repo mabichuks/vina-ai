@@ -97,15 +97,20 @@ export interface AutoApplyToolKit {
 
   // -- Tailoring --
   /**
-   * Ensures the tailored CV exists; returns its path. Server-side this
-   * runs the `tailor-cv` graph on first call and caches the result so
-   * re-runs after alert resolution don't tailor twice.
+   * Ensures a tailored CV exists for the upload step. Returns
+   * `{ tailoredCvPath: null }` when the site doesn't need an upload at all
+   * (e.g. LinkedIn Easy Apply, which pre-attaches the profile resume) —
+   * the graph then skips both the tailor work and the upload step.
+   *
+   * Server-side this runs the `tailor-cv` graph on first call when needed
+   * and caches the result so re-runs after alert resolution don't tailor
+   * twice.
    */
   ensureTailoredCv(input: {
     applicationId: string;
     jobId: string;
     cvId: string;
-  }): Promise<{ tailoredCvPath: string }>;
+  }): Promise<{ tailoredCvPath: string | null }>;
 
   // -- Browser --
   openJobApplication(input: { jobId: string }): Promise<{ formId: string }>;

@@ -169,7 +169,9 @@ describe('M15 — end-to-end apply against fixture (Done-when)', () => {
         browserManager,
         adapters: { linkedin: linkedInAdapter },
         manualApplyToolKit: createManualApplyToolKit({ dataDir }),
-        buildModel: async () => fifoModel([SUBMITTED_TAILOR_OUT]) as unknown as never,
+        // LinkedIn auto-apply skips tailoring (siteUsesProfileResume), so the
+        // model is never called on the happy path.
+        buildModel: async () => fifoModel([]) as unknown as never,
       });
 
       await handler({ application_id: app.id });
@@ -177,14 +179,16 @@ describe('M15 — end-to-end apply against fixture (Done-when)', () => {
       const after = findApplicationById(db, app.id);
       expect(after?.status).toBe('submitted');
       expect(after?.submitted_at).toBeTruthy();
-      expect(after?.tailored_cv_path).toBeTruthy();
+      // LinkedIn uses the profile CV — no tailored DOCX is produced.
+      expect(after?.tailored_cv_path).toBeNull();
 
       const events = listEvents(db, app.id);
       const kinds = events.map((e) => e.kind);
       expect(kinds).toContain('apply_started');
-      expect(kinds).toContain('cv_tailored');
       expect(kinds).toContain('field_filled');
       expect(kinds).toContain('submitted');
+      // Tailor path is short-circuited; cv_tailored / cv_uploaded never fire.
+      expect(kinds).not.toContain('cv_tailored');
     },
     60_000,
   );
@@ -217,12 +221,12 @@ describe('M15 — end-to-end apply against fixture (Done-when)', () => {
         browserManager,
         adapters: { linkedin: linkedInAdapter },
         manualApplyToolKit: createManualApplyToolKit({ dataDir }),
-        // First run: tailor + LLM-says-skip on the unknown qualification field.
-        // Second run (post-resume): no LLM calls at all (tailor cached, field
-        // resolves from saved answer).
+        // LinkedIn skips tailoring, so the only LLM call is the
+        // apply-fallback decision on the unknown qualification field.
+        // Second run (post-resume): no LLM calls (field resolves from
+        // saved answer).
         buildModel: async () =>
           fifoModel([
-            SUBMITTED_TAILOR_OUT,
             { action: 'skip', reason: 'profile lacks education data' },
           ]) as unknown as never,
       });
