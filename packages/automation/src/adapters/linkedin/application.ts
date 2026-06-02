@@ -274,13 +274,29 @@ export async function submitLinkedInApplication(
   ) {
     return { ok: false, reason: 'session_expired' };
   }
+  let missDiagnostic: Array<{ role: string; name: string }> | null = null;
   const button = await findElementByGoal(
     session.page,
     'submit',
     SUBMIT_BUTTON_SELECTORS,
+    {
+      onMiss: ({ buttons }) => {
+        missDiagnostic = buttons;
+        log.warn(
+          { visibleButtons: buttons.slice(0, 30) },
+          'submit button not found — logging all visible buttons in a11y tree',
+        );
+      },
+    },
   );
   if (!button) {
-    return { ok: false, reason: 'other', detail: 'no submit button found' };
+    const detail = missDiagnostic
+      ? `no submit button found; visible buttons: ${(missDiagnostic as Array<{ name: string }>)
+          .slice(0, 10)
+          .map((b) => `"${b.name}"`)
+          .join(', ')}`
+      : 'no submit button found';
+    return { ok: false, reason: 'other', detail };
   }
   log.debug({ tier: button.tier }, 'submit button resolved');
   await button.locator.click();
