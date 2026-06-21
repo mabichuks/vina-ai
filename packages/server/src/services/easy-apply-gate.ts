@@ -12,7 +12,8 @@ export type GateBlockReason =
   | 'circuit_breaker_tripped'
   | 'apply_task_in_flight'
   | 'job_not_found'
-  | 'wrong_apply_method';
+  | 'wrong_apply_method'
+  | 'system_paused';
 
 export type GateDecision =
   | { decision: 'allow' }
@@ -35,13 +36,14 @@ export interface GateInput {
  * documented in the task spec:
  *   1. job_not_found
  *   2. wrong_apply_method
- *   3. below_threshold
- *   4. listing_stale
- *   5. apply_task_in_flight
- *   6. circuit_breaker_tripped
- *   7. daily_cap_reached
- *   8. velocity_throttle
- *   9. dry_run vs allow
+ *   3. system_paused
+ *   4. below_threshold
+ *   5. listing_stale
+ *   6. apply_task_in_flight
+ *   7. circuit_breaker_tripped
+ *   8. daily_cap_reached
+ *   9. velocity_throttle
+ *  10. dry_run vs allow
  */
 export function checkEasyApplyGate(db: DatabaseType, input: GateInput): GateDecision {
   const job = findJobById(db, input.jobId);
@@ -50,12 +52,17 @@ export function checkEasyApplyGate(db: DatabaseType, input: GateInput): GateDeci
     return { decision: 'block', reason: 'wrong_apply_method' };
   }
 
+  // Respect the system-wide pause switch: a task already in task_queue when
+  // the user pauses should not proceed — the gate is checked at execution time.
+  const settings = getOrInitSettings(db);
+  if (settings.paused) return { decision: 'block', reason: 'system_paused' };
+
   const prefs = getOrInitSearchPreferences(db);
+  // Unscored jobs (match_score === null) are treated as score 0 — they
+  // must complete scoring before they can be allowed through.
   if ((job.match_score ?? 0) < prefs.score_threshold) {
     return { decision: 'block', reason: 'below_threshold' };
   }
-
-  const settings = getOrInitSettings(db);
 
   if (job.posted_at) {
     const posted = Date.parse(job.posted_at);
@@ -66,7 +73,10 @@ export function checkEasyApplyGate(db: DatabaseType, input: GateInput): GateDeci
     }
   }
 
-  // Idempotency: refuse if an apply task for this job is already pending or running.
+  // Idempotency JOIN: filter by status + extract application_id from payload.
+  // This scans matching task_queue rows (no index on json_extract); acceptable
+  // because the queue is small and bounded by the daily cap. If volume grows,
+  // an index on applications.job_id would help.
   // Failed tasks may be retried via the alert-resolve flow; only `pending`/`running` block.
   const inFlight = db
     .prepare(`

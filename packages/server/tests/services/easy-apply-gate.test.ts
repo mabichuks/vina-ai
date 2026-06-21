@@ -72,6 +72,15 @@ describe('checkEasyApplyGate', () => {
     expect(asBlock(r).reason).toBe('wrong_apply_method');
   });
 
+  it('blocks when settings.paused is true', () => {
+    updateSettings(db, { paused: true });
+    const job = makeJob(db);
+    const r = checkEasyApplyGate(db, { jobId: job.id, nowIso: NOW, today: TODAY });
+    expect(r.decision).toBe('block');
+    const block = asBlock(r);
+    expect(block.reason).toBe('system_paused');
+  });
+
   it('blocks when score below threshold', () => {
     db.prepare(`UPDATE search_preferences SET score_threshold = 90`).run();
     const job = makeJob(db, { score: 50 });
@@ -142,7 +151,7 @@ describe('checkEasyApplyGate', () => {
     expect(asBlock(r).reason).toBe('apply_task_in_flight');
   });
 
-  it('returns dry_run when dry-run setting is true (but still allow)', () => {
+  it('returns dry_run when autonomous_apply_dry_run is true', () => {
     updateSettings(db, { autonomous_apply_dry_run: true });
     const job = makeJob(db);
     const r = checkEasyApplyGate(db, { jobId: job.id, nowIso: NOW, today: TODAY });
