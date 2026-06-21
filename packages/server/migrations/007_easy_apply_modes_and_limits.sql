@@ -18,6 +18,7 @@ ALTER TABLE settings
   ADD COLUMN apply_daily_cap INTEGER NOT NULL DEFAULT 10
   CHECK (apply_daily_cap >= 1 AND apply_daily_cap <= 100);
 
+-- 0 = no throttle (every other limit starts at 1; this one allows opting out)
 ALTER TABLE settings
   ADD COLUMN apply_min_interval_seconds INTEGER NOT NULL DEFAULT 300
   CHECK (apply_min_interval_seconds >= 0 AND apply_min_interval_seconds <= 3600);
