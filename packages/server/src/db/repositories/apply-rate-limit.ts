@@ -1,4 +1,5 @@
 import type { Database as DatabaseType } from 'better-sqlite3';
+import { VinaError } from '@vina/shared';
 
 export interface ApplyRateLimit {
   id: 'app';
@@ -13,7 +14,7 @@ export function getRateLimit(db: DatabaseType): ApplyRateLimit {
   const row = db
     .prepare(`SELECT * FROM apply_rate_limit WHERE id = 'app'`)
     .get() as ApplyRateLimit | undefined;
-  if (!row) throw new Error('apply_rate_limit row missing — migration not applied');
+  if (!row) throw new VinaError('setup_error', 'apply_rate_limit row missing — migration not applied');
   return row;
 }
 
@@ -52,6 +53,8 @@ export function recordSuccess(
   `).run(today, today, nowIso, nowIso);
 }
 
+/** No `today` parameter — failures don't affect `successful_today` (day-scoped),
+ *  and `consecutive_failures` is day-agnostic circuit-breaker state. */
 export function recordFailure(db: DatabaseType): void {
   db.prepare(`
     UPDATE apply_rate_limit
