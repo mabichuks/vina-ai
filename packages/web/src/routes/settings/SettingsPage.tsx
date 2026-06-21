@@ -1,4 +1,5 @@
 import { AnswersTile } from './AnswersTile.js';
+import { EasyApplyTile } from './EasyApplyTile.js';
 import { PromptsTile } from './PromptsTile.js';
 import { SearchPreferencesTile } from './SearchPreferencesTile.js';
 import { SitesTile } from './SitesTile.js';
@@ -10,6 +11,7 @@ export function SettingsPage(): JSX.Element {
       <h1 className="font-display text-3xl font-headline tracking-tight text-ink-primary">
         Settings
       </h1>
+      <EasyApplyTile />
       <SitesTile />
       <SearchPreferencesTile />
       <AnswersTile />
