@@ -23,7 +23,7 @@ describe('loadSkill — real browser-apply SKILL.md', () => {
     expect(skill.meta.capabilities).toContain('snapshot');
     expect(skill.meta.capabilities).toContain('createAlert');
     expect(skill.meta.editable_by_user).toBe(false);
-    expect(skill.meta.version).toBe(2);
+    expect(skill.meta.version).toBe(3);
     expect(skill.body).toMatch(/Interaction model/i);
     expect(skill.body).toMatch(/Stale-ref recovery/i);
   });

@@ -10,7 +10,7 @@ description: >
 applies_to: [apply]
 capabilities: [snapshot, inspectFields, fillField, act, uploadCv, uploadCoverLetter, submit, takeScreenshot, createAlert]
 editable_by_user: false
-version: 2
+version: 3
 ---
 
 ## Purpose
@@ -43,11 +43,22 @@ Do not attempt to alter fingerprinting from here.
    - the source CV text — only when unambiguous.
    A field you cannot resolve confidently is `unknown`. Do **not** guess.
 
-3. **LLM fallback only for the unresolved.** For `unknown` fields or an
-   unexpected UI state, take a fresh `snapshot(session)` plus a
-   `takeScreenshot(session)` and decide a single value or single next action.
-   One decision per call — the page may change after one action. Stay within the
-   apply token budget.
+3. **LLM fallback only for the unresolved, and only with literal evidence.**
+   For `unknown` fields, decide one of:
+   - `fill` — only when the user's profile, saved answers, or CV text contains
+     a literal match for the question (e.g. the question asks "Years of
+     experience with TypeScript?" and the CV plainly states "TypeScript: 5
+     years"). Quote-or-skip: if you cannot point to the exact source phrase,
+     this is **not** a literal match.
+   - `skip` — for every other case, including questions you can "reasonably
+     infer" or "guess" from general knowledge. Skipping is the safe default.
+   Never invent a value to keep the form moving. The caller will pause the
+   application and ask the user — that is the correct outcome.
+
+   When deciding `fill`, take a fresh `snapshot(session)` and
+   `takeScreenshot(session)` so your decision reflects current UI. One decision
+   per call — the page may change after one action. Stay within the apply
+   token budget.
 
 4. **Fill / act.** `fillField(session, key, value)` for resolved text-like
    fields; `act(session, ref, 'click'|'check'|'select', value?)` for buttons,
@@ -82,10 +93,28 @@ Stop the loop and `createAlert` with a screenshot when you detect:
 - **A required field you cannot resolve** — raise `missing_field` with the field
   label and a prompt; the answer is saved to `profile_answers` for next time.
 
+## EEO / demographic questions — always skip
+
+These questions are legally optional in many jurisdictions and the user must
+answer them themselves. Detect them by the field's label or options. **Always
+emit `skip`, never `fill`, regardless of what the profile contains.**
+
+Signals that mark a question as EEO / demographic:
+- Labels mentioning: race, ethnicity, gender, sex, sexual orientation,
+  disability status, veteran status, military service, pronouns, or
+  questions explicitly tagged as "EEO" / "voluntary self-identification".
+- Options that include "Prefer not to answer" alongside protected-class
+  values.
+
+Skip these even if the user previously answered one — saved answers may have
+been entered under duress or have changed. Pause and let the user re-confirm
+each time.
+
 ## Hard rules
 
-- Never fabricate employment, education, skills, authorisation, or salary. If a
-  field needs information you don't have, escalate.
+- Never fabricate. If a field needs information not literally present in the
+  user's data, `skip` and let the caller pause the application.
+- EEO / demographic questions always skip — see the dedicated section above.
 - Read attributes rather than clicking when you only need to inspect.
 - One action, then observe. Re-snapshot whenever the page may have changed.
 - Take a screenshot on every failure path before raising the alert.
