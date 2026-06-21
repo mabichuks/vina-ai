@@ -116,15 +116,6 @@ export function createAutoApplyToolKit(
       return lines.join('\n');
     },
 
-    async isApplicationApproved(applicationId: string): Promise<boolean> {
-      const app = findApplicationById(opts.db, applicationId);
-      if (!app) throw new NotFoundError(`Application ${applicationId} not found`);
-      // The review-first flow parks the application at `awaiting_approval`
-      // until the user clicks Approve, which moves it to `queued`. Treat any
-      // non-awaiting-approval status as approved.
-      return app.status !== 'awaiting_approval';
-    },
-
     async resolveField({
       field,
       applicationId,

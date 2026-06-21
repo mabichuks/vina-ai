@@ -35,7 +35,6 @@ const AUTO_JOB: JobSlice = {
 
 interface MockToolKitOptions {
   job?: JobSlice;
-  approved?: boolean;
   tailorThrows?: boolean;
   openThrows?: boolean;
   steps?: Array<{
@@ -77,9 +76,6 @@ function makeToolKit(opts: MockToolKitOptions = {}): MockToolKit {
     },
     async getProfileContext() {
       return 'Name: Ada Lovelace\nEmail: ada@example.com';
-    },
-    async isApplicationApproved() {
-      return opts.approved ?? false;
     },
     async resolveField({ field }) {
       if (opts.resolve) return opts.resolve(field);
@@ -210,7 +206,7 @@ describe('runApply — defensive checks', () => {
 describe('runApply — no review gate', () => {
   it('proceeds directly to submit without awaiting approval', async () => {
     // Previously this would have paused at review_gate; now it submits.
-    const toolKit = makeToolKit({ approved: false });
+    const toolKit = makeToolKit();
     const result = await runApply(APPLY_INPUT, NEVER_DECIDE, toolKit);
     expect(result.outcome).toBe('submitted');
     expect(toolKit.calls.submit).toBe(1);

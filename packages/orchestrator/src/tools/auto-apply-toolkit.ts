@@ -79,8 +79,6 @@ export interface AutoApplyToolKit {
   getJob(jobId: string): Promise<JobSlice>;
   /** Free-form context blob handed to the LLM fallback (profile + answers). */
   getProfileContext(): Promise<string>;
-  /** True when the user has explicitly approved this application's submission. */
-  isApplicationApproved(applicationId: string): Promise<boolean>;
 
   // -- Resolution --
   /**
