@@ -25,6 +25,12 @@ export interface GateInput {
   nowIso: string;
   /** YYYY-MM-DD in local time used for rate-limit bucketing. */
   today: string;
+  /**
+   * Application currently being processed — excluded from the idempotency
+   * scan so the gate doesn't block its own in-flight task. The duplicate
+   * case (a different application targeting the same job) still blocks.
+   */
+  excludeApplicationId?: string;
 }
 
 /**
@@ -78,16 +84,30 @@ export function checkEasyApplyGate(db: DatabaseType, input: GateInput): GateDeci
   // because the queue is small and bounded by the daily cap. If volume grows,
   // an index on applications.job_id would help.
   // Failed tasks may be retried via the alert-resolve flow; only `pending`/`running` block.
-  const inFlight = db
-    .prepare(`
-      SELECT t.id FROM task_queue t
-       JOIN applications a ON a.id = json_extract(t.payload, '$.application_id')
-       WHERE t.kind = 'apply'
-         AND t.status IN ('pending', 'running')
-         AND a.job_id = ?
-       LIMIT 1
-    `)
-    .get(input.jobId);
+  // `excludeApplicationId` keeps the current task out of the scan when the
+  // handler invokes the gate from inside its own claimed `running` task.
+  const inFlight = input.excludeApplicationId
+    ? db
+        .prepare(`
+          SELECT t.id FROM task_queue t
+           JOIN applications a ON a.id = json_extract(t.payload, '$.application_id')
+           WHERE t.kind = 'apply'
+             AND t.status IN ('pending', 'running')
+             AND a.job_id = ?
+             AND a.id != ?
+           LIMIT 1
+        `)
+        .get(input.jobId, input.excludeApplicationId)
+    : db
+        .prepare(`
+          SELECT t.id FROM task_queue t
+           JOIN applications a ON a.id = json_extract(t.payload, '$.application_id')
+           WHERE t.kind = 'apply'
+             AND t.status IN ('pending', 'running')
+             AND a.job_id = ?
+           LIMIT 1
+        `)
+        .get(input.jobId);
   if (inFlight) return { decision: 'block', reason: 'apply_task_in_flight' };
 
   const rl = getRateLimit(db);

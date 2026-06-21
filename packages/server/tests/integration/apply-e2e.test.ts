@@ -12,7 +12,8 @@ import {
   insertApplication,
   findApplicationById,
 } from '../../src/db/repositories/applications.js';
-import { insertJob } from '../../src/db/repositories/jobs.js';
+import { insertJob, updateJobScore } from '../../src/db/repositories/jobs.js';
+import { updateSettings } from '../../src/db/repositories/settings.js';
 import { insertCv } from '../../src/db/repositories/cvs.js';
 import { insertProfile } from '../../src/db/repositories/profile.js';
 import { listAlerts, resolveAlert, findAlertById } from '../../src/db/repositories/alerts.js';
@@ -156,6 +157,9 @@ describe('M15 — end-to-end apply against fixture (Done-when)', () => {
         company: 'Acme',
         description: 'Build Postgres-backed services.',
       });
+      // Easy-apply gate requires score >= threshold (default 70). The
+      // pipeline mechanics tested here are independent of scoring.
+      updateJobScore(db, job.id, 100, null);
       const app = insertApplication(db, {
         job_id: job.id,
         cv_id: cv.id,
@@ -208,6 +212,9 @@ describe('M15 — end-to-end apply against fixture (Done-when)', () => {
         company: 'Acme',
         description: 'Build things.',
       });
+      updateJobScore(db, job.id, 100, null);
+      // Pass 2 fires immediately after resolve, so disable velocity throttle.
+      updateSettings(db, { apply_min_interval_seconds: 0 });
       const app = insertApplication(db, {
         job_id: job.id,
         cv_id: cv.id,

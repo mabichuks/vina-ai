@@ -151,6 +151,70 @@ describe('checkEasyApplyGate', () => {
     expect(asBlock(r).reason).toBe('apply_task_in_flight');
   });
 
+  it('excludes the current application from idempotency check (no self-block)', () => {
+    const job = makeJob(db);
+    const cv = insertCv(db, {
+      label: 'Default',
+      original_filename: 'cv.pdf',
+      mime_type: 'application/pdf',
+      file_path: '/tmp/cv.pdf',
+    });
+    const app = insertApplication(db, {
+      job_id: job.id,
+      cv_id: cv.id,
+      apply_method: 'auto',
+      status: 'queued',
+    });
+    // Simulate the worker's claim: the application's own task is `running`.
+    db.prepare(`
+      INSERT INTO task_queue (id, kind, payload, status, attempts, max_attempts, priority, next_attempt_at, created_at)
+      VALUES (?, 'apply', ?, 'running', 1, 3, 5, ?, ?)
+    `).run(newId(), JSON.stringify({ application_id: app.id }), NOW, NOW);
+    const r = checkEasyApplyGate(db, {
+      jobId: job.id,
+      nowIso: NOW,
+      today: TODAY,
+      excludeApplicationId: app.id,
+    });
+    expect(r.decision).toBe('allow');
+  });
+
+  it('still blocks when a different application has an active task for the same job', () => {
+    const job = makeJob(db);
+    const cv = insertCv(db, {
+      label: 'Default',
+      original_filename: 'cv.pdf',
+      mime_type: 'application/pdf',
+      file_path: '/tmp/cv.pdf',
+    });
+    const app = insertApplication(db, {
+      job_id: job.id,
+      cv_id: cv.id,
+      apply_method: 'auto',
+      status: 'queued',
+    });
+    // Simulate a duplicate: a second application targeting the same job
+    // already has a pending apply task. The gate must still block.
+    const otherApp = insertApplication(db, {
+      job_id: job.id,
+      cv_id: cv.id,
+      apply_method: 'auto',
+      status: 'queued',
+    });
+    db.prepare(`
+      INSERT INTO task_queue (id, kind, payload, status, attempts, max_attempts, priority, next_attempt_at, created_at)
+      VALUES (?, 'apply', ?, 'pending', 0, 3, 5, ?, ?)
+    `).run(newId(), JSON.stringify({ application_id: otherApp.id }), NOW, NOW);
+    const r = checkEasyApplyGate(db, {
+      jobId: job.id,
+      nowIso: NOW,
+      today: TODAY,
+      excludeApplicationId: app.id,
+    });
+    expect(r.decision).toBe('block');
+    expect(asBlock(r).reason).toBe('apply_task_in_flight');
+  });
+
   it('returns dry_run when autonomous_apply_dry_run is true', () => {
     updateSettings(db, { autonomous_apply_dry_run: true });
     const job = makeJob(db);

@@ -148,7 +148,12 @@ export function createApplyHandler(
     // -----------------------------------------------------------------------
     const nowIso = new Date().toISOString();
     const today = dayBucketFromIso(nowIso);
-    const gate = checkEasyApplyGate(deps.db, { jobId: job.id, nowIso, today });
+    const gate = checkEasyApplyGate(deps.db, {
+      jobId: job.id,
+      nowIso,
+      today,
+      excludeApplicationId: app.id,
+    });
 
     if (gate.decision === 'block') {
       updateApplicationStatus(deps.db, app.id, 'failed', {
