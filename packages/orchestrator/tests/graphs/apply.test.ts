@@ -35,7 +35,6 @@ const AUTO_JOB: JobSlice = {
 
 interface MockToolKitOptions {
   job?: JobSlice;
-  approvalSetting?: 'auto-apply' | 'review-first';
   approved?: boolean;
   tailorThrows?: boolean;
   openThrows?: boolean;
@@ -81,9 +80,6 @@ function makeToolKit(opts: MockToolKitOptions = {}): MockToolKit {
     },
     async isApplicationApproved() {
       return opts.approved ?? false;
-    },
-    async getApprovalSetting() {
-      return opts.approvalSetting ?? 'auto-apply';
     },
     async resolveField({ field }) {
       if (opts.resolve) return opts.resolve(field);
@@ -209,28 +205,15 @@ describe('runApply — defensive checks', () => {
   });
 });
 
-describe('runApply — review_gate', () => {
-  it('raises awaiting_approval and stops when review-first and not approved', async () => {
-    const toolKit = makeToolKit({
-      approvalSetting: 'review-first',
-      approved: false,
-    });
-    const result = await runApply(APPLY_INPUT, NEVER_DECIDE, toolKit);
-    expect(result.outcome).toBe('awaiting_approval');
-    expect(result.reason).toBe('review_required');
-    expect(toolKit.calls.alerts[0]?.kind).toBe('awaiting_approval');
-    // No browser methods called.
-    expect(toolKit.calls.submit).toBe(0);
-    expect(toolKit.calls.closeApplication).toBe(0);
-  });
-
-  it('proceeds when review-first and approved', async () => {
-    const toolKit = makeToolKit({
-      approvalSetting: 'review-first',
-      approved: true,
-    });
+// review_gate was removed in Task 1.3; easy_apply_mode replaces the legacy
+// approval-setting concept. The graph always proceeds to open_form now.
+describe('runApply — no review gate', () => {
+  it('proceeds directly to submit without awaiting approval', async () => {
+    // Previously this would have paused at review_gate; now it submits.
+    const toolKit = makeToolKit({ approved: false });
     const result = await runApply(APPLY_INPUT, NEVER_DECIDE, toolKit);
     expect(result.outcome).toBe('submitted');
+    expect(toolKit.calls.submit).toBe(1);
   });
 });
 

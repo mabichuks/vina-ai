@@ -29,13 +29,13 @@ describe('settings repository', () => {
   it('getOrInit creates defaults; partial update preserves untouched columns', () => {
     const db = freshTestDb();
     const seed = getOrInitSettings(db);
-    expect(seed.mode).toBe('supervised');
+    expect(seed.easy_apply_mode).toBe('manual');
     expect(seed.encrypted_serpapi_key).toBeNull();
 
     const updated = updateSettings(db, { paused: true });
     expect(updated.paused).toBe(true);
-    expect(updated.mode).toBe(seed.mode);
-    expect(updated.approval).toBe(seed.approval);
+    expect(updated.easy_apply_mode).toBe(seed.easy_apply_mode);
+    expect(updated.autonomous_apply_dry_run).toBe(seed.autonomous_apply_dry_run);
     db.close();
   });
 

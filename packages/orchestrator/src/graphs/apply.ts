@@ -127,35 +127,6 @@ export async function runApply(
     };
   }
 
-  // -- review_gate -----------------------------------------------------------
-  const approval = await toolKit.getApprovalSetting();
-  if (approval === 'review-first') {
-    const approved = await toolKit.isApplicationApproved(input.applicationId);
-    if (!approved) {
-      record('awaiting_approval');
-      const alertTitle = tailoredCvPath
-        ? `Tailored CV ready — approve to submit ${job.title} @ ${job.company}`
-        : `Approve to submit ${job.title} @ ${job.company}`;
-      const alertDescription = tailoredCvPath
-        ? 'Review the tailored CV; the application will submit once you approve.'
-        : 'This site uses your profile CV — the application will submit once you approve.';
-      await toolKit.createAlert({
-        kind: 'awaiting_approval',
-        severity: 'action_required',
-        title: alertTitle,
-        description: alertDescription,
-        applicationId: input.applicationId,
-        payload: tailoredCvPath ? { tailoredCvPath } : { usesProfileCv: true },
-      });
-      return {
-        outcome: 'awaiting_approval',
-        applicationId: input.applicationId,
-        reason: 'review_required',
-        events,
-      };
-    }
-  }
-
   // -- open_form -------------------------------------------------------------
   let formId: string;
   try {

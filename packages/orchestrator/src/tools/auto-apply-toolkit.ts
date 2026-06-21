@@ -81,8 +81,6 @@ export interface AutoApplyToolKit {
   getProfileContext(): Promise<string>;
   /** True when the user has explicitly approved this application's submission. */
   isApplicationApproved(applicationId: string): Promise<boolean>;
-  /** Current approval setting. */
-  getApprovalSetting(): Promise<'auto-apply' | 'review-first'>;
 
   // -- Resolution --
   /**

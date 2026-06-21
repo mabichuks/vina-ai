@@ -232,7 +232,7 @@ describe('score handler — autonomous-mode auto-enqueue', () => {
       is_default: true,
     });
     const { updateSettings } = await import('../../../src/db/repositories/settings.js');
-    updateSettings(db, { mode: 'autonomous' });
+    updateSettings(db, { easy_apply_mode: 'autonomous' });
     const { upsertSearchPreferences } = await import(
       '../../../src/db/repositories/search-preferences.js'
     );
@@ -246,7 +246,7 @@ describe('score handler — autonomous-mode auto-enqueue', () => {
     expect(pending.find((t) => t.kind === 'prepare_manual_apply')).toBeDefined();
   });
 
-  it('does NOT enqueue when mode=supervised', async () => {
+  it('does NOT enqueue when easy_apply_mode=manual', async () => {
     insertCv(db, {
       label: 'main',
       original_filename: 'cv.pdf',
@@ -256,7 +256,7 @@ describe('score handler — autonomous-mode auto-enqueue', () => {
       is_default: true,
     });
     const { updateSettings } = await import('../../../src/db/repositories/settings.js');
-    updateSettings(db, { mode: 'supervised' });
+    updateSettings(db, { easy_apply_mode: 'manual' });
     const job = seedManualJob('auto-2');
     await autonomousHandler(82)({ job_id: job.id });
     const { listPending } = await import('../../../src/db/repositories/task-queue.js');
@@ -273,7 +273,7 @@ describe('score handler — autonomous-mode auto-enqueue', () => {
       is_default: true,
     });
     const { updateSettings } = await import('../../../src/db/repositories/settings.js');
-    updateSettings(db, { mode: 'autonomous' });
+    updateSettings(db, { easy_apply_mode: 'autonomous' });
     const { upsertSearchPreferences } = await import(
       '../../../src/db/repositories/search-preferences.js'
     );
@@ -294,7 +294,7 @@ describe('score handler — autonomous-mode auto-enqueue', () => {
       is_default: true,
     });
     const { updateSettings } = await import('../../../src/db/repositories/settings.js');
-    updateSettings(db, { mode: 'autonomous' });
+    updateSettings(db, { easy_apply_mode: 'autonomous' });
     const job = seedManualJob('auto-4', 'auto');
     await autonomousHandler(82)({ job_id: job.id });
     const { listPending } = await import('../../../src/db/repositories/task-queue.js');

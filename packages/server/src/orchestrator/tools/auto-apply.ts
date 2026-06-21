@@ -33,7 +33,6 @@ import { findJobById } from '../../db/repositories/jobs.js';
 import { findCvById } from '../../db/repositories/cvs.js';
 import { findProfile } from '../../db/repositories/profile.js';
 import { listAnswers } from '../../db/repositories/profile-answers.js';
-import { getOrInitSettings } from '../../db/repositories/settings.js';
 import { insertAlert } from '../../db/repositories/alerts.js';
 import type { ManualApplyToolKit } from '@vina/orchestrator';
 
@@ -124,10 +123,6 @@ export function createAutoApplyToolKit(
       // until the user clicks Approve, which moves it to `queued`. Treat any
       // non-awaiting-approval status as approved.
       return app.status !== 'awaiting_approval';
-    },
-
-    async getApprovalSetting(): Promise<'auto-apply' | 'review-first'> {
-      return getOrInitSettings(opts.db).approval;
     },
 
     async resolveField({

@@ -27,12 +27,12 @@ describe('settings routes', () => {
     expect(body).not.toHaveProperty('encrypted_serpapi_key');
   });
 
-  it('PATCH unknown mode returns 400', async () => {
+  it('PATCH invalid easy_apply_mode value returns 400', async () => {
     const res = await h.app.inject({
       method: 'PATCH',
       url: '/api/settings',
       headers: auth(h.token),
-      payload: { mode: 'manual' },
+      payload: { easy_apply_mode: 'supervised' }, // 'supervised' is not a valid EasyApplyMode
     });
     expect(res.statusCode).toBe(400);
   });

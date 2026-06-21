@@ -107,7 +107,7 @@ export function createScoreHandler(
     // duplicate the application/task pair.
     const settings = getOrInitSettings(deps.db);
     if (
-      settings.mode === 'autonomous' &&
+      settings.easy_apply_mode === 'autonomous' &&
       result.score >= prefs.score_threshold &&
       job.apply_method === 'manual'
     ) {
