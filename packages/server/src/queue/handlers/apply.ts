@@ -240,7 +240,8 @@ export function createApplyHandler(
       });
       // Task 4.2 — successful submit resets consecutive failures + increments
       // daily count. Use a fresh ISO timestamp for accuracy.
-      recordSuccess(deps.db, new Date().toISOString(), today);
+      const completedAt = new Date().toISOString();
+      recordSuccess(deps.db, completedAt, dayBucketFromIso(completedAt));
       deps.bus.emit('application:updated', { id: app.id, status: 'submitted' });
     } else if (result.outcome === 'awaiting_user') {
       // missing_field / captcha / session_expired — these pause the application for the user.

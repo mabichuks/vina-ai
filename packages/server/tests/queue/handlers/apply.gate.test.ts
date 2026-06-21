@@ -5,7 +5,7 @@
  * This file tests unit-level behaviour of the handler without a real browser;
  * end-to-end browser tests live in tests/integration/apply-e2e.test.ts.
  */
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { Database as DatabaseType } from 'better-sqlite3';
 import type { BrowserManagerHandle } from '@vina/automation';
 import type { ApplyResult } from '@vina/orchestrator';
@@ -196,6 +196,18 @@ describe('apply handler — Task 4.1: gate enforcement', () => {
       expect(alert).toBeDefined();
       // The gate_reason surfaces in the description.
       expect(alert?.description).toMatch(/circuit_breaker/);
+    } finally {
+      fx.teardown();
+    }
+  });
+
+  it('block path does NOT stamp last_attempt_at (velocity slot not consumed)', async () => {
+    const fx = buildHandlerFixture({ strictBuildModel: true });
+    try {
+      fx.db.prepare(`UPDATE apply_rate_limit SET consecutive_failures = 99`).run();
+      await fx.handler({ application_id: fx.applicationId });
+      const rl = fx.db.prepare(`SELECT * FROM apply_rate_limit`).get() as { last_attempt_at: string | null };
+      expect(rl.last_attempt_at).toBeNull();
     } finally {
       fx.teardown();
     }
