@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { APPROVAL_SETTINGS, OPERATING_MODES } from '../enums.js';
+import { EASY_APPLY_MODES } from '../enums.js';
 
 const isoDate = z.iso.datetime();
 
@@ -9,8 +9,12 @@ const isoDate = z.iso.datetime();
  */
 export const SettingsSchema = z.object({
   id: z.literal('app'),
-  mode: z.enum(OPERATING_MODES),
-  approval: z.enum(APPROVAL_SETTINGS),
+  easy_apply_mode: z.enum(EASY_APPLY_MODES),
+  autonomous_apply_dry_run: z.boolean(),
+  apply_daily_cap: z.number().int().min(1).max(100),
+  apply_min_interval_seconds: z.number().int().min(0).max(3600),
+  apply_listing_max_age_days: z.number().int().min(1).max(365),
+  apply_consecutive_failure_limit: z.number().int().min(1).max(50),
   browser_headful: z.boolean(),
   browser_stealth: z.boolean(),
   paused: z.boolean(),
@@ -25,8 +29,12 @@ export type Settings = z.infer<typeof SettingsSchema>;
  * crosses the boundary — sent in, never returned.
  */
 export const SettingsUpdateSchema = z.object({
-  mode: z.enum(OPERATING_MODES).optional(),
-  approval: z.enum(APPROVAL_SETTINGS).optional(),
+  easy_apply_mode: z.enum(EASY_APPLY_MODES).optional(),
+  autonomous_apply_dry_run: z.boolean().optional(),
+  apply_daily_cap: z.number().int().min(1).max(100).optional(),
+  apply_min_interval_seconds: z.number().int().min(0).max(3600).optional(),
+  apply_listing_max_age_days: z.number().int().min(1).max(365).optional(),
+  apply_consecutive_failure_limit: z.number().int().min(1).max(50).optional(),
   browser_headful: z.boolean().optional(),
   browser_stealth: z.boolean().optional(),
   paused: z.boolean().optional(),

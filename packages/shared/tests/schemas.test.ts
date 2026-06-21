@@ -87,8 +87,12 @@ describe('preferences / settings schemas', () => {
   it('settings response never carries serpapi_key; update accepts plaintext or null', () => {
     const settings = {
       id: 'app' as const,
-      mode: 'autonomous' as const,
-      approval: 'review-first' as const,
+      easy_apply_mode: 'autonomous' as const,
+      autonomous_apply_dry_run: false,
+      apply_daily_cap: 10,
+      apply_min_interval_seconds: 300,
+      apply_listing_max_age_days: 14,
+      apply_consecutive_failure_limit: 5,
       browser_headful: false,
       browser_stealth: false,
       paused: false,
@@ -100,14 +104,18 @@ describe('preferences / settings schemas', () => {
     expect(parsed).not.toHaveProperty('serpapi_key');
     expect(SettingsUpdateSchema.parse({ serpapi_key: 'sk_x' })).toEqual({ serpapi_key: 'sk_x' });
     expect(SettingsUpdateSchema.parse({ serpapi_key: null })).toEqual({ serpapi_key: null });
-    expect(() => SettingsUpdateSchema.parse({ approval: 'maybe' })).toThrow();
+    expect(() => SettingsUpdateSchema.parse({ easy_apply_mode: 'maybe' })).toThrow();
   });
 
   it('settings carry browser_stealth (opt-in anti-detection, ADR-021); update accepts it optionally', () => {
     const settings = {
       id: 'app' as const,
-      mode: 'autonomous' as const,
-      approval: 'review-first' as const,
+      easy_apply_mode: 'autonomous' as const,
+      autonomous_apply_dry_run: false,
+      apply_daily_cap: 10,
+      apply_min_interval_seconds: 300,
+      apply_listing_max_age_days: 14,
+      apply_consecutive_failure_limit: 5,
       browser_headful: false,
       browser_stealth: false,
       paused: false,
@@ -330,5 +338,46 @@ describe('site / llm-provider schemas', () => {
         model: 'llama3.1:70b',
       }),
     ).toBeTruthy();
+  });
+});
+
+describe('SettingsSchema (autonomous easy apply)', () => {
+  it('accepts easy_apply_mode and limit fields', () => {
+    const result = SettingsSchema.parse({
+      id: 'app',
+      easy_apply_mode: 'manual',
+      autonomous_apply_dry_run: false,
+      apply_daily_cap: 10,
+      apply_min_interval_seconds: 300,
+      apply_listing_max_age_days: 14,
+      apply_consecutive_failure_limit: 5,
+      browser_headful: false,
+      browser_stealth: false,
+      paused: false,
+      active_llm_provider_id: null,
+      has_serpapi_key: false,
+      updated_at: '2026-06-21T00:00:00.000Z',
+    });
+    expect(result.easy_apply_mode).toBe('manual');
+  });
+
+  it('rejects easy_apply_mode outside enum', () => {
+    expect(() =>
+      SettingsSchema.parse({
+        id: 'app',
+        easy_apply_mode: 'autopilot',
+        autonomous_apply_dry_run: false,
+        apply_daily_cap: 10,
+        apply_min_interval_seconds: 300,
+        apply_listing_max_age_days: 14,
+        apply_consecutive_failure_limit: 5,
+        browser_headful: false,
+        browser_stealth: false,
+        paused: false,
+        active_llm_provider_id: null,
+        has_serpapi_key: false,
+        updated_at: '2026-06-21T00:00:00.000Z',
+      }),
+    ).toThrow();
   });
 });

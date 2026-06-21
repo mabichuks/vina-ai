@@ -33,11 +33,8 @@ export type ApplyMethod = (typeof APPLY_METHODS)[number];
 export const SITE_KINDS = ['browser', 'api'] as const;
 export type SiteKind = (typeof SITE_KINDS)[number];
 
-export const OPERATING_MODES = ['autonomous', 'supervised'] as const;
-export type OperatingMode = (typeof OPERATING_MODES)[number];
-
-export const APPROVAL_SETTINGS = ['auto-apply', 'review-first'] as const;
-export type ApprovalSetting = (typeof APPROVAL_SETTINGS)[number];
+export const EASY_APPLY_MODES = ['autonomous', 'manual'] as const;
+export type EasyApplyMode = (typeof EASY_APPLY_MODES)[number];
 
 export const ALERT_KINDS = [
   'missing_field',

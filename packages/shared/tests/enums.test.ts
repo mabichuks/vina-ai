@@ -6,11 +6,10 @@ import {
   APPLICATION_EVENT_KINDS,
   APPLICATION_STATUSES,
   APPLY_METHODS,
-  APPROVAL_SETTINGS,
   CHAT_ROLES,
+  EASY_APPLY_MODES,
   JOB_STATUSES,
   LLM_PROVIDER_KINDS,
-  OPERATING_MODES,
   SITE_KINDS,
   TASK_KINDS,
   TASK_STATUSES,
@@ -45,8 +44,7 @@ describe('enum constants', () => {
       APPLICATION_STATUSES,
       APPLY_METHODS,
       SITE_KINDS,
-      OPERATING_MODES,
-      APPROVAL_SETTINGS,
+      EASY_APPLY_MODES,
       ALERT_KINDS,
       ALERT_SEVERITIES,
       ALERT_STATUSES,
@@ -115,15 +113,15 @@ describe('enum constants', () => {
           "auto",
           "manual",
         ],
-        "APPROVAL_SETTINGS": [
-          "auto-apply",
-          "review-first",
-        ],
         "CHAT_ROLES": [
           "user",
           "assistant",
           "tool",
           "system",
+        ],
+        "EASY_APPLY_MODES": [
+          "autonomous",
+          "manual",
         ],
         "JOB_STATUSES": [
           "new",
@@ -143,10 +141,6 @@ describe('enum constants', () => {
           "anthropic",
           "openai",
           "ollama",
-        ],
-        "OPERATING_MODES": [
-          "autonomous",
-          "supervised",
         ],
         "SITE_KINDS": [
           "browser",
