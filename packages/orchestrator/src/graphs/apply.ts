@@ -28,7 +28,6 @@ export interface ApplyInput {
 export type ApplyOutcome =
   | 'submitted'
   | 'awaiting_user'
-  | 'awaiting_approval'
   | 'failed';
 
 /** Lightweight event stream the server's `apply` task handler persists. */
@@ -45,7 +44,6 @@ export interface ApplyResult {
     | 'captcha'
     | 'session_expired'
     | 'apply_method_mismatch'
-    | 'review_required'
     | 'form_too_long'
     | 'other';
   failureDetail?: string;
@@ -67,7 +65,7 @@ export interface RunApplyOptions {
  *
  * State transitions roughly mirror `docs/langgraph-orchestrator.md` §5.4:
  *
- *   load_inputs → ensure_tailored → review_gate → open_form →
+ *   load_inputs → ensure_tailored → open_form →
  *   for each step (≤ maxSteps):
  *     inspect_fields → fill_loop → submit-or-advance
  */
