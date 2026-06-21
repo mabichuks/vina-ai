@@ -227,3 +227,68 @@ describe('resolveFieldValue — unknown', () => {
     expect(result.kind).toBe('unknown');
   });
 });
+
+describe('resolveFieldValue — EEO short-circuit', () => {
+  it('marks gender questions as unknown even with a saved answer', () => {
+    const answers: AnswerEntry[] = [
+      { key: 'gender', label: 'Gender', value: 'Female' },
+    ];
+    const result = resolveFieldValue(
+      field({
+        label: 'Gender',
+        kind: 'select',
+        options: ['Male', 'Female', 'Prefer not to answer'],
+      }),
+      ctx({ answers }),
+    );
+    expect(result.kind).toBe('unknown');
+  });
+
+  it('marks veteran-status questions as unknown', () => {
+    const result = resolveFieldValue(
+      field({
+        label: 'Veteran status',
+        kind: 'select',
+        options: ['Yes', 'No', 'Prefer not to answer'],
+      }),
+      ctx(),
+    );
+    expect(result.kind).toBe('unknown');
+  });
+
+  it('marks race/ethnicity questions as unknown', () => {
+    const result = resolveFieldValue(
+      field({
+        label: 'Race / Ethnicity',
+        kind: 'select',
+        options: ['White', 'Asian', 'Prefer not to say'],
+      }),
+      ctx(),
+    );
+    expect(result.kind).toBe('unknown');
+  });
+
+  it('marks disability questions as unknown', () => {
+    const result = resolveFieldValue(
+      field({
+        label: 'Do you have a disability?',
+        kind: 'select',
+        options: ['Yes', 'No', 'Prefer not to disclose'],
+      }),
+      ctx(),
+    );
+    expect(result.kind).toBe('unknown');
+  });
+
+  it('still resolves normal questions from profile', () => {
+    const result = resolveFieldValue(
+      field({ label: 'Email address', canonicalKey: 'email' }),
+      ctx(),
+    );
+    expect(result).toEqual({
+      kind: 'resolved',
+      value: 'ada@example.com',
+      source: 'profile',
+    });
+  });
+});

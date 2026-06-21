@@ -1,5 +1,20 @@
 import type { FormField } from './types.js';
 
+// Protected-class / demographic question labels. Browser-apply skill rule:
+// never answer these — leave for the human. See ADR (autonomous easy-apply).
+const EEO_LABEL_PATTERNS: ReadonlyArray<RegExp> = [
+  /\b(race|ethnicit)/i,
+  /\b(gender|sex|sexual orientation|pronouns?)\b/i,
+  /\b(disability|disabled)\b/i,
+  /\b(veteran|military service)\b/i,
+  /\beeo\b/i,
+  /voluntary self.identif/i,
+];
+
+function isEeoQuestion(label: string): boolean {
+  return EEO_LABEL_PATTERNS.some((re) => re.test(label));
+}
+
 /**
  * Shape the resolver reads from a profile. `@vina/shared`'s `Profile` is
  * structurally assignable to this — the resolver intentionally narrows so
@@ -123,6 +138,10 @@ export function resolveFieldValue(
   field: FormField,
   ctx: ResolveContext,
 ): ResolveResult {
+  // EEO / demographic questions are never auto-filled, even if a saved
+  // answer or canonical key would otherwise match — surfaces to the LLM
+  // fallback, which the browser-apply skill instructs to skip and continue.
+  if (isEeoQuestion(field.label)) return { kind: 'unknown' };
   if (field.canonicalKey) {
     const fromProf = fromProfile(field.canonicalKey, ctx.profile);
     if (fromProf) return { kind: 'resolved', value: fromProf, source: 'profile' };
