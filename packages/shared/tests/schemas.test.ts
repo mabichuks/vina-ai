@@ -380,4 +380,73 @@ describe('SettingsSchema (autonomous easy apply)', () => {
       }),
     ).toThrow();
   });
+
+  it('rejects apply_daily_cap below 1', () => {
+    const base = {
+      id: 'app' as const,
+      easy_apply_mode: 'manual' as const,
+      autonomous_apply_dry_run: false,
+      apply_daily_cap: 0,
+      apply_min_interval_seconds: 300,
+      apply_listing_max_age_days: 14,
+      apply_consecutive_failure_limit: 5,
+      browser_headful: false,
+      browser_stealth: false,
+      paused: false,
+      active_llm_provider_id: null,
+      has_serpapi_key: false,
+      updated_at: '2026-06-21T00:00:00.000Z',
+    };
+    expect(() => SettingsSchema.parse(base)).toThrow();
+  });
+
+  it('rejects apply_daily_cap above 100', () => {
+    expect(() => SettingsSchema.parse({
+      id: 'app', easy_apply_mode: 'manual', autonomous_apply_dry_run: false,
+      apply_daily_cap: 101, apply_min_interval_seconds: 300, apply_listing_max_age_days: 14,
+      apply_consecutive_failure_limit: 5, browser_headful: false, browser_stealth: false,
+      paused: false, active_llm_provider_id: null, has_serpapi_key: false,
+      updated_at: '2026-06-21T00:00:00.000Z',
+    })).toThrow();
+  });
+
+  it('rejects apply_min_interval_seconds below 0', () => {
+    expect(() => SettingsSchema.parse({
+      id: 'app', easy_apply_mode: 'manual', autonomous_apply_dry_run: false,
+      apply_daily_cap: 10, apply_min_interval_seconds: -1, apply_listing_max_age_days: 14,
+      apply_consecutive_failure_limit: 5, browser_headful: false, browser_stealth: false,
+      paused: false, active_llm_provider_id: null, has_serpapi_key: false,
+      updated_at: '2026-06-21T00:00:00.000Z',
+    })).toThrow();
+  });
+
+  it('rejects apply_listing_max_age_days at 0', () => {
+    expect(() => SettingsSchema.parse({
+      id: 'app', easy_apply_mode: 'manual', autonomous_apply_dry_run: false,
+      apply_daily_cap: 10, apply_min_interval_seconds: 300, apply_listing_max_age_days: 0,
+      apply_consecutive_failure_limit: 5, browser_headful: false, browser_stealth: false,
+      paused: false, active_llm_provider_id: null, has_serpapi_key: false,
+      updated_at: '2026-06-21T00:00:00.000Z',
+    })).toThrow();
+  });
+
+  it('rejects apply_consecutive_failure_limit above 50', () => {
+    expect(() => SettingsSchema.parse({
+      id: 'app', easy_apply_mode: 'manual', autonomous_apply_dry_run: false,
+      apply_daily_cap: 10, apply_min_interval_seconds: 300, apply_listing_max_age_days: 14,
+      apply_consecutive_failure_limit: 51, browser_headful: false, browser_stealth: false,
+      paused: false, active_llm_provider_id: null, has_serpapi_key: false,
+      updated_at: '2026-06-21T00:00:00.000Z',
+    })).toThrow();
+  });
+
+  it('rejects autonomous_apply_dry_run as a non-boolean', () => {
+    expect(() => SettingsSchema.parse({
+      id: 'app', easy_apply_mode: 'manual', autonomous_apply_dry_run: 'yes',
+      apply_daily_cap: 10, apply_min_interval_seconds: 300, apply_listing_max_age_days: 14,
+      apply_consecutive_failure_limit: 5, browser_headful: false, browser_stealth: false,
+      paused: false, active_llm_provider_id: null, has_serpapi_key: false,
+      updated_at: '2026-06-21T00:00:00.000Z',
+    })).toThrow();
+  });
 });
