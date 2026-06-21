@@ -13,6 +13,7 @@ import { applicationRoutes } from './http/routes/applications.js';
 import { jobRoutes } from './http/routes/jobs.js';
 import { llmProviderRoutes } from './http/routes/llm-providers.js';
 import { profileRoutes } from './http/routes/profile.js';
+import { profileAnswersRoutes } from './http/routes/profile-answers.js';
 import { promptRoutes } from './http/routes/prompts.js';
 import { scheduleRoutes } from './http/routes/schedules.js';
 import { skillRoutes } from './http/routes/skills.js';
@@ -56,6 +57,7 @@ export async function buildApp(deps: BuildAppDeps): Promise<FastifyInstance> {
   await app.register(async (api) => {
     await systemRoutes(api, deps);
     await profileRoutes(api, { db: deps.db });
+    await profileAnswersRoutes(api, { db: deps.db });
     await cvRoutes(api, { db: deps.db, config: deps.config });
     await coverLetterRoutes(api, { db: deps.db, config: deps.config });
     await searchPreferencesRoutes(api, { db: deps.db });
