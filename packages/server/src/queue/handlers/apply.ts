@@ -22,6 +22,14 @@ import {
 import { appendEvent } from '../../db/repositories/application-events.js';
 import { findJobById } from '../../db/repositories/jobs.js';
 import { insertAlert } from '../../db/repositories/alerts.js';
+import {
+  recordAttempt,
+  recordSuccess,
+  recordFailure,
+  getRateLimit,
+} from '../../db/repositories/apply-rate-limit.js';
+import { getOrInitSettings, updateSettings } from '../../db/repositories/settings.js';
+import { checkEasyApplyGate, dayBucketFromIso } from '../../services/easy-apply-gate.js';
 import { createAutoApplyToolKit } from '../../orchestrator/tools/auto-apply.js';
 import type { EventBus } from '../../events/bus.js';
 
@@ -73,6 +81,31 @@ function recordApplyEvents(
 }
 
 /**
+ * Checks whether consecutive failures have hit the limit and, if so, flips
+ * `easy_apply_mode` to `'manual'` and raises a system-level alert. Extracted
+ * so both the normal failure branch and the unexpected-throw catch branch can
+ * call it without duplication.
+ */
+function maybeFlipBreaker(deps: ApplyHandlerDeps, applicationId: string | null): void {
+  const rl = getRateLimit(deps.db);
+  const s = getOrInitSettings(deps.db);
+  if (
+    s.easy_apply_mode === 'autonomous' &&
+    rl.consecutive_failures >= s.apply_consecutive_failure_limit
+  ) {
+    updateSettings(deps.db, { easy_apply_mode: 'manual' });
+    insertAlert(deps.db, {
+      kind: 'apply_failed',
+      severity: 'error',
+      title: 'Autonomous Easy Apply paused after consecutive failures',
+      description: `${rl.consecutive_failures} apply attempts failed in a row. Mode was flipped to manual. Investigate before re-enabling.`,
+      application_id: applicationId,
+      payload: { consecutive_failures: rl.consecutive_failures },
+    });
+  }
+}
+
+/**
  * `apply` task handler. Defends against the manual-apply pipeline route
  * (per `docs/langgraph-orchestrator.md` §5.4) and translates the graph
  * result into application status + alert state.
@@ -106,6 +139,48 @@ export function createApplyHandler(
         payload: { apply_method: job.apply_method },
       });
       throw new ConflictError(`Job ${job.id} is apply_method=manual — routing bug`);
+    }
+
+    // -----------------------------------------------------------------------
+    // Task 4.1 — Gate check: consult the rate-limit / circuit-breaker gate
+    // before spending any browser or model resources. Pure check — never
+    // mutates state. recordAttempt() below is the one write.
+    // -----------------------------------------------------------------------
+    const nowIso = new Date().toISOString();
+    const today = dayBucketFromIso(nowIso);
+    const gate = checkEasyApplyGate(deps.db, { jobId: job.id, nowIso, today });
+
+    if (gate.decision === 'block') {
+      updateApplicationStatus(deps.db, app.id, 'failed', {
+        failure_reason: `gate_blocked: ${gate.reason}`,
+      });
+      insertAlert(deps.db, {
+        kind: 'apply_failed',
+        severity: 'action_required',
+        title: `Apply skipped: ${job.title} @ ${job.company}`,
+        description: `Gate blocked this apply (${gate.reason}).`,
+        application_id: app.id,
+        payload: { gate_reason: gate.reason },
+      });
+      deps.bus.emit('jobs:updated', { ids: [app.job_id] });
+      log.info({ application_id: app.id, gate_reason: gate.reason }, 'apply skipped by gate');
+      return;
+    }
+
+    // Record the attempt regardless of dry_run vs allow. Dry-run still
+    // consumes a velocity slot so the user can see the throttle in action.
+    recordAttempt(deps.db, nowIso, today);
+
+    if (gate.decision === 'dry_run') {
+      log.info(
+        { application_id: app.id, job_id: job.id },
+        'apply dry-run: would have invoked runApply',
+      );
+      updateApplicationStatus(deps.db, app.id, 'awaiting_user', {
+        failure_reason: 'dry_run',
+      });
+      deps.bus.emit('jobs:updated', { ids: [app.job_id] });
+      return;
     }
 
     const model = await deps.buildModel();
@@ -149,6 +224,10 @@ export function createApplyHandler(
         application_id: app.id,
         payload: { error: detail.slice(0, 2000) },
       });
+      // Task 4.2 — count the unexpected throw as a failure; the consecutive
+      // failure counter may trip the circuit breaker.
+      recordFailure(deps.db);
+      maybeFlipBreaker(deps, app.id);
       deps.bus.emit('jobs:updated', { ids: [app.job_id] });
       throw err;
     }
@@ -159,9 +238,14 @@ export function createApplyHandler(
       updateApplicationStatus(deps.db, app.id, 'submitted', {
         submitted_at: new Date().toISOString(),
       });
+      // Task 4.2 — successful submit resets consecutive failures + increments
+      // daily count. Use a fresh ISO timestamp for accuracy.
+      recordSuccess(deps.db, new Date().toISOString(), today);
       deps.bus.emit('application:updated', { id: app.id, status: 'submitted' });
     } else if (result.outcome === 'awaiting_user') {
       // missing_field / captcha / session_expired — these pause the application for the user.
+      // Task 4.2 — awaiting_user does NOT count as success or failure; the
+      // attempt timestamp was already stamped by recordAttempt() above.
       updateApplicationStatus(deps.db, app.id, 'awaiting_user', {
         failure_reason: result.reason ?? null,
       });
@@ -185,6 +269,10 @@ export function createApplyHandler(
         application_id: app.id,
         payload: { reason: result.reason ?? 'other' },
       });
+      // Task 4.2 — increment consecutive failures; check whether the
+      // circuit breaker threshold has been reached.
+      recordFailure(deps.db);
+      maybeFlipBreaker(deps, app.id);
     }
     deps.bus.emit('jobs:updated', { ids: [app.job_id] });
     log.info(
