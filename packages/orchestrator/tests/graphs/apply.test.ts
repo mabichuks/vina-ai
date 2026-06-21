@@ -301,6 +301,49 @@ describe('runApply — submit outcomes', () => {
   });
 });
 
+describe('runApply — per-field source audit', () => {
+  it('records source on each field_filled event from resolver and LLM fallback', async () => {
+    const fields: FormField[] = [
+      {
+        ref: 'r1',
+        label: 'First name',
+        kind: 'text',
+        required: true,
+        canonicalKey: 'first_name',
+      },
+      { ref: 'r2', label: 'Years of Rust experience', kind: 'number', required: true },
+    ];
+    const toolKit = makeToolKit({
+      steps: [{ fields }],
+      resolve: (f) =>
+        f.canonicalKey === 'first_name'
+          ? { kind: 'resolved', value: 'Ada', source: 'profile' }
+          : { kind: 'unknown' },
+    });
+    const decider = new FakeDecider({
+      action: 'fill',
+      value: '0',
+      reason: 'profile mentions no Rust',
+    });
+    const result = await runApply(APPLY_INPUT, decider, toolKit);
+    expect(result.outcome).toBe('submitted');
+    const fieldFilled = result.events.filter((e) => e.step === 'field_filled');
+    expect(fieldFilled).toHaveLength(2);
+    for (const ev of fieldFilled) {
+      const source = (ev.detail as { source?: string } | undefined)?.source;
+      expect(['profile', 'answers', 'cv', 'fallback']).toContain(source);
+    }
+    const profileSource = fieldFilled.find(
+      (e) => (e.detail as { ref?: string } | undefined)?.ref === 'r1',
+    );
+    const fallbackSource = fieldFilled.find(
+      (e) => (e.detail as { ref?: string } | undefined)?.ref === 'r2',
+    );
+    expect((profileSource?.detail as { source?: string }).source).toBe('profile');
+    expect((fallbackSource?.detail as { source?: string }).source).toBe('fallback');
+  });
+});
+
 describe('runApply — multi-step + step cap', () => {
   it('walks multi-step forms via advanceStep', async () => {
     const step1: FormField[] = [

@@ -301,7 +301,7 @@ async function fillStep(input: FillStepInput): Promise<FillStepOutcome> {
       record('field_filled', {
         ref: field.ref,
         label: field.label,
-        source: 'llm',
+        source: 'fallback',
         reason: decision.reason,
       });
       continue;
