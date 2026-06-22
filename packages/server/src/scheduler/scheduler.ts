@@ -8,10 +8,17 @@ import {
 } from '../db/repositories/schedules.js';
 import { listSites } from '../db/repositories/sites.js';
 import { enqueue } from '../db/repositories/task-queue.js';
+import { pruneTaskQueue } from '../queue/maintenance.js';
 import type { EventBus } from '../events/bus.js';
 import { nextRunAt } from './cron.js';
 
 const log = createLogger('scheduler');
+
+/** task_queue retention for terminal (completed/failed/cancelled) rows. */
+const TASK_QUEUE_PRUNE_DAYS = 30;
+/** Off-the-hour minute keeps prune from clustering with search cron entries. */
+const MAINTENANCE_CRON = '17 * * * *';
+const MAINTENANCE_KEY = '__maintenance__';
 
 /*
  * M10 deferral: schedule changes via POST/PATCH/DELETE only take effect on
@@ -90,6 +97,17 @@ export function createScheduler(options: SchedulerOptions): SchedulerHandle {
         jobs.set(schedule.id, task);
         log.info({ scheduleId: schedule.id, expr: schedule.cron_expression }, 'registered cron');
       }
+
+      // Hourly housekeeping: prune terminal task_queue rows past retention.
+      // Shares the scheduler lifecycle so it stops cleanly on daemon shutdown.
+      const maintenance = cron.schedule(MAINTENANCE_CRON, () => {
+        try {
+          pruneTaskQueue(options.db, TASK_QUEUE_PRUNE_DAYS);
+        } catch (err) {
+          log.warn({ err }, 'task_queue prune failed');
+        }
+      });
+      jobs.set(MAINTENANCE_KEY, maintenance);
     },
     stop(): void {
       // node-cron@4 types `task.stop()` as `void | Promise<void>` — sync in
@@ -108,7 +126,8 @@ export function createScheduler(options: SchedulerOptions): SchedulerHandle {
       fire(scheduleId);
     },
     activeJobCount(): number {
-      return jobs.size;
+      // Internal maintenance task is not a user-visible schedule.
+      return jobs.has(MAINTENANCE_KEY) ? jobs.size - 1 : jobs.size;
     },
   };
 }
