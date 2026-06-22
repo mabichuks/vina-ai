@@ -3,6 +3,7 @@ import type { Database as DatabaseType } from 'better-sqlite3';
 import { z } from 'zod';
 import { JOB_STATUSES, NotFoundError, type JobStatus } from '@vina/shared';
 import { findJobById, listJobs, updateJobStatus } from '../../db/repositories/jobs.js';
+import { enqueueEasyApplyForJob } from '../../queue/easy-apply-enqueuer.js';
 import { enqueueManualApplyForJob } from '../../queue/manual-apply-enqueuer.js';
 import type { EventBus } from '../../events/bus.js';
 import { parse } from '../parse.js';
@@ -86,6 +87,17 @@ export async function jobRoutes(
     const { id } = parse(IdParamsSchema, req.params, 'route params');
     if (!findJobById(db, id)) throw new NotFoundError(`Job ${id} not found`);
     const result = enqueueManualApplyForJob(db, bus, id);
+    return reply.status(202).send({
+      application_id: result.application_id,
+      status: result.status,
+      deduped: result.deduped,
+    });
+  });
+
+  app.post('/api/jobs/:id/apply', async (req, reply) => {
+    const { id } = parse(IdParamsSchema, req.params, 'route params');
+    if (!findJobById(db, id)) throw new NotFoundError(`Job ${id} not found`);
+    const result = enqueueEasyApplyForJob(db, bus, id);
     return reply.status(202).send({
       application_id: result.application_id,
       status: result.status,

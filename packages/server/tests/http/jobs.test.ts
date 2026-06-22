@@ -6,6 +6,7 @@ import {
   updateJobScore,
   updateJobStatus,
 } from '../../src/db/repositories/jobs.js';
+import { insertCv } from '../../src/db/repositories/cvs.js';
 import { auth, buildTestApp, type TestAppHandle } from './helpers.js';
 
 let h: TestAppHandle;
@@ -118,6 +119,63 @@ describe('job status flips', () => {
     const res = await h.app.inject({
       method: 'POST',
       url: '/api/jobs/missing/applied',
+      headers: auth(h.token),
+    });
+    expect(res.statusCode).toBe(404);
+  });
+});
+
+describe('POST /api/jobs/:id/apply', () => {
+  function seedDefaultCv(): void {
+    insertCv(h.db, {
+      label: 'Default',
+      original_filename: 'cv.pdf',
+      mime_type: 'application/pdf',
+      file_path: '/tmp/cv.pdf',
+      is_default: true,
+    });
+  }
+
+  it('enqueues an apply task for an auto-apply job', async () => {
+    seedDefaultCv();
+    const job = seedJob({ score: 90, status: 'scored' });
+    const res = await h.app.inject({
+      method: 'POST',
+      url: `/api/jobs/${job.id}/apply`,
+      headers: auth(h.token),
+    });
+    expect(res.statusCode).toBe(202);
+    const body = res.json() as { application_id: string; deduped: boolean };
+    expect(body.deduped).toBe(false);
+    const tasks = h.db
+      .prepare(`SELECT * FROM task_queue WHERE kind = 'apply'`)
+      .all();
+    expect(tasks).toHaveLength(1);
+  });
+
+  it('returns 409 when the job is manual-apply', async () => {
+    seedDefaultCv();
+    const job = insertJob(h.db, {
+      site_id: 'linkedin',
+      external_id: 'man-x',
+      url: 'https://linkedin.com/man-x',
+      apply_method: 'manual',
+      title: 'Manual',
+      company: 'Acme',
+      description: 'External ATS',
+    });
+    const res = await h.app.inject({
+      method: 'POST',
+      url: `/api/jobs/${job.id}/apply`,
+      headers: auth(h.token),
+    });
+    expect(res.statusCode).toBe(409);
+  });
+
+  it('returns 404 when the job does not exist', async () => {
+    const res = await h.app.inject({
+      method: 'POST',
+      url: '/api/jobs/no-such-id/apply',
       headers: auth(h.token),
     });
     expect(res.statusCode).toBe(404);
