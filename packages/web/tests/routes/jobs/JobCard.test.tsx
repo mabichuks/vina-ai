@@ -1,5 +1,5 @@
-import { afterEach, describe, it, expect } from 'vitest';
-import { render, screen, cleanup } from '@testing-library/react';
+import { afterEach, describe, it, expect, vi } from 'vitest';
+import { render, screen, cleanup, fireEvent } from '@testing-library/react';
 import { JobCard } from '../../../src/routes/jobs/JobCard.js';
 import type { Job } from '@vina/shared';
 
@@ -60,5 +60,61 @@ describe('JobCard original_source', () => {
       />,
     );
     expect(screen.getByRole('button', { name: 'Apply on LinkedIn' })).toBeInTheDocument();
+  });
+});
+
+describe('JobCard auto-apply button', () => {
+  const autoJob: Job = {
+    ...baseManual,
+    apply_method: 'auto',
+    site_id: 'linkedin',
+    original_source: null,
+  };
+
+  it('renders Auto-apply when onAutoApply is provided on a new auto-apply job', () => {
+    const onAutoApply = vi.fn();
+    render(
+      <JobCard
+        job={autoJob}
+        variant="new"
+        onApply={noop}
+        onMarkApplied={noop}
+        onSkip={noop}
+        onReopen={noop}
+        onAutoApply={onAutoApply}
+      />,
+    );
+    const btn = screen.getByRole('button', { name: /auto-apply/i });
+    fireEvent.click(btn);
+    expect(onAutoApply).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not render Auto-apply for manual-apply jobs', () => {
+    render(
+      <JobCard
+        job={baseManual}
+        variant="new"
+        onApply={noop}
+        onMarkApplied={noop}
+        onSkip={noop}
+        onReopen={noop}
+        onAutoApply={vi.fn()}
+      />,
+    );
+    expect(screen.queryByRole('button', { name: /auto-apply/i })).not.toBeInTheDocument();
+  });
+
+  it('does not render Auto-apply when onAutoApply prop is omitted', () => {
+    render(
+      <JobCard
+        job={autoJob}
+        variant="new"
+        onApply={noop}
+        onMarkApplied={noop}
+        onSkip={noop}
+        onReopen={noop}
+      />,
+    );
+    expect(screen.queryByRole('button', { name: /auto-apply/i })).not.toBeInTheDocument();
   });
 });

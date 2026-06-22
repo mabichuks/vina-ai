@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import type { JobStatus } from '@vina/shared';
 import {
   useApplications,
+  useAutoApplyJob,
   useInfiniteJobs,
   useLinkedInStatus,
   useMarkJobApplied,
@@ -70,6 +71,7 @@ export function JobsPage(): JSX.Element {
   const skip = useSkipJob();
   const reopen = useReopenJob();
   const prepare = usePrepareJob();
+  const autoApply = useAutoApplyJob();
   const pushToast = useUiStore((s) => s.pushToast);
 
   // For each manual-apply job, surface "Tailoring…" or "Ready to apply" badges
@@ -164,6 +166,26 @@ export function JobsPage(): JSX.Element {
                   }
                 }}
                 onApply={() => window.open(applyHref(job), '_blank', 'noreferrer')}
+                onAutoApply={
+                  job.apply_method === 'auto' && tab === 'new'
+                    ? async () => {
+                        try {
+                          const r = await autoApply.mutate(job.id);
+                          pushToast({
+                            kind: r.deduped ? 'info' : 'success',
+                            message: r.deduped
+                              ? 'Already queued.'
+                              : 'Auto-apply queued.',
+                          });
+                        } catch (err) {
+                          pushToast({
+                            kind: 'error',
+                            message: err instanceof Error ? err.message : String(err),
+                          });
+                        }
+                      }
+                    : undefined
+                }
                 onMarkApplied={async () => {
                   await markApplied.mutate(job.id);
                   pushToast({ kind: 'success', message: 'Marked applied.' });

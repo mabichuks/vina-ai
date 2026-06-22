@@ -869,6 +869,29 @@ export function usePrepareJob(): {
   return { mutate: (id) => mut.mutateAsync(id), isPending: mut.isPending };
 }
 
+export function useAutoApplyJob(): {
+  mutate: (jobId: string) => Promise<{ application_id: string; status: string; deduped: boolean }>;
+  isPending: boolean;
+} {
+  const qc = useQueryClient();
+  const mut = useMutation<
+    { application_id: string; status: string; deduped: boolean },
+    Error,
+    string
+  >({
+    mutationFn: (jobId) =>
+      api<{ application_id: string; status: string; deduped: boolean }>(
+        `/api/jobs/${jobId}/apply`,
+        { method: 'POST', body: {} },
+      ),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ['applications'] });
+      void qc.invalidateQueries({ queryKey: ['jobs'] });
+    },
+  });
+  return { mutate: (id) => mut.mutateAsync(id), isPending: mut.isPending };
+}
+
 export function tailoredCvUrl(applicationId: string): string {
   return `/api/applications/${applicationId}/tailored-cv`;
 }

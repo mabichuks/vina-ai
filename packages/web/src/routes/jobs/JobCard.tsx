@@ -17,6 +17,8 @@ interface Props {
   onReopen: () => void;
   /** Manual-apply pipeline: kicks off tailoring for this job. */
   onPrepare?: () => void;
+  /** Easy-apply pipeline: enqueues an auto-apply task for this job. */
+  onAutoApply?: () => void;
   /** True once an active application exists for this job. */
   preparing?: boolean;
   /** True once tailoring has finished and the user can go to /ready. */
@@ -35,6 +37,7 @@ export function JobCard({
   onSkip,
   onReopen,
   onPrepare,
+  onAutoApply,
   preparing,
   ready,
 }: Props): JSX.Element {
@@ -106,8 +109,18 @@ export function JobCard({
                 Ready to apply →
               </a>
             )}
+            {!isExternal && onAutoApply && (
+              <Button variant="default" size="sm" onClick={onAutoApply}>
+                Auto-apply
+              </Button>
+            )}
             <Button
-              variant={isExternal && onPrepare && !preparing && !ready ? 'ghost' : 'default'}
+              variant={
+                (isExternal && onPrepare && !preparing && !ready) ||
+                (!isExternal && onAutoApply)
+                  ? 'ghost'
+                  : 'default'
+              }
               size="sm"
               onClick={onApply}
             >
