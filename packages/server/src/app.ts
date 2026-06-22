@@ -9,6 +9,7 @@ import { registerBearerAuth } from './http/auth.js';
 import { alertRoutes } from './http/routes/alerts.js';
 import { coverLetterRoutes } from './http/routes/cover-letters.js';
 import { cvRoutes } from './http/routes/cvs.js';
+import { dashboardRoutes } from './http/routes/dashboard.js';
 import { applicationRoutes } from './http/routes/applications.js';
 import { jobRoutes } from './http/routes/jobs.js';
 import { llmProviderRoutes } from './http/routes/llm-providers.js';
@@ -73,6 +74,7 @@ export async function buildApp(deps: BuildAppDeps): Promise<FastifyInstance> {
     });
     await jobRoutes(api, { db: deps.db, bus: deps.bus });
     await applicationRoutes(api, { db: deps.db, bus: deps.bus });
+    await dashboardRoutes(api, { db: deps.db });
     await alertRoutes(api, { db: deps.db, bus: deps.bus, poke: deps.poke });
     await searchRoutes(api, { db: deps.db, poke: deps.poke });
   });
