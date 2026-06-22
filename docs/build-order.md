@@ -6,17 +6,16 @@ This is a recommendation, not a contract. If a milestone's scope changes, update
 
 ---
 
-## Current status (2026-05-13)
+## Current status (2026-06-21)
 
 The milestones below were planned before the LinkedIn end-to-end slice landed and ADR-019 was accepted. They remain as the long-form reference, but the active sequence is now:
 
 | State | Milestones |
 |---|---|
-| **Shipped** | M0 – M10 in their original form; M11 in a form that overlaps with the LinkedIn end-to-end slice (see `docs/superpowers/specs/2026-05-04-linkedin-end-to-end-slice-design.md`, marked Implemented 2026-05-10) |
+| **Shipped** | M0 – M10 in their original form; M11 in a form that overlaps with the LinkedIn end-to-end slice (see `docs/superpowers/specs/2026-05-04-linkedin-end-to-end-slice-design.md`, marked Implemented 2026-05-10); M15 follow-up (autonomous Easy Apply end-to-end — single mode, gate, literal-evidence form fill, EEO short-circuit, saved-answers UI, dashboard kill switch). Plan: `docs/superpowers/plans/2026-06-21-autonomous-easy-apply.md`. ADR-023. |
 | **Skipped (ADR-019)** | ~~M12 (Indeed adapter)~~, ~~M17 (Apply graph for Indeed)~~. Removed from scope. |
 | **Active queue** | **Phase A — Google Jobs via SerpAPI.** Replaces and supersedes the original M13. Spec: `docs/superpowers/specs/2026-05-13-google-jobs-source-design.md`. Plan: `docs/superpowers/plans/2026-05-13-google-jobs-source.md`. |
 | | **Phase B — Manual-apply pipeline.** Wakes the dormant tailor-cv / tailor-cover-letter / prepare-manual-apply graphs and adds the Ready-to-Apply surface. Folds in the original M14, M16, and M19. Spec: `docs/superpowers/specs/2026-05-13-manual-apply-pipeline-design.md`. Plan: `docs/superpowers/plans/2026-05-13-manual-apply-pipeline.md`. |
-| **Deferred indefinitely** | M15 — Apply graph and form-walker (LinkedIn Easy Apply auto-submit). Out of active queue; logged in `SPEC.md` §12. The manual-apply pipeline covers Easy Apply listings via Prepare materials, so auto-submit is no longer load-bearing. Reversing the deferral means writing the apply graph + LinkedIn form walker. |
 | **Unchanged downstream** | M18 (Alerts UI — partially shipped by the LinkedIn slice, balance lands during Phase B), M20 (Chatbot), M21 (Application detail), M22 (Polish, dashboards), M23 (Hardening) |
 | **Pre-release** | **M24 — Installer & release pipeline** (ADR-020). One-line `install.sh` / `install.ps1` against GitHub Release tarballs; tag-push CI to produce the tarball. Design: `docs/installer.md`. Sized small (~2–3 days) and runs after M23, before any public release. |
 

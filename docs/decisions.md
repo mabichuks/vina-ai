@@ -182,7 +182,7 @@ Format: short ADRs. Each has a status, a context, the decision, and consequences
 
 ## ADR-009: Operating mode and approval mode are orthogonal
 
-**Status:** Accepted.
+**Status:** Superseded by ADR-023.
 
 **Context.** The user can be in `autonomous` (Vina picks jobs to apply to) or `supervised` (user picks). Independently, each application can be `auto-apply` (submit without showing the tailored CV) or `review-first` (show the CV, wait for approval).
 
@@ -671,3 +671,80 @@ Concretely:
   new fixtures are added for snapshot/ref resolution and stale-ref recovery.
 - Real-Chrome attach is explicitly out of scope for this ADR; revisiting it
   requires a new ADR.
+
+---
+
+## ADR-023: Autonomous Easy Apply — single mode, single gate, literal-evidence form fill
+
+**Status:** Accepted. Supersedes ADR-009.
+
+**Context.** M15 shipped autonomous Easy Apply primitives but never enabled
+autonomy end-to-end. The score handler's only autonomous branch covered the
+manual-apply pipeline; auto-apply jobs in autonomous mode were silently dropped.
+Live testing produced six bugfix follow-ups in a few days (selector misses,
+overlay races, EEO question fabrication, double-apply on resume). We needed a
+deliberate decision about whether and how to ship end-to-end autonomous Easy
+Apply and what safety primitives must be in place to make it acceptable.
+
+**Decision.**
+
+- Collapse the orthogonal `mode` × `approval` model from ADR-009 into a single
+  `easy_apply_mode` setting with values `manual` (default) and `autonomous`.
+  The "review-first" approval gate is removed entirely; tailored CVs are always
+  submitted when the form-fill flow completes successfully.
+- Every path to `runApply` consults a single Easy Apply gate that enforces a
+  daily cap on successful submissions, a velocity throttle, a listing-freshness
+  cap, an idempotency check (excluding the current task), and a consecutive-
+  failure circuit breaker. The handler re-checks the gate at task pickup; all
+  upstream call sites (score handler, JobCard) treat it as advisory.
+- The browser-apply skill enforces a "literal evidence or skip" rule:
+  if the answer to a screening question is not in the user's profile or saved
+  answers (or directly inferable from the CV), the LLM declines and the
+  application pauses with a `missing_field` alert. The field resolver hard-
+  skips EEO/demographic questions (race, gender, disability, veteran status,
+  voluntary self-identification) regardless of saved answers.
+- Persistent rate-limit state lives in `apply_rate_limit` (one-row table) and
+  is updated by `recordAttempt` / `recordSuccess` / `recordFailure`. When
+  `consecutive_failures` crosses the configured limit, the handler auto-flips
+  `easy_apply_mode` back to `manual` and raises a high-visibility alert.
+- Saved screening answers continue to use the `profile_answers` SQLite table
+  introduced in ADR-011 — no parallel `memory.md` store. The Settings UI
+  exposes a list-and-forget tile so users can audit and clear stale answers.
+- An `autonomous_apply_dry_run` toggle lets the user observe gate behaviour
+  (the gate returns `dry_run` instead of `allow`) before enabling real
+  submissions. Velocity slots are still consumed in dry-run so the user sees
+  the throttle in action.
+
+**Reasons.**
+
+- Two-knob `mode × approval` was already producing combinations no one used
+  ("supervised + review-first" reduces to "review-first" since the user
+  picked the job; "autonomous + review-first" is a hands-off mode that
+  doesn't go hands-off). A single mode with explicit risk disclosure on
+  activation matches how the feature is described to users.
+- A single gate at the handler boundary means there is one place to read or
+  change the safety logic; upstream call sites can't accidentally bypass it.
+- "Literal evidence or skip" is the simplest contract that prevents
+  fabrication. Earlier prototypes tried to let the LLM guess from CV
+  context — every accepted PR included another anti-fabrication patch.
+- A consecutive-failure circuit breaker means a bad LinkedIn cohort variant
+  pauses autonomy on its own rather than burning the daily cap. Recovery is
+  one click in Settings.
+- The `profile_answers` table is queryable, atomic, and editable from the
+  Settings UI. A markdown alternative gained nothing and lost atomicity.
+
+**Consequences.**
+
+- Autonomous submissions are real and irreversible. We accept this under
+  explicit user disclosure (`AutonomousRiskDialog` lists the five risks the
+  user is opting into) and the kill switch on the dashboard.
+- One `easy_apply_mode` enum replaces two settings columns plus all the
+  branches in handlers, the orchestrator, the apply graph, and the UI. The
+  migration is a one-way collapse; existing rows default to `manual`.
+- EEO short-circuit lives in the resolver, not the LLM prompt, so it cannot
+  be defeated by a prompt-injection-style answer in profile_answers.
+- The `per-field source` audit (`profile` / `answers` / `cv` / `fallback`)
+  is persisted in `application_events.payload` so the user can reconstruct
+  why any submitted answer was chosen. The Applications-page display of
+  this is deferred until a per-application event-detail view exists.
+- ADR-009 is superseded; SPEC.md §5 reflects the new model.
