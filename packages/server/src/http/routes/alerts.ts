@@ -61,4 +61,9 @@ export async function alertRoutes(
     bus.emit('alert:dismissed', { id });
     return next;
   });
+
+  app.delete('/api/alerts/resolved', async (_req, reply) => {
+    db.prepare(`DELETE FROM alerts WHERE status = 'resolved'`).run();
+    return reply.status(204).send();
+  });
 }

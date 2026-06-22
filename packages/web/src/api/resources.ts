@@ -601,6 +601,20 @@ export function useDismissAlert(): { mutate: (id: string) => Promise<void> } {
   return { mutate: (id) => mut.mutateAsync(id) };
 }
 
+export function useClearResolvedAlerts(): {
+  mutate: () => Promise<void>;
+  isPending: boolean;
+} {
+  const qc = useQueryClient();
+  const mut = useMutation<void, Error, void>({
+    mutationFn: async () => {
+      await api('/api/alerts/resolved', { method: 'DELETE' });
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['alerts'] }),
+  });
+  return { mutate: () => mut.mutateAsync(), isPending: mut.isPending };
+}
+
 /* ------------------------------------------------------------------ */
 /* Google Jobs                                                          */
 /* ------------------------------------------------------------------ */

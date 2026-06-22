@@ -67,4 +67,37 @@ describe('alerts routes', () => {
     });
     expect(res.statusCode).toBe(404);
   });
+
+  it('DELETE /api/alerts/resolved removes resolved alerts and leaves open ones', async () => {
+    const a = insertAlert(h.db, {
+      kind: 'general',
+      severity: 'info',
+      title: 'resolved-1',
+      description: 'd',
+    });
+    insertAlert(h.db, {
+      kind: 'general',
+      severity: 'info',
+      title: 'open-1',
+      description: 'd',
+    });
+    // Resolve the first one.
+    await h.app.inject({
+      method: 'POST',
+      url: `/api/alerts/${a.id}/resolve`,
+      headers: auth(h.token),
+    });
+
+    const res = await h.app.inject({
+      method: 'DELETE',
+      url: '/api/alerts/resolved',
+      headers: auth(h.token),
+    });
+    expect(res.statusCode).toBe(204);
+
+    const remaining = h.db
+      .prepare(`SELECT title, status FROM alerts ORDER BY title`)
+      .all() as Array<{ title: string; status: string }>;
+    expect(remaining).toEqual([{ title: 'open-1', status: 'open' }]);
+  });
 });
