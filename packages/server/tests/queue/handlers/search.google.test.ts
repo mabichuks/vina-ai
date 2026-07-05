@@ -38,7 +38,7 @@ beforeEach(async () => {
 afterEach(() => {
   delete process.env['VINA_DISABLE_KEYTAR'];
   db.close();
-  fs.rmSync(tmpDir, { recursive: true, force: true });
+  fs.rmSync(tmpDir, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
 });
 
 const FAKE_BM = { getContext: async () => ({ newPage: async () => ({}) }), closeAll: async () => {} } as never;

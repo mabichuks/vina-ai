@@ -11,7 +11,7 @@ describe('buildConfig', () => {
     tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'vina-cfg-'));
   });
   afterEach(() => {
-    fs.rmSync(tmpDir, { recursive: true, force: true });
+    fs.rmSync(tmpDir, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
   });
 
   it('auto-creates all paths and emits a non-empty UUID-shaped bearer token', () => {

@@ -78,7 +78,7 @@ export async function buildTestApp(): Promise<TestAppHandle> {
     await app.close();
     await browserManager.closeAll();
     db.close();
-    fs.rmSync(dataDir, { recursive: true, force: true });
+    fs.rmSync(dataDir, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
   };
 
   return {

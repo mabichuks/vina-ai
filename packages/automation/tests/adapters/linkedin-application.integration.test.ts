@@ -22,8 +22,8 @@ afterEach(async () => {
     await handle.close();
     handle = null;
   }
-  await fs.rm(dataDir, { recursive: true, force: true });
-  await fs.rm(fixtureDir, { recursive: true, force: true });
+  await fs.rm(dataDir, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
+  await fs.rm(fixtureDir, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
 });
 
 const SINGLE_STEP_FIXTURE = `<!doctype html>

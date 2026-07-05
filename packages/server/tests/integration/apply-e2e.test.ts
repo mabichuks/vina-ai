@@ -89,7 +89,7 @@ beforeEach(async () => {
 afterEach(async () => {
   await browserManager.closeAll();
   await fixture.close();
-  await fs.rm(dataDir, { recursive: true, force: true });
+  await fs.rm(dataDir, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
 });
 
 /**

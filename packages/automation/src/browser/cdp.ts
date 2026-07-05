@@ -249,15 +249,12 @@ export async function launchCdpSession(
       log.warn({ err, siteId: opts.siteId }, 'browser disconnect failed');
     }
     if (proc.exitCode !== null || proc.signalCode !== null) return;
-    const exited = await new Promise<boolean>((resolve) => {
-      const timer = setTimeout(() => {
-        try {
-          proc.kill('SIGKILL');
-        } catch {
-          // ignored — process already gone
-        }
-        resolve(false);
-      }, 5_000);
+    // Wait for the actual 'exit' event, escalating SIGTERM → SIGKILL.
+    // Resolving before the process is truly gone lets callers delete the
+    // profile directory while Chromium is still flushing it (ENOTEMPTY
+    // races in CI teardown).
+    const exitedGracefully = await new Promise<boolean>((resolve) => {
+      const timer = setTimeout(() => resolve(false), 5_000);
       proc.once('exit', () => {
         clearTimeout(timer);
         resolve(true);
@@ -269,11 +266,24 @@ export async function launchCdpSession(
         resolve(true);
       }
     });
-    if (!exited) {
+    if (!exitedGracefully) {
       log.warn(
         { pid: proc.pid, siteId: opts.siteId },
-        'chromium did not exit on SIGTERM; sent SIGKILL',
+        'chromium did not exit on SIGTERM; sending SIGKILL',
       );
+      await new Promise<void>((resolve) => {
+        const timer = setTimeout(() => resolve(), 3_000);
+        proc.once('exit', () => {
+          clearTimeout(timer);
+          resolve();
+        });
+        try {
+          proc.kill('SIGKILL');
+        } catch {
+          clearTimeout(timer);
+          resolve();
+        }
+      });
     }
   }
 
