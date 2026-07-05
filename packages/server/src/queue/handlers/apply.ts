@@ -267,14 +267,19 @@ export function createApplyHandler(
       updateApplicationStatus(deps.db, app.id, 'failed', {
         failure_reason: detail.slice(0, 500),
       });
-      insertAlert(deps.db, {
-        kind: 'apply_failed',
-        severity: 'error',
-        title: `Apply failed: ${job.title} @ ${job.company}`,
-        description: detail.slice(0, 1000),
-        application_id: app.id,
-        payload: { reason: result.reason ?? 'other' },
-      });
+      // Skip insertAlert when the graph already raised a screenshot-bearing
+      // alert (e.g. unresolvable submit failure) — alertRaised prevents a
+      // duplicate plain alert from landing alongside the richer one.
+      if (!result.alertRaised) {
+        insertAlert(deps.db, {
+          kind: 'apply_failed',
+          severity: 'error',
+          title: `Apply failed: ${job.title} @ ${job.company}`,
+          description: detail.slice(0, 1000),
+          application_id: app.id,
+          payload: { reason: result.reason ?? 'other' },
+        });
+      }
       // Task 4.2 — increment consecutive failures; check whether the
       // circuit breaker threshold has been reached.
       recordFailure(deps.db);

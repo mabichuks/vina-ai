@@ -290,14 +290,29 @@ describe('runApply — submit outcomes', () => {
     expect(toolKit.calls.alerts[0]?.kind).toBe('session_expired');
   });
 
-  it('raises apply_failed for unrecognised submit failures', async () => {
+  // OLD behaviour was awaiting_user; Task 2 intentionally changes this to
+  // failed so unresolvable submit failures become terminal (retryable from
+  // the Applications page, not blocking the user with an unresolvable alert).
+  it("classifies an unresolvable submit failure ('other') as failed, not awaiting_user", async () => {
     const toolKit = makeToolKit({
-      submitOutcome: { ok: false, reason: 'other', detail: 'no submit button' },
+      submitOutcome: { ok: false, reason: 'other', detail: 'no submit button found' },
+    });
+    const result = await runApply(APPLY_INPUT, NEVER_DECIDE, toolKit);
+    expect(result.outcome).toBe('failed');
+    expect(result.reason).toBe('other');
+    expect(result.alertRaised).toBe(true);
+    // The graph still creates an apply_failed alert (screenshot-bearing).
+    expect(toolKit.calls.alerts[0]?.kind).toBe('apply_failed');
+  });
+
+  it('keeps awaiting_user for resolvable submit failures (missing_field)', async () => {
+    const toolKit = makeToolKit({
+      submitOutcome: { ok: false, reason: 'missing_field', detail: 'name field empty' },
     });
     const result = await runApply(APPLY_INPUT, NEVER_DECIDE, toolKit);
     expect(result.outcome).toBe('awaiting_user');
-    expect(result.reason).toBe('other');
-    expect(toolKit.calls.alerts[0]?.kind).toBe('apply_failed');
+    expect(result.reason).toBe('missing_field');
+    expect(result.alertRaised).toBeUndefined();
   });
 });
 

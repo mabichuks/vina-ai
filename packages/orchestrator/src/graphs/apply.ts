@@ -47,6 +47,9 @@ export interface ApplyResult {
     | 'form_too_long'
     | 'other';
   failureDetail?: string;
+  /** True when the graph has already raised an alert for this failure, so the
+   * apply handler should skip its own insertAlert to avoid a duplicate. */
+  alertRaised?: boolean;
   events: ApplyEvent[];
 }
 
@@ -191,11 +194,28 @@ export async function runApply(
           job,
           outcome: submitted,
         });
+        // 'awaiting_user' is reserved for pauses the user can actually
+        // resolve through alert resolution (answer a field, clear a captcha,
+        // re-login). Anything else — submit button missing, unexpected DOM —
+        // is a hard failure: terminal status, retryable from the
+        // Applications page. alertRaised stops the apply handler from
+        // inserting a second alert on the failed path.
+        const resolvable = ['missing_field', 'captcha', 'session_expired'];
+        if (resolvable.includes(submitted.reason ?? '')) {
+          return {
+            outcome: 'awaiting_user',
+            applicationId: input.applicationId,
+            reason: submitted.reason,
+            failureDetail: submitted.detail,
+            events,
+          };
+        }
         return {
-          outcome: 'awaiting_user',
+          outcome: 'failed',
           applicationId: input.applicationId,
           reason: submitted.reason,
           failureDetail: submitted.detail,
+          alertRaised: true,
           events,
         };
       }
