@@ -104,7 +104,7 @@ function PromptEditor({ id }: { id: string }): JSX.Element {
   // (initial load, save, revert). Render-phase adjustment instead of an
   // effect — matches the previous [data]-keyed behaviour without the
   // cascading-render lint violation.
-  const [seededFrom, setSeededFrom] = useState<typeof data>(undefined);
+  const [seededFrom, setSeededFrom] = useState<typeof data>(null);
   if (data && data !== seededFrom) {
     setSeededFrom(data);
     // Prefer the current override body; if none, seed from the default so the
