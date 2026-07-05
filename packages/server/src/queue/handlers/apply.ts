@@ -250,7 +250,8 @@ export function createApplyHandler(
       // daily count. Use a fresh ISO timestamp for accuracy.
       const completedAt = new Date().toISOString();
       recordSuccess(deps.db, completedAt, dayBucketFromIso(completedAt));
-      deps.bus.emit('jobs:updated', { ids: [job.id] });
+      // No jobs:updated here — the handler already emits it unconditionally
+      // for every outcome on the way out.
       deps.bus.emit('application:updated', { id: app.id, status: 'submitted' });
     } else if (result.outcome === 'awaiting_user') {
       // missing_field / captcha / session_expired — these pause the application for the user.
