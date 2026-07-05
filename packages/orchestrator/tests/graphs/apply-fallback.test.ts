@@ -20,19 +20,19 @@ class FakeDecider implements StructuredApplyDecider {
   ) {}
 
   withStructuredOutput<T>(_schema: z.ZodType<T>): Runnable<ApplyFallbackMessages, T> {
-    const self = this;
+    // Arrow keeps `this` bound to the instance without aliasing it to a local.
     return {
-      async invoke(messages: ApplyFallbackMessages): Promise<T> {
-        self.lastMessages = messages;
-        self.attempts++;
-        switch (self.behaviour.kind) {
+      invoke: async (messages: ApplyFallbackMessages): Promise<T> => {
+        this.lastMessages = messages;
+        this.attempts++;
+        switch (this.behaviour.kind) {
           case 'reply':
-            return self.behaviour.reply as unknown as T;
+            return this.behaviour.reply as unknown as T;
           case 'throw':
-            throw self.behaviour.error;
+            throw this.behaviour.error;
           case 'throw-then-reply':
-            if (self.attempts === 1) throw self.behaviour.error;
-            return self.behaviour.reply as unknown as T;
+            if (this.attempts === 1) throw this.behaviour.error;
+            return this.behaviour.reply as unknown as T;
         }
       },
     } as unknown as Runnable<ApplyFallbackMessages, T>;

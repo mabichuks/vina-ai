@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import type { SkillSummary } from '@vina/shared';
 import {
   useCreateSkill,
@@ -160,10 +160,14 @@ function SkillEditor({
   const pushToast = useUiStore((s) => s.pushToast);
 
   const [draft, setDraft] = useState<string>('');
-
-  useEffect(() => {
-    if (data) setDraft(data.body);
-  }, [data]);
+  // Reseed the editable draft when the server sends a new skill object.
+  // Render-phase adjustment instead of an effect (matches the previous
+  // [data]-keyed behaviour without the cascading-render lint violation).
+  const [seededFrom, setSeededFrom] = useState<typeof data>(undefined);
+  if (data && data !== seededFrom) {
+    setSeededFrom(data);
+    setDraft(data.body);
+  }
 
   if (isLoading || !data) {
     return <p className="mt-2 text-sm text-ink-muted">Loading…</p>;
@@ -252,11 +256,14 @@ function NewSkillForm({
   const create = useCreateSkill();
   const pushToast = useUiStore((s) => s.pushToast);
   const [id, setId] = useState('');
-  const [body, setBody] = useState('');
-
-  useEffect(() => {
+  const [body, setBody] = useState(() => NEW_SKILL_TEMPLATE('my-skill'));
+  // Regenerate the template body as the id changes. Render-phase adjustment
+  // keyed on the previous id, replacing an [id]-effect.
+  const [templatedFor, setTemplatedFor] = useState('');
+  if (id !== templatedFor) {
+    setTemplatedFor(id);
     setBody(NEW_SKILL_TEMPLATE(id || 'my-skill'));
-  }, [id]);
+  }
 
   const onCreate = async (): Promise<void> => {
     if (!ID_RE.test(id)) {

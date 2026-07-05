@@ -117,7 +117,6 @@ export async function createPromptsService(
 
   async function get(id: string) {
     const activeDoc = await loader.load(id);
-    const defaultDoc = await defaultsOnly.load(id);
     const overridePath = path.join(overridesDir, `${id}.md`);
     const overrideRaw = await readBody(overridePath);
     const defaultRaw = await defaultRawBody(id);

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import type { PromptSummary } from '@vina/shared';
 import {
   usePrompt,
@@ -28,7 +28,7 @@ export function PromptsTile(): JSX.Element {
         Prompts
       </h2>
       <p className="mt-1 text-sm text-ink-secondary">
-        The natural-language instructions that drive Vina's graphs. Each prompt
+        The natural-language instructions that drive Vina&apos;s graphs. Each prompt
         ships with a default; editing one writes an override that survives
         across restarts. Revert to fall back to the default.
       </p>
@@ -100,13 +100,17 @@ function PromptEditor({ id }: { id: string }): JSX.Element {
   const pushToast = useUiStore((s) => s.pushToast);
 
   const [draft, setDraft] = useState<string>('');
-
-  useEffect(() => {
-    if (!data) return;
+  // Reseed the editable draft whenever the server sends a new prompt object
+  // (initial load, save, revert). Render-phase adjustment instead of an
+  // effect — matches the previous [data]-keyed behaviour without the
+  // cascading-render lint violation.
+  const [seededFrom, setSeededFrom] = useState<typeof data>(undefined);
+  if (data && data !== seededFrom) {
+    setSeededFrom(data);
     // Prefer the current override body; if none, seed from the default so the
     // user can edit a copy rather than starting blank.
     setDraft(data.override_body ?? data.default_body);
-  }, [data]);
+  }
 
   if (isLoading || !data) {
     return <p className="mt-2 text-sm text-ink-muted">Loading…</p>;

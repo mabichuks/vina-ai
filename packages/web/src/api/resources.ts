@@ -960,8 +960,8 @@ export function useSavePromptOverride(): {
     mutationFn: ({ id, body }) =>
       api<PromptDetail>(`/api/prompts/${id}`, { method: 'PUT', body: { body } }),
     onSuccess: (_data, vars) => {
-      qc.invalidateQueries({ queryKey: ['prompts'] });
-      qc.invalidateQueries({ queryKey: ['prompt', vars.id] });
+      void qc.invalidateQueries({ queryKey: ['prompts'] });
+      void qc.invalidateQueries({ queryKey: ['prompt', vars.id] });
     },
   });
   return {
@@ -980,8 +980,8 @@ export function useRevertPrompt(): {
       await api(`/api/prompts/${id}`, { method: 'DELETE' });
     },
     onSuccess: (_v, id) => {
-      qc.invalidateQueries({ queryKey: ['prompts'] });
-      qc.invalidateQueries({ queryKey: ['prompt', id] });
+      void qc.invalidateQueries({ queryKey: ['prompts'] });
+      void qc.invalidateQueries({ queryKey: ['prompt', id] });
     },
   });
   return { mutate: (id) => mut.mutateAsync(id), isPending: mut.isPending };
@@ -1020,8 +1020,8 @@ export function useWriteSkill(): {
     mutationFn: ({ id, body }) =>
       api<SkillDetail>(`/api/skills/${id}`, { method: 'PUT', body: { body } }),
     onSuccess: (_d, vars) => {
-      qc.invalidateQueries({ queryKey: ['skills'] });
-      qc.invalidateQueries({ queryKey: ['skill', vars.id] });
+      void qc.invalidateQueries({ queryKey: ['skills'] });
+      void qc.invalidateQueries({ queryKey: ['skill', vars.id] });
     },
   });
   return { mutate: (input) => mut.mutateAsync(input), isPending: mut.isPending };

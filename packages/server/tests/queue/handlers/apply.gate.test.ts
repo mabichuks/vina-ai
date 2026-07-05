@@ -6,7 +6,6 @@
  * end-to-end browser tests live in tests/integration/apply-e2e.test.ts.
  */
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import type { Database as DatabaseType } from 'better-sqlite3';
 import type { BrowserManagerHandle } from '@vina/automation';
 import type { ApplyResult } from '@vina/orchestrator';
 import { createApplyHandler } from '../../../src/queue/handlers/apply.js';

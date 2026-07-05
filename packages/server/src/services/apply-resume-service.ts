@@ -4,7 +4,6 @@ import {
   findApplicationById,
   updateApplicationStatus,
 } from '../db/repositories/applications.js';
-import { findJobById } from '../db/repositories/jobs.js';
 import { appendEvent } from '../db/repositories/application-events.js';
 import { upsertAnswer } from '../db/repositories/profile-answers.js';
 import { enqueue } from '../db/repositories/task-queue.js';

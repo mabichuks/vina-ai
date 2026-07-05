@@ -111,12 +111,6 @@ function fifoModel(outputs: unknown[]): StructuredScorer {
   } as unknown as StructuredScorer;
 }
 
-const SUBMITTED_TAILOR_OUT = {
-  summary: 'Senior engineer with broad backend experience.',
-  bullets: [{ section: 'FooCo, 2020-2024', bullet: 'Built Postgres pipelines.' }],
-  skills: ['TypeScript', 'Postgres'],
-};
-
 function seedShared() {
   insertProfile(db, {
     full_name: 'Ada Lovelace',
