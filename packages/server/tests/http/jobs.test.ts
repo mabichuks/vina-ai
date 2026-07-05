@@ -17,12 +17,20 @@ afterEach(async () => {
   await h.cleanup();
 });
 
-function seedJob(opts: { score?: number; status?: JobStatus; title?: string } = {}) {
+function seedJob(
+  opts: {
+    score?: number;
+    status?: JobStatus;
+    title?: string;
+    site_id?: string;
+    apply_method?: 'auto' | 'manual';
+  } = {},
+) {
   const job = insertJob(h.db, {
-    site_id: 'linkedin',
+    site_id: opts.site_id ?? 'linkedin',
     external_id: `ext-${Math.random().toString(36).slice(2)}`,
     url: 'https://linkedin.com/x',
-    apply_method: 'auto',
+    apply_method: opts.apply_method ?? 'auto',
     title: opts.title ?? 'Engineer',
     company: 'Acme',
     description: 'desc',
@@ -69,6 +77,59 @@ describe('GET /api/jobs', () => {
     });
     expect(res.json().items).toHaveLength(2);
     expect(res.json().total).toBe(5);
+  });
+
+  it('filters by apply_method and reflects it in total', async () => {
+    seedJob({ score: 80, status: 'scored', apply_method: 'auto' });
+    seedJob({ score: 81, status: 'scored', apply_method: 'manual' });
+    seedJob({ score: 82, status: 'scored', apply_method: 'manual' });
+    const res = await h.app.inject({
+      method: 'GET',
+      url: '/api/jobs?status=scored&apply_method=auto',
+      headers: auth(h.token),
+    });
+    expect(res.json().items).toHaveLength(1);
+    expect(res.json().total).toBe(1);
+  });
+
+  it('filters by site_id', async () => {
+    seedJob({ score: 80, status: 'scored', site_id: 'linkedin' });
+    seedJob({ score: 81, status: 'scored', site_id: 'google' });
+    const res = await h.app.inject({
+      method: 'GET',
+      url: '/api/jobs?status=scored&site_id=google',
+      headers: auth(h.token),
+    });
+    expect(res.json().items).toHaveLength(1);
+    expect(res.json().total).toBe(1);
+  });
+
+  it('sort=date orders newest-first regardless of score', async () => {
+    // seedJob inserts sequentially — discovered_at is monotonically increasing,
+    // so the LAST seeded job is the newest. Give it the LOWEST score so the
+    // two sort orders disagree.
+    seedJob({ score: 90, status: 'scored', title: 'Old high' });
+    seedJob({ score: 50, status: 'scored', title: 'New low' });
+    const res = await h.app.inject({
+      method: 'GET',
+      url: '/api/jobs?status=scored&sort=date',
+      headers: auth(h.token),
+    });
+    const titles = (res.json().items as { title: string }[]).map((j) => j.title);
+    expect(titles[0]).toBe('New low');
+    const byScore = await h.app.inject({
+      method: 'GET',
+      url: '/api/jobs?status=scored',
+      headers: auth(h.token),
+    });
+    expect((byScore.json().items as { title: string }[])[0]!.title).toBe('Old high');
+  });
+
+  it('rejects unknown sort and site_id values', async () => {
+    for (const url of ['/api/jobs?sort=title', '/api/jobs?site_id=monster']) {
+      const res = await h.app.inject({ method: 'GET', url, headers: auth(h.token) });
+      expect(res.statusCode).toBe(400);
+    }
   });
 });
 

@@ -81,4 +81,21 @@ describe('jobs repository', () => {
     expect(countJobs(db, {})).toBe(4);
     db.close();
   });
+
+  it('listJobs sort=date orders by discovered_at desc', () => {
+    // seed two jobs where score order and date order disagree (see the file's
+    // insert helper), then:
+    const db = freshTestDb();
+    const j1 = insertJob(db, jobInput({ external_id: 'd1', status: 'scored' }));
+    const j2 = insertJob(db, jobInput({ external_id: 'd2', status: 'scored' }));
+    updateJobScore(db, j1.id, 90, 'high');
+    updateJobScore(db, j2.id, 50, 'low');
+    const byDate = listJobs(db, { sort: 'date' });
+    const byScore = listJobs(db, {});
+    expect(byDate[0]!.id).not.toBe(byScore[0]!.id);
+    expect(Date.parse(byDate[0]!.discovered_at)).toBeGreaterThanOrEqual(
+      Date.parse(byDate[1]!.discovered_at),
+    );
+    db.close();
+  });
 });

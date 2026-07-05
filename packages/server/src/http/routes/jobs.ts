@@ -23,6 +23,9 @@ const StatusFilterSchema = z
 const ListQuerySchema = z.object({
   status: StatusFilterSchema.optional(),
   min_score: z.coerce.number().int().min(0).max(100).optional(),
+  site_id: z.enum(['linkedin', 'indeed', 'google']).optional(),
+  apply_method: z.enum(['auto', 'manual']).optional(),
+  sort: z.enum(['score', 'date']).default('score'),
   page: z.coerce.number().int().min(1).default(1),
   page_size: z.coerce.number().int().min(1).max(100).default(50),
 });
@@ -44,8 +47,15 @@ export async function jobRoutes(
     const filterArgs = {
       ...(status && { status }),
       ...(q.min_score !== undefined && { min_score: q.min_score }),
+      ...(q.site_id && { site_id: q.site_id }),
+      ...(q.apply_method && { apply_method: q.apply_method }),
     };
-    const items = listJobs(db, { ...filterArgs, limit: q.page_size, offset });
+    const items = listJobs(db, {
+      ...filterArgs,
+      sort: q.sort,
+      limit: q.page_size,
+      offset,
+    });
     const total = countJobs(db, filterArgs);
     return { items, page: q.page, page_size: q.page_size, total };
   });

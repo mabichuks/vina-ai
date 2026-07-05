@@ -32,6 +32,8 @@ export interface JobFilters {
   min_score?: number;
   /** Free-text search across title, company, description (case-insensitive LIKE). */
   search?: string;
+  /** Result ordering: 'score' (default — best match first) or 'date' (newest first). */
+  sort?: 'score' | 'date';
   limit?: number;
   offset?: number;
 }
@@ -85,12 +87,18 @@ function buildJobWhere(filters: Omit<JobFilters, 'limit' | 'offset'>): {
 export function listJobs(db: DatabaseType, filters: JobFilters = {}): Job[] {
   const { whereSql, params } = buildJobWhere(filters);
 
-  // Best matches first (score DESC), unscored rows pinned to the bottom so
-  // the worklist stays stable while scores stream in. Ties broken by recency.
+  // ORDER BY comes from this fixed whitelist — `sort` is user input and must
+  // never reach the SQL string directly.
+  const ORDER_BY: Record<'score' | 'date', string> = {
+    // Best matches first (score DESC), unscored rows pinned to the bottom so
+    // the worklist stays stable while scores stream in. Ties broken by recency.
+    score: 'match_score DESC NULLS LAST, discovered_at DESC, id DESC',
+    date: 'discovered_at DESC, id DESC',
+  };
   const sql = `
     SELECT * FROM jobs
     ${whereSql}
-    ORDER BY match_score DESC NULLS LAST, discovered_at DESC, id DESC
+    ORDER BY ${ORDER_BY[filters.sort ?? 'score']}
     LIMIT @limit OFFSET @offset
   `;
   params['limit'] = filters.limit ?? 100;
