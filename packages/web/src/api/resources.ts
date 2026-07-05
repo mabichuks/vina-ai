@@ -440,6 +440,9 @@ export interface JobsFilters {
   /** Single status or array (joined comma-separated for the backend). */
   status?: JobStatus | JobStatus[];
   min_score?: number;
+  site_id?: 'linkedin' | 'indeed' | 'google';
+  apply_method?: 'auto' | 'manual';
+  sort?: 'score' | 'date';
   page?: number;
   page_size?: number;
 }
@@ -483,6 +486,9 @@ export function useJobsPage(filters: JobsFilters): {
     );
   }
   if (filters.min_score !== undefined) qs.set('min_score', String(filters.min_score));
+  if (filters.site_id) qs.set('site_id', filters.site_id);
+  if (filters.apply_method) qs.set('apply_method', filters.apply_method);
+  if (filters.sort) qs.set('sort', filters.sort);
   qs.set('page', String(page));
   qs.set('page_size', String(pageSize));
 

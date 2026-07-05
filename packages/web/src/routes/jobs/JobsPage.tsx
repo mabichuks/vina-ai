@@ -44,12 +44,16 @@ export function JobsPage(): JSX.Element {
   const linkedin = useLinkedInStatus({ pollMs: 5000 });
   const minScore = prefs.data?.score_threshold ?? 70;
 
+  const [sort, setSort] = useState<'score' | 'date'>('score');
+  const [applyMethod, setApplyMethod] = useState<'' | 'auto' | 'manual'>('');
+  const [siteId, setSiteId] = useState<'' | 'linkedin' | 'indeed' | 'google'>('');
+
   const [page, setPage] = useState(1);
   // Filter changes re-anchor to page 1 — page 7 of a different filter set is
   // meaningless. React's adjust-state-during-render pattern: compare a derived
   // key; if it changed, reset page synchronously in this render cycle instead
   // of scheduling an effect that would cause a phantom extra fetch.
-  const filterKey = `${tab}:${minScore}`;
+  const filterKey = `${tab}:${minScore}:${sort}:${applyMethod}:${siteId}`;
   const [prevKey, setPrevKey] = useState(filterKey);
   if (prevKey !== filterKey) {
     setPrevKey(filterKey);
@@ -59,6 +63,9 @@ export function JobsPage(): JSX.Element {
   const jobs = useJobsPage({
     status: STATUS_FILTER_FOR_TAB[tab],
     ...(tab === 'new' && { min_score: minScore }),
+    ...(applyMethod && { apply_method: applyMethod }),
+    ...(siteId && { site_id: siteId }),
+    sort,
     page,
     page_size: PAGE_SIZE,
   });
@@ -137,15 +144,50 @@ export function JobsPage(): JSX.Element {
         ))}
       </nav>
 
+      <div className="flex flex-wrap items-center gap-3">
+        <ControlSelect
+          label="Sort"
+          value={sort}
+          onChange={(v) => setSort(v as 'score' | 'date')}
+          options={[
+            { value: 'score', label: 'Best match' },
+            { value: 'date', label: 'Newest' },
+          ]}
+        />
+        <ControlSelect
+          label="Apply type"
+          value={applyMethod}
+          onChange={(v) => setApplyMethod(v as '' | 'auto' | 'manual')}
+          options={[
+            { value: '', label: 'All' },
+            { value: 'auto', label: 'Easy Apply' },
+            { value: 'manual', label: 'External' },
+          ]}
+        />
+        <ControlSelect
+          label="Source"
+          value={siteId}
+          onChange={(v) => setSiteId(v as '' | 'linkedin' | 'indeed' | 'google')}
+          options={[
+            { value: '', label: 'All sources' },
+            { value: 'linkedin', label: 'LinkedIn' },
+            { value: 'google', label: 'Google Jobs' },
+            { value: 'indeed', label: 'Indeed' },
+          ]}
+        />
+      </div>
+
       {jobs.isLoading ? (
         <p className="text-sm text-ink-secondary">Loading…</p>
       ) : jobs.items.length === 0 ? (
         <p className="text-sm text-ink-secondary">
-          {tab === 'new'
-            ? 'No new jobs yet. Try Search now once LinkedIn is connected.'
-            : tab === 'applied'
-              ? 'You haven’t marked anything applied yet.'
-              : 'Nothing skipped.'}
+          {applyMethod || siteId
+            ? 'No jobs match the current filters.'
+            : tab === 'new'
+              ? 'No new jobs yet. Try Search now once LinkedIn is connected.'
+              : tab === 'applied'
+                ? 'You haven’t marked anything applied yet.'
+                : 'Nothing skipped.'}
         </p>
       ) : (
         <ul className="space-y-3">
@@ -220,5 +262,33 @@ export function JobsPage(): JSX.Element {
         />
       )}
     </section>
+  );
+}
+
+interface ControlSelectProps {
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+  options: ReadonlyArray<{ value: string; label: string }>;
+}
+
+function ControlSelect({ label, value, onChange, options }: ControlSelectProps): JSX.Element {
+  return (
+    <label className="flex items-center gap-2">
+      <span className="font-mono text-2xs uppercase tracking-wide text-ink-secondary">
+        {label}
+      </span>
+      <select
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        className="rounded-md border border-border-default bg-surface-sunken px-2 py-1.5 text-sm text-ink-primary outline-none focus:border-accent"
+      >
+        {options.map((o) => (
+          <option key={o.value} value={o.value}>
+            {o.label}
+          </option>
+        ))}
+      </select>
+    </label>
   );
 }
