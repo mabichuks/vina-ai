@@ -24,10 +24,31 @@ const log = createLogger('automation.linkedin.application');
  * sent the flow walking a form with no fields (2026-07-05 incident).
  */
 const APPLY_FORM_ROOT_SELECTORS = [
-  '[role="dialog"]',
+  // A dialog only counts as the apply modal when it actually contains a
+  // form — the job page carries permanent dialog shells (jump menu,
+  // overlays) that must not match.
+  '[role="dialog"]:has(form)',
   '#easy-apply',
   'form[data-vina-fixture="easy-apply"]',
 ] as const;
+
+/**
+ * The apply modal / form root, or null. Requires VISIBILITY on top of
+ * presence: LinkedIn's job page permanently carries hidden `role="dialog"`
+ * shells (the "jump menu"), so a bare `count() > 0` check mistakes them
+ * for the open modal — round two of the 2026-07-05 incident, which made
+ * the flow walk the page shell and report "no submit button" without ever
+ * clicking the Easy Apply trigger.
+ */
+async function findVisibleFormRoot(page: Page): Promise<Locator | null> {
+  for (const selector of APPLY_FORM_ROOT_SELECTORS) {
+    const locator = page.locator(selector).first();
+    if ((await locator.count()) === 0) continue;
+    if (!(await locator.isVisible().catch(() => false))) continue;
+    return locator;
+  }
+  return null;
+}
 
 const SUBMIT_BUTTON_SELECTORS = [
   'button[type="submit"]',
@@ -155,7 +176,7 @@ export async function startLinkedInApplication(
 
   // Short-circuit: if a form root is already in the DOM (fixture pages,
   // some inline-form variants), no trigger click is needed.
-  if (await firstPresent(page, APPLY_FORM_ROOT_SELECTORS)) {
+  if (await findVisibleFormRoot(page)) {
     return { page, formId: newId() };
   }
 
@@ -169,7 +190,7 @@ export async function startLinkedInApplication(
   while (Date.now() < deadline) {
     await dismissOverlays(page);
 
-    if (await firstPresent(page, APPLY_FORM_ROOT_SELECTORS)) {
+    if (await findVisibleFormRoot(page)) {
       return { page, formId: newId() };
     }
     if (await alreadyApplied(page)) {
@@ -206,7 +227,7 @@ export async function startLinkedInApplication(
   // Wait for the form root to appear (modal or in-page form).
   let formRootFound = false;
   for (let attempt = 0; attempt < 50; attempt++) {
-    if (await firstPresent(page, APPLY_FORM_ROOT_SELECTORS)) {
+    if (await findVisibleFormRoot(page)) {
       formRootFound = true;
       break;
     }
@@ -441,7 +462,7 @@ export async function submitLinkedInApplication(
   // Snapshot pre-click state so we can detect "form root disappeared"
   // as a success signal even when LinkedIn's confirmation copy doesn't
   // match any of our text patterns.
-  const formRootBefore = await firstPresent(session.page, APPLY_FORM_ROOT_SELECTORS);
+  const formRootBefore = await findVisibleFormRoot(session.page);
   const hadFormRootBefore = formRootBefore !== null;
 
   await button.locator.click();

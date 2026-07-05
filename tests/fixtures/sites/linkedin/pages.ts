@@ -181,6 +181,12 @@ export function easyApplyDetailPage(): string {
 export function easyApplyAnchorDetailPage(): string {
   const cta = `
     <form class="global-nav-typeahead" action="/search"><input name="q" placeholder="Search" /></form>
+    <!-- LinkedIn's job page always carries a HIDDEN role=dialog shell (the
+         "jump menu"). It must never satisfy the apply flow's form-root
+         detection — the 2026-07-05 incident, round two. -->
+    <div role="dialog" class="jump-menu" style="display: none">
+      <button type="button">Close jump menu</button>
+    </div>
     <a class="jobs-apply-button" href="/jobs/view/easy/apply?openSDUIApplyFlow=true"
        aria-label="Easy Apply to this job">Easy Apply to this job</a>
     <div id="anchor-apply-slot"></div>
