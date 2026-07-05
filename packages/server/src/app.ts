@@ -9,11 +9,15 @@ import { registerBearerAuth } from './http/auth.js';
 import { alertRoutes } from './http/routes/alerts.js';
 import { coverLetterRoutes } from './http/routes/cover-letters.js';
 import { cvRoutes } from './http/routes/cvs.js';
+import { dashboardRoutes } from './http/routes/dashboard.js';
 import { applicationRoutes } from './http/routes/applications.js';
 import { jobRoutes } from './http/routes/jobs.js';
 import { llmProviderRoutes } from './http/routes/llm-providers.js';
 import { profileRoutes } from './http/routes/profile.js';
+import { profileAnswersRoutes } from './http/routes/profile-answers.js';
+import { promptRoutes } from './http/routes/prompts.js';
 import { scheduleRoutes } from './http/routes/schedules.js';
+import { skillRoutes } from './http/routes/skills.js';
 import { searchRoutes } from './http/routes/searches.js';
 import { searchPreferencesRoutes } from './http/routes/search-preferences.js';
 import { settingsRoutes } from './http/routes/settings.js';
@@ -23,6 +27,8 @@ import { registerStatic } from './http/static.js';
 import { MAX_UPLOAD_BYTES } from './http/upload-limits.js';
 import { registerWebSocket } from './http/ws.js';
 import type { EventBus } from './events/bus.js';
+import type { PromptsService } from './services/prompts-service.js';
+import type { SkillsService } from './services/skills-service.js';
 
 export interface BuildAppDeps {
   db: DatabaseType;
@@ -32,6 +38,8 @@ export interface BuildAppDeps {
   bus: EventBus;
   browserManager: BrowserManagerHandle;
   linkedInConnectService: LinkedInConnectService;
+  prompts: PromptsService;
+  skills: SkillsService;
   poke: () => void;
 }
 
@@ -50,11 +58,14 @@ export async function buildApp(deps: BuildAppDeps): Promise<FastifyInstance> {
   await app.register(async (api) => {
     await systemRoutes(api, deps);
     await profileRoutes(api, { db: deps.db });
+    await profileAnswersRoutes(api, { db: deps.db });
     await cvRoutes(api, { db: deps.db, config: deps.config });
     await coverLetterRoutes(api, { db: deps.db, config: deps.config });
     await searchPreferencesRoutes(api, { db: deps.db });
     await scheduleRoutes(api, { db: deps.db });
     await settingsRoutes(api, { db: deps.db });
+    await promptRoutes(api, { prompts: deps.prompts });
+    await skillRoutes(api, { skills: deps.skills });
     await llmProviderRoutes(api, { db: deps.db });
     await siteRoutes(api, {
       db: deps.db,
@@ -63,8 +74,9 @@ export async function buildApp(deps: BuildAppDeps): Promise<FastifyInstance> {
     });
     await jobRoutes(api, { db: deps.db, bus: deps.bus });
     await applicationRoutes(api, { db: deps.db, bus: deps.bus });
-    await alertRoutes(api, { db: deps.db, bus: deps.bus });
-    await searchRoutes(api, { db: deps.db, poke: deps.poke });
+    await dashboardRoutes(api, { db: deps.db });
+    await alertRoutes(api, { db: deps.db, bus: deps.bus, poke: deps.poke });
+    await searchRoutes(api, { db: deps.db, poke: deps.poke, bus: deps.bus });
   });
   await registerStatic(app);
 

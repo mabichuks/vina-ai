@@ -11,16 +11,19 @@ import {
 import { buildApp } from '../../src/app.js';
 import { buildConfig, type ServerConfig } from '../../src/config.js';
 import { _resetVaultForTests, initVault } from '../../src/secrets/vault.js';
-import { createEventBus } from '../../src/events/bus.js';
+import { createEventBus, type EventBus } from '../../src/events/bus.js';
 import {
   createLinkedInConnectService,
   type LinkedInConnectService,
 } from '../../src/services/linkedin-connect-service.js';
+import { createPromptsService } from '../../src/services/prompts-service.js';
+import { createSkillsService } from '../../src/services/skills-service.js';
 import { freshTestDb } from '../db/helpers.js';
 
 export interface TestAppHandle {
   app: FastifyInstance;
   db: DatabaseType;
+  bus: EventBus;
   token: string;
   config: ServerConfig;
   browserManager: BrowserManagerHandle;
@@ -55,6 +58,8 @@ export async function buildTestApp(): Promise<TestAppHandle> {
     pollIntervalMs: 50,
     timeoutMs: 5_000,
   });
+  const prompts = await createPromptsService({ dataDir });
+  const skills = await createSkillsService({ dataDir });
   const app = await buildApp({
     db,
     config,
@@ -63,6 +68,8 @@ export async function buildTestApp(): Promise<TestAppHandle> {
     bus,
     browserManager,
     linkedInConnectService,
+    prompts,
+    skills,
     poke: () => undefined,
   });
 
@@ -71,12 +78,13 @@ export async function buildTestApp(): Promise<TestAppHandle> {
     await app.close();
     await browserManager.closeAll();
     db.close();
-    fs.rmSync(dataDir, { recursive: true, force: true });
+    fs.rmSync(dataDir, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
   };
 
   return {
     app,
     db,
+    bus,
     token: config.bearerToken,
     config,
     browserManager,

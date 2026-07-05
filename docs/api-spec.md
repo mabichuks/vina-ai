@@ -93,7 +93,7 @@ Never returns the SerpAPI key. Returns `{ ..., has_serpapi_key: boolean }`.
 
 ### `PATCH /api/settings`
 
-Body fields all optional: `mode`, `approval`, `browser_headful`, `paused`, `active_llm_provider_id`, `serpapi_key` (when set, server validates by making a minimal call before saving).
+Body fields all optional: `mode`, `approval`, `browser_headful`, `browser_stealth` (opt-in anti-detection masking, default `false`; ADR-021), `paused`, `active_llm_provider_id`, `serpapi_key` (when set, server validates by making a minimal call before saving).
 
 ### `DELETE /api/settings/serpapi-key`
 
@@ -148,11 +148,15 @@ For `kind='browser'` sites: logs out — deletes the storage state for the site.
 Query params:
 
 - `status` — comma-separated list of statuses to include
+- `min_score` — integer (0–100)
+- `page` — 1-based page number (default 1)
+- `page_size` — items per page, 1–100 (default 50)
 - `site_id` — filter by site (`linkedin`, `indeed`, `google`)
 - `apply_method` — `auto` or `manual`
-- `min_score` — integer
-- `q` — full-text on title + company + description
-- `limit`, `cursor` — pagination
+- `sort` — `score` (best match first, default) or `date` (newest first)
+- `q` — full-text on title + company + description (not yet implemented — accepted by the repository layer only)
+
+Response: `{ items: Job[], page: number, page_size: number, total: number }` where `total` is the filter-aware count of matching jobs independent of page size.
 
 ### `GET /api/jobs/:id`
 
@@ -169,6 +173,23 @@ Used in supervised mode: explicit user request to apply. Server inspects `apply_
 ### `POST /api/jobs/search-now`
 
 Triggers an immediate search across all enabled sources, bypassing the schedule. Returns 202.
+
+## Searches
+
+### `POST /api/searches/run-now`
+
+Body: `{ site_id: string }`. Enqueues an immediate search task for the given site, bypassing the schedule. Returns `202 { task_id, deduped }`. If a pending task already exists with `attempts === 0` the existing id is returned with `deduped: true`. If the task is in retry backoff (`attempts > 0`) `next_attempt_at` is fast-forwarded to now, the worker is poked, and the response includes `retried: true`.
+
+### `POST /api/searches/cancel`
+
+Body: `{ task_id?: string, site_id?: string }`. At least one must be provided.
+
+Cancels running **and** pending (retry-backoff) search tasks:
+
+- **`task_id`**: cancels the single named task. If the task is actively running, its in-memory abort signal is fired. If it is pending in retry backoff, its `task_queue` row is flipped to `cancelled` directly (the worker will never claim it). For backoff rows a `search:cancelled` WebSocket event is emitted immediately, since no handler is executing to emit it.
+- **`site_id`**: sweeps all cancellable tasks for that site — first aborts any live in-memory registrations, then flips all remaining `pending` rows for that site. A `search:cancelled` WebSocket event is emitted for each backoff row that is flipped.
+
+`cancelled` in the response counts distinct tasks acted on (rows flipped plus signals aborted, without double-counting). A second identical call returns `{ cancelled: 0 }` — idempotent.
 
 ## Applications
 
@@ -202,7 +223,19 @@ For applications in `queued`, `awaiting_user`, or `ready_for_manual_apply`. Mark
 
 ### `POST /api/applications/:id/retry`
 
-For applications in `failed`. Re-enqueues if the failure was transient.
+**For auto (Easy Apply) applications only**, in status `awaiting_user` or `failed`.
+
+- If the application is `awaiting_user`, it is first transitioned to `failed` (preserving any existing `failure_reason`) so the enqueuer's active-application dedupe cannot return it.
+- A fresh application + `apply` task is then created via the normal enqueue path.
+
+Response `202`:
+```json
+{ "application_id": "<new-id>", "status": "queued", "deduped": false }
+```
+
+Errors:
+- `404` — application not found.
+- `409` — `apply_method` is not `auto`, or status is outside `('awaiting_user', 'failed')`.
 
 ### `POST /api/applications/:id/mark-applied`
 
@@ -305,6 +338,7 @@ Returns a streamed ZIP with the database and all files. For backup.
 | `site:login_status`                  | `{ login_id, status, reason? }`                                                                                       |
 | `system:status`                      | full status object — sent on subscribe and every 5s while connected                                                   |
 | `queue:updated`                      | `{ pending: number, running: number }`                                                                                |
+| `search:cancelled`                   | `{ task_id, site_id, listings_added, scored }` — fired when a search task is cancelled (by the handler if running, or by the cancel route if the task was in retry backoff) |
 
 ### Client → Server envelope
 

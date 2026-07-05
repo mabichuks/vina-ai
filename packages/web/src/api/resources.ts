@@ -1,5 +1,5 @@
 import {
-  useInfiniteQuery,
+  keepPreviousData,
   useMutation,
   useQuery,
   useQueryClient,
@@ -7,6 +7,7 @@ import {
 import type {
   Alert,
   Application,
+  ApplicationListItem,
   ApplicationStatus,
   CoverLetter,
   Cv,
@@ -16,10 +17,14 @@ import type {
   LlmProviderInput,
   Profile,
   ProfileInput,
+  PromptDetail,
+  PromptSummary,
   SearchPreferences,
   SearchPreferencesInput,
   Settings,
   SettingsUpdate,
+  SkillDetail,
+  SkillSummary,
 } from '@vina/shared';
 import { api } from './client.js';
 
@@ -428,12 +433,16 @@ export interface JobsListResponse {
   items: Job[];
   page: number;
   page_size: number;
+  total: number;
 }
 
 export interface JobsFilters {
   /** Single status or array (joined comma-separated for the backend). */
   status?: JobStatus | JobStatus[];
   min_score?: number;
+  site_id?: 'linkedin' | 'indeed' | 'google';
+  apply_method?: 'auto' | 'manual';
+  sort?: 'score' | 'date';
   page?: number;
   page_size?: number;
 }
@@ -457,55 +466,41 @@ export function useJobs(filters: JobsFilters): { data: Job[]; isLoading: boolean
 }
 
 /**
- * Infinite-scroll jobs query. Auto-fetches the next page on `fetchNextPage()`;
- * the caller wires a sentinel via `IntersectionObserver` (or a "Load more"
- * button). Capped server-side at `page_size <= 100`; the UI passes 25 by
- * default to keep DOM weight bounded.
- *
- * Page numbers are 1-indexed (matches the REST API). `hasNextPage` is derived
- * by checking whether the last page returned a full `page_size` — when it
- * returns fewer, we've hit the end.
+ * Classic paged jobs query for the numbered-pagination Jobs page.
+ * `keepPreviousData` keeps the previous page's rows rendered while the next
+ * page loads, so page flips don't flash an empty list. The 'jobs' key prefix
+ * keeps the existing mutation invalidations (`['jobs']`) effective.
  */
-export function useInfiniteJobs(filters: Omit<JobsFilters, 'page'>): {
-  pages: Job[];
+export function useJobsPage(filters: JobsFilters): {
+  items: Job[];
+  total: number;
   isLoading: boolean;
-  isFetchingNextPage: boolean;
-  hasNextPage: boolean;
-  fetchNextPage: () => void;
 } {
   const pageSize = filters.page_size ?? 25;
-  const baseQs = (page: number): string => {
-    const qs = new URLSearchParams();
-    if (filters.status) {
-      qs.set(
-        'status',
-        Array.isArray(filters.status) ? filters.status.join(',') : filters.status,
-      );
-    }
-    if (filters.min_score !== undefined) qs.set('min_score', String(filters.min_score));
-    qs.set('page', String(page));
-    qs.set('page_size', String(pageSize));
-    return qs.toString();
-  };
+  const page = filters.page ?? 1;
+  const qs = new URLSearchParams();
+  if (filters.status) {
+    qs.set(
+      'status',
+      Array.isArray(filters.status) ? filters.status.join(',') : filters.status,
+    );
+  }
+  if (filters.min_score !== undefined) qs.set('min_score', String(filters.min_score));
+  if (filters.site_id) qs.set('site_id', filters.site_id);
+  if (filters.apply_method) qs.set('apply_method', filters.apply_method);
+  if (filters.sort) qs.set('sort', filters.sort);
+  qs.set('page', String(page));
+  qs.set('page_size', String(pageSize));
 
-  const q = useInfiniteQuery<JobsListResponse, Error>({
-    queryKey: ['jobs-infinite', { ...filters, page_size: pageSize }],
-    queryFn: ({ pageParam }) =>
-      api<JobsListResponse>(`/api/jobs?${baseQs(pageParam as number)}`),
-    initialPageParam: 1,
-    getNextPageParam: (lastPage) => {
-      if (lastPage.items.length < pageSize) return undefined;
-      return lastPage.page + 1;
-    },
+  const q = useQuery<JobsListResponse, Error>({
+    queryKey: ['jobs', 'page', qs.toString()],
+    queryFn: () => api<JobsListResponse>(`/api/jobs?${qs.toString()}`),
+    placeholderData: keepPreviousData,
   });
-
-  const flat: Job[] = (q.data?.pages ?? []).flatMap((p) => p.items);
   return {
-    pages: flat,
+    items: q.data?.items ?? [],
+    total: q.data?.total ?? 0,
     isLoading: q.isLoading,
-    isFetchingNextPage: q.isFetchingNextPage,
-    hasNextPage: q.hasNextPage ?? false,
-    fetchNextPage: () => void q.fetchNextPage(),
   };
 }
 
@@ -594,6 +589,20 @@ export function useDismissAlert(): { mutate: (id: string) => Promise<void> } {
     onSuccess: () => qc.invalidateQueries({ queryKey: ['alerts'] }),
   });
   return { mutate: (id) => mut.mutateAsync(id) };
+}
+
+export function useClearResolvedAlerts(): {
+  mutate: () => Promise<void>;
+  isPending: boolean;
+} {
+  const qc = useQueryClient();
+  const mut = useMutation<void, Error, void>({
+    mutationFn: async () => {
+      await api('/api/alerts/resolved', { method: 'DELETE' });
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['alerts'] }),
+  });
+  return { mutate: () => mut.mutateAsync(), isPending: mut.isPending };
 }
 
 /* ------------------------------------------------------------------ */
@@ -766,21 +775,25 @@ export function useDisconnectGoogleJobs(): {
 /* ------------------------------------------------------------------ */
 
 interface UseApplicationsOpts {
-  status?: ApplicationStatus;
+  /** `'all'` returns every application regardless of status. */
+  status?: ApplicationStatus | 'all';
   pageSize?: number;
+  /** Optional auto-refetch interval (ms) so the page stays fresh as tasks run. */
+  refetchIntervalMs?: number;
 }
 
 export function useApplications(opts: UseApplicationsOpts = {}): {
-  data: Application[];
+  data: ApplicationListItem[];
   isLoading: boolean;
 } {
   const status = opts.status ?? 'ready_for_manual_apply';
-  const q = useQuery<{ items: Application[] }>({
+  const q = useQuery<{ items: ApplicationListItem[] }>({
     queryKey: ['applications', status],
     queryFn: () =>
-      api<{ items: Application[] }>(
+      api<{ items: ApplicationListItem[] }>(
         `/api/applications?status=${status}&page_size=${opts.pageSize ?? 50}`,
       ),
+    ...(opts.refetchIntervalMs ? { refetchInterval: opts.refetchIntervalMs } : {}),
   });
   return { data: q.data?.items ?? [], isLoading: q.isLoading };
 }
@@ -860,10 +873,183 @@ export function usePrepareJob(): {
   return { mutate: (id) => mut.mutateAsync(id), isPending: mut.isPending };
 }
 
+export function useAutoApplyJob(): {
+  mutate: (jobId: string) => Promise<{ application_id: string; status: string; deduped: boolean }>;
+  isPending: boolean;
+} {
+  const qc = useQueryClient();
+  const mut = useMutation<
+    { application_id: string; status: string; deduped: boolean },
+    Error,
+    string
+  >({
+    mutationFn: (jobId) =>
+      api<{ application_id: string; status: string; deduped: boolean }>(
+        `/api/jobs/${jobId}/apply`,
+        { method: 'POST', body: {} },
+      ),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ['applications'] });
+      void qc.invalidateQueries({ queryKey: ['jobs'] });
+    },
+  });
+  return { mutate: (id) => mut.mutateAsync(id), isPending: mut.isPending };
+}
+
+export function useRetryApplication(): {
+  mutate: (id: string) => Promise<{ application_id: string; status: string; deduped: boolean }>;
+  isPending: boolean;
+} {
+  const qc = useQueryClient();
+  const mut = useMutation<
+    { application_id: string; status: string; deduped: boolean },
+    Error,
+    string
+  >({
+    mutationFn: (id) =>
+      api<{ application_id: string; status: string; deduped: boolean }>(
+        `/api/applications/${id}/retry`,
+        { method: 'POST', body: {} },
+      ),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ['applications'] });
+      void qc.invalidateQueries({ queryKey: ['jobs'] });
+    },
+  });
+  return { mutate: (id) => mut.mutateAsync(id), isPending: mut.isPending };
+}
+
 export function tailoredCvUrl(applicationId: string): string {
   return `/api/applications/${applicationId}/tailored-cv`;
 }
 
 export function tailoredCoverLetterUrl(applicationId: string): string {
   return `/api/applications/${applicationId}/tailored-cover-letter`;
+}
+
+/* ------------------------------------------------------------------ */
+/* Prompts                                                             */
+/* ------------------------------------------------------------------ */
+
+export function usePrompts(): { data: PromptSummary[]; isLoading: boolean } {
+  const q = useQuery<{ items: PromptSummary[] }>({
+    queryKey: ['prompts'],
+    queryFn: () => api<{ items: PromptSummary[] }>('/api/prompts'),
+  });
+  return { data: q.data?.items ?? [], isLoading: q.isLoading };
+}
+
+export function usePrompt(id: string | null): {
+  data: PromptDetail | null;
+  isLoading: boolean;
+} {
+  const q = useQuery<PromptDetail>({
+    queryKey: ['prompt', id],
+    queryFn: () => api<PromptDetail>(`/api/prompts/${id!}`),
+    enabled: id !== null,
+  });
+  return { data: q.data ?? null, isLoading: q.isLoading };
+}
+
+export function useSavePromptOverride(): {
+  mutate: (input: { id: string; body: string }) => Promise<PromptDetail>;
+  isPending: boolean;
+} {
+  const qc = useQueryClient();
+  const mut = useMutation<PromptDetail, Error, { id: string; body: string }>({
+    mutationFn: ({ id, body }) =>
+      api<PromptDetail>(`/api/prompts/${id}`, { method: 'PUT', body: { body } }),
+    onSuccess: (_data, vars) => {
+      void qc.invalidateQueries({ queryKey: ['prompts'] });
+      void qc.invalidateQueries({ queryKey: ['prompt', vars.id] });
+    },
+  });
+  return {
+    mutate: (input) => mut.mutateAsync(input),
+    isPending: mut.isPending,
+  };
+}
+
+export function useRevertPrompt(): {
+  mutate: (id: string) => Promise<void>;
+  isPending: boolean;
+} {
+  const qc = useQueryClient();
+  const mut = useMutation<void, Error, string>({
+    mutationFn: async (id) => {
+      await api(`/api/prompts/${id}`, { method: 'DELETE' });
+    },
+    onSuccess: (_v, id) => {
+      void qc.invalidateQueries({ queryKey: ['prompts'] });
+      void qc.invalidateQueries({ queryKey: ['prompt', id] });
+    },
+  });
+  return { mutate: (id) => mut.mutateAsync(id), isPending: mut.isPending };
+}
+
+/* ------------------------------------------------------------------ */
+/* Skills                                                              */
+/* ------------------------------------------------------------------ */
+
+export function useSkills(): { data: SkillSummary[]; isLoading: boolean } {
+  const q = useQuery<{ items: SkillSummary[] }>({
+    queryKey: ['skills'],
+    queryFn: () => api<{ items: SkillSummary[] }>('/api/skills'),
+  });
+  return { data: q.data?.items ?? [], isLoading: q.isLoading };
+}
+
+export function useSkill(id: string | null): {
+  data: SkillDetail | null;
+  isLoading: boolean;
+} {
+  const q = useQuery<SkillDetail>({
+    queryKey: ['skill', id],
+    queryFn: () => api<SkillDetail>(`/api/skills/${id!}`),
+    enabled: id !== null,
+  });
+  return { data: q.data ?? null, isLoading: q.isLoading };
+}
+
+export function useWriteSkill(): {
+  mutate: (input: { id: string; body: string }) => Promise<SkillDetail>;
+  isPending: boolean;
+} {
+  const qc = useQueryClient();
+  const mut = useMutation<SkillDetail, Error, { id: string; body: string }>({
+    mutationFn: ({ id, body }) =>
+      api<SkillDetail>(`/api/skills/${id}`, { method: 'PUT', body: { body } }),
+    onSuccess: (_d, vars) => {
+      void qc.invalidateQueries({ queryKey: ['skills'] });
+      void qc.invalidateQueries({ queryKey: ['skill', vars.id] });
+    },
+  });
+  return { mutate: (input) => mut.mutateAsync(input), isPending: mut.isPending };
+}
+
+export function useCreateSkill(): {
+  mutate: (input: { id: string; body: string }) => Promise<SkillDetail>;
+  isPending: boolean;
+} {
+  const qc = useQueryClient();
+  const mut = useMutation<SkillDetail, Error, { id: string; body: string }>({
+    mutationFn: ({ id, body }) =>
+      api<SkillDetail>(`/api/skills/${id}`, { method: 'POST', body: { body } }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['skills'] }),
+  });
+  return { mutate: (input) => mut.mutateAsync(input), isPending: mut.isPending };
+}
+
+export function useDeleteSkill(): {
+  mutate: (id: string) => Promise<void>;
+  isPending: boolean;
+} {
+  const qc = useQueryClient();
+  const mut = useMutation<void, Error, string>({
+    mutationFn: async (id) => {
+      await api(`/api/skills/${id}`, { method: 'DELETE' });
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['skills'] }),
+  });
+  return { mutate: (id) => mut.mutateAsync(id), isPending: mut.isPending };
 }

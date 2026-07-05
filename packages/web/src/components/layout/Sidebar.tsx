@@ -4,16 +4,18 @@ import { useAlerts } from '../../api/resources.js';
 interface NavItem {
   to: string;
   label: string;
-  /** Pulled from alerts count if set. */
+  /** Pulled from alerts count if set. Use `'__any__'` for "any open alert". */
   badgeAlertKind?: string;
 }
+
+const ANY_OPEN_ALERT = '__any__';
 
 const ITEMS: NavItem[] = [
   { to: '/', label: 'Dashboard' },
   { to: '/jobs', label: 'Jobs' },
   { to: '/ready', label: 'Ready to apply', badgeAlertKind: 'ready_for_manual_apply' },
   { to: '/applications', label: 'Applications' },
-  { to: '/alerts', label: 'Alerts' },
+  { to: '/alerts', label: 'Alerts', badgeAlertKind: ANY_OPEN_ALERT },
   { to: '/profile', label: 'Profile' },
   { to: '/settings', label: 'Settings' },
 ];
@@ -21,11 +23,14 @@ const ITEMS: NavItem[] = [
 export function Sidebar(): JSX.Element {
   const alerts = useAlerts();
   const counts = new Map<string, number>();
+  let totalOpen = 0;
   for (const a of alerts.data) {
     if (a.status === 'open') {
       counts.set(a.kind, (counts.get(a.kind) ?? 0) + 1);
+      totalOpen++;
     }
   }
+  counts.set(ANY_OPEN_ALERT, totalOpen);
 
   return (
     <nav

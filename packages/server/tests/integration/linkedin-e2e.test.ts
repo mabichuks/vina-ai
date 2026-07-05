@@ -69,7 +69,7 @@ beforeEach(() => {
 afterEach(async () => {
   await bm.closeAll();
   db.close();
-  fs.rmSync(dataDir, { recursive: true, force: true });
+  fs.rmSync(dataDir, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
 });
 
 describe('LinkedIn slice end-to-end', () => {

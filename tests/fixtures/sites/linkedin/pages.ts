@@ -134,11 +134,83 @@ function detailPageBase(listing: FixtureListing, applyHtml: string): string {
   `);
 }
 
+/**
+ * The fixture Easy Apply form markup (fields only — no submit handler script),
+ * shared between the button-variant and anchor-variant detail pages so both
+ * exercise the identical form-walking path. Extracted to a const so the two
+ * pages don't diverge silently. The submit handler is wired separately in each
+ * page so it runs in the document context rather than being injected via
+ * innerHTML (scripts inside innerHTML are intentionally not executed by browsers).
+ */
+const EASY_APPLY_FORM_HTML = `
+  <form data-vina-fixture="easy-apply">
+    <label>First name <input type="text" name="first_name" required></label>
+    <label>Last name <input type="text" name="last_name" required></label>
+    <label>Email <input type="email" name="email" required></label>
+    <label>Resume <input type="file" name="resume" data-vina-field="cv"></label>
+    <button type="submit">Submit application</button>
+  </form>
+`;
+
 export function easyApplyDetailPage(): string {
   return detailPageBase(
     FIXTURE_LISTINGS.easy,
-    `<button data-test-id="${APPLY_BUTTON_TEST_ID}">Easy Apply</button>`,
+    `<button data-test-id="${APPLY_BUTTON_TEST_ID}">Easy Apply</button>
+    ${EASY_APPLY_FORM_HTML}
+    <script>
+      document.querySelector('form[data-vina-fixture="easy-apply"]').addEventListener('submit', (e) => {
+        e.preventDefault();
+        const fields = new FormData(e.target);
+        const ok = ['first_name','last_name','email'].every((k) => fields.get(k));
+        if (ok) {
+          document.body.innerHTML =
+            '<h2 data-vina-fixture="apply-success">Application submitted</h2>';
+        }
+      });
+    </script>`,
   );
+}
+
+/**
+ * 2026 anchor-variant Easy Apply detail page. The CTA is an <a> (role=link,
+ * accessible name "Easy Apply to this job"), not a <button> — the real page
+ * that broke the apply flow on 2026-07-05. Also carries a decoy global-nav
+ * search <form> so tests pin the form-root false positive: the apply flow
+ * must NOT treat that form as the application modal.
+ */
+export function easyApplyAnchorDetailPage(): string {
+  const cta = `
+    <form class="global-nav-typeahead" action="/search"><input name="q" placeholder="Search" /></form>
+    <!-- LinkedIn's job page always carries a HIDDEN role=dialog shell (the
+         "jump menu"). It must never satisfy the apply flow's form-root
+         detection — the 2026-07-05 incident, round two. -->
+    <div role="dialog" class="jump-menu" style="display: none">
+      <button type="button">Close jump menu</button>
+    </div>
+    <a class="jobs-apply-button" href="/jobs/view/easy/apply?openSDUIApplyFlow=true"
+       aria-label="Easy Apply to this job">Easy Apply to this job</a>
+    <div id="anchor-apply-slot"></div>
+    <template id="anchor-apply-template">${EASY_APPLY_FORM_HTML}</template>
+    <script>
+      document.querySelector('a.jobs-apply-button').addEventListener('click', (e) => {
+        e.preventDefault();
+        document.getElementById('anchor-apply-slot').innerHTML =
+          document.getElementById('anchor-apply-template').innerHTML;
+        // Wire the submit handler after injecting the form (innerHTML-injected
+        // scripts do not execute, so the handler must be attached here).
+        document.querySelector('form[data-vina-fixture="easy-apply"]').addEventListener('submit', (ev) => {
+          ev.preventDefault();
+          const fields = new FormData(ev.target);
+          const ok = ['first_name','last_name','email'].every((k) => fields.get(k));
+          if (ok) {
+            document.body.innerHTML =
+              '<h2 data-vina-fixture="apply-success">Application submitted</h2>';
+          }
+        });
+      });
+    </script>
+  `;
+  return detailPageBase(FIXTURE_LISTINGS.easy, cta);
 }
 
 export function externalRedirectDetailPage(): string {
@@ -153,6 +225,26 @@ export function externalNoUrlDetailPage(): string {
     FIXTURE_LISTINGS.ndi,
     `<button data-test-id="${APPLY_BUTTON_TEST_ID}">Apply</button>`,
   );
+}
+
+/**
+ * Logged-out "jserp" guest SERP: job cards exist but carry
+ * `public_jobs_*` tracking names and /jobs/view/ anchors instead of the
+ * authenticated SPA structure. Mirrors what LinkedIn serves when the
+ * session cookie has expired (plus an authwall modal).
+ * Guest hrefs are slug-style (job title and company slug, with id at the tail),
+ * which is why the adapter cannot extract an external id from guest cards —
+ * the fixture must mirror that unextractable pattern.
+ */
+export function guestSearchResultsPage(): string {
+  return `<!doctype html><html><head><title>563 Software jobs in United Kingdom</title></head>
+<body>
+  <div role="dialog" class="authwall-modal">Sign in to view more jobs</div>
+  <ul class="jobs-search__results-list">
+    <li><a data-tracking-control-name="public_jobs_jserp-result_search-card" href="/jobs/view/senior-software-engineer-at-spectrum-it-recruitment-4306548812">Senior Software Engineer</a></li>
+    <li><a data-tracking-control-name="public_jobs_jserp-result_search-card" href="/jobs/view/backend-engineer-at-capital-on-tap-4306548813">Backend Engineer</a></li>
+  </ul>
+</body></html>`;
 }
 
 /** Exported for tests that want to assert on listing data directly. */

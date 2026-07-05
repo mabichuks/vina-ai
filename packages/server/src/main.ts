@@ -23,6 +23,7 @@ import {
 import { createEventBus } from './events/bus.js';
 import { createSearchHandler } from './queue/handlers/search.js';
 import { createScoreHandler } from './queue/handlers/score.js';
+import { createApplyHandler } from './queue/handlers/apply.js';
 import { createPrepareManualApplyHandler } from './queue/handlers/prepare-manual-apply.js';
 import { createManualApplyToolKit } from './orchestrator/tools/index.js';
 import { updateApplicationStatus } from './db/repositories/applications.js';
@@ -31,6 +32,8 @@ import { runResolveSelector, type StructuredScorer } from '@vina/orchestrator';
 import { createScheduler } from './scheduler/scheduler.js';
 import { createLinkedInConnectService } from './services/linkedin-connect-service.js';
 import { getActiveChatModel } from './services/llm-service.js';
+import { createPromptsService } from './services/prompts-service.js';
+import { createSkillsService } from './services/skills-service.js';
 
 const log = createLogger('main');
 
@@ -125,6 +128,9 @@ export async function bootServer(overrides: Partial<ServerConfig> = {}): Promise
     dataDir: config.dataDir,
   });
 
+  const prompts = await createPromptsService({ dataDir: config.dataDir });
+  const skills = await createSkillsService({ dataDir: config.dataDir });
+
   // M10 ships `search` and `score`. Other TaskKinds (tailor, apply,
   // prepare_manual_apply, resume) intentionally have no entry — the worker
   // marks them `failed: unhandled_kind` (no retry) until M14+ provides
@@ -154,6 +160,7 @@ export async function bootServer(overrides: Partial<ServerConfig> = {}): Promise
         db,
         bus,
         buildModel: () => getActiveChatModel(db),
+        promptLoader: prompts.loader,
       }),
     ),
     prepare_manual_apply: adapt(
@@ -162,6 +169,19 @@ export async function bootServer(overrides: Partial<ServerConfig> = {}): Promise
         bus,
         buildModel: () => getActiveChatModel(db),
         toolKit: createManualApplyToolKit({ dataDir: config.dataDir }),
+        promptLoader: prompts.loader,
+      }),
+    ),
+    apply: adapt(
+      createApplyHandler({
+        db,
+        bus,
+        browserManager,
+        adapters: { linkedin: linkedInAdapter },
+        manualApplyToolKit: createManualApplyToolKit({ dataDir: config.dataDir }),
+        buildModel: () => getActiveChatModel(db),
+        promptLoader: prompts.loader,
+        skillRegistry: skills.registry,
       }),
     ),
   };
@@ -221,6 +241,8 @@ export async function bootServer(overrides: Partial<ServerConfig> = {}): Promise
     bus,
     browserManager,
     linkedInConnectService,
+    prompts,
+    skills,
     poke: () => worker.poke(),
   });
 

@@ -42,7 +42,7 @@ beforeEach(() => {
 afterEach(async () => {
   await bm.closeAll();
   db.close();
-  fs.rmSync(dataDir, { recursive: true, force: true });
+  fs.rmSync(dataDir, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
 });
 
 describe('search handler — real LinkedIn flow', () => {
@@ -107,4 +107,52 @@ describe('search handler — real LinkedIn flow', () => {
     });
     await expect(handler({ site_id: 'unknown' })).rejects.toThrow(/site/i);
   });
+
+  it('throws session-expired when the feed navigation lands off-feed', async () => {
+    const handler = createSearchHandler({
+      db,
+      bus: createEventBus(),
+      browserManager: bm,
+      adapters: { linkedin: linkedInAdapter },
+      // Guest-home stand-in: a LinkedIn page that is not /feed and not /login.
+      feedUrlOverride: `${fixture.url}/jobs`,
+    });
+    await expect(handler({ site_id: 'linkedin' })).rejects.toThrow(/session/i);
+    expect(listAlerts(db, { kind: 'linkedin_session_expired' }).length).toBe(1);
+  }, 60_000);
+
+  it('does not duplicate linkedin_session_expired alerts on retry', async () => {
+    // The worker retries session-expired searches — running the handler a
+    // second time must not pile up identical action_required alerts; one is
+    // enough for the user to act on.
+    const handler = createSearchHandler({
+      db,
+      bus: createEventBus(),
+      browserManager: bm,
+      adapters: { linkedin: linkedInAdapter },
+      feedUrlOverride: `${fixture.url}/login`,
+    });
+
+    await expect(handler({ site_id: 'linkedin' })).rejects.toThrow(/session/i);
+    await expect(handler({ site_id: 'linkedin' })).rejects.toThrow(/session/i);
+    expect(listAlerts(db, { kind: 'linkedin_session_expired' }).length).toBe(1);
+  }, 90_000);
+
+  it('classifies the guest SERP as session-expired, not "0 listings"', async () => {
+    const guest = await startLinkedInFixture({ serp: 'guest' });
+    try {
+      const handler = createSearchHandler({
+        db,
+        bus: createEventBus(),
+        browserManager: bm,
+        adapters: { linkedin: linkedInAdapter },
+        feedUrlOverride: `${guest.url}/feed`,
+      });
+      await expect(handler({ site_id: 'linkedin' })).rejects.toThrow(/session/i);
+      expect(listAlerts(db, { kind: 'linkedin_session_expired' }).length).toBe(1);
+      expect(listAlerts(db, { kind: 'search_failed' }).length).toBe(0);
+    } finally {
+      await guest.close();
+    }
+  }, 90_000);
 });

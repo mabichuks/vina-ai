@@ -3,10 +3,11 @@ import PDFDocument from 'pdfkit';
 import { ProviderError } from '@vina/shared';
 import { Document, Packer, Paragraph, TextRun } from 'docx';
 import {
-  TAILOR_COVER_LETTER_SYSTEM,
   tailorCoverLetterUserPrompt,
   type TailorCoverLetterInput,
 } from '../prompts/tailor-cover-letter.js';
+import { getDefaultPromptLoader } from '../prompts/default-loader.js';
+import type { PromptLoader } from '../prompts/loader.js';
 import type { StructuredScorer, ScoreMessages } from './score-job.js';
 
 export const TailorCoverLetterOutputSchema = z.object({
@@ -27,15 +28,18 @@ function truncate(text: string, max: number): string {
 export async function runTailorCoverLetter(
   input: TailorCoverLetterInput,
   model: StructuredScorer,
+  opts: { promptLoader?: PromptLoader } = {},
 ): Promise<TailorCoverLetterOutput> {
   const trimmed: TailorCoverLetterInput = {
     ...input,
     source_template: truncate(input.source_template, MAX_TEMPLATE_CHARS),
     job: { ...input.job, description: truncate(input.job.description, MAX_JOB_CHARS) },
   };
+  const loader = opts.promptLoader ?? getDefaultPromptLoader();
+  const system = await loader.render('tailor-cover-letter');
   const structured = model.withStructuredOutput(TailorCoverLetterOutputSchema);
   const messages: ScoreMessages = [
-    { role: 'system', content: TAILOR_COVER_LETTER_SYSTEM },
+    { role: 'system', content: system },
     { role: 'user', content: tailorCoverLetterUserPrompt(trimmed) },
   ];
 

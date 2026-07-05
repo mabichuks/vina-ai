@@ -1,20 +1,29 @@
+import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
-import { SCORE_SYSTEM, scoreUserPrompt } from '../../src/prompts/score.js';
+import { createPromptLoader } from '../../src/prompts/loader.js';
+import { scoreUserPrompt } from '../../src/prompts/score.js';
 
-describe('score prompt', () => {
-  it('system prompt includes the documented rubric weights', () => {
-    expect(SCORE_SYSTEM).toContain('Title fit');
-    expect(SCORE_SYSTEM).toContain('40%');
-    expect(SCORE_SYSTEM).toContain('Skills');
-    expect(SCORE_SYSTEM).toContain('30%');
-    expect(SCORE_SYSTEM).toContain('Seniority');
-    expect(SCORE_SYSTEM).toContain('Location');
-    expect(SCORE_SYSTEM).toContain('15%');
-    expect(SCORE_SYSTEM).toContain('Excluded companies');
-    expect(SCORE_SYSTEM).toContain('"score"');
-    expect(SCORE_SYSTEM).toContain('"justification"');
+const loader = createPromptLoader({
+  defaultsDir: fileURLToPath(new URL('../../prompts/', import.meta.url)),
+});
+
+describe('score system prompt (loaded from prompts/score.md)', () => {
+  it('includes the documented rubric weights', async () => {
+    const body = await loader.render('score');
+    expect(body).toContain('Title fit');
+    expect(body).toContain('40%');
+    expect(body).toContain('Skills');
+    expect(body).toContain('30%');
+    expect(body).toContain('Seniority');
+    expect(body).toContain('Location');
+    expect(body).toContain('15%');
+    expect(body).toContain('Excluded companies');
+    expect(body).toContain('"score"');
+    expect(body).toContain('"justification"');
   });
+});
 
+describe('scoreUserPrompt', () => {
   it('user prompt renders profile, prefs, and listing into stable sections', () => {
     const out = scoreUserPrompt({
       job: {

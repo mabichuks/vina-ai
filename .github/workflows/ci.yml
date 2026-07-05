@@ -38,7 +38,16 @@ jobs:
         run: pnpm build
 
       - name: Test
-        run: pnpm test
+        # --maxWorkers=2 bounds concurrent Chromium instances — browser-heavy
+        # suites SIGABRT under memory pressure when every worker launches one.
+        run: pnpm test -- --maxWorkers=2
+        env:
+          # The managed-CDP launcher spawns Chromium directly (ADR-022),
+          # bypassing Playwright's launcher defaults. GitHub's Ubuntu images
+          # restrict unprivileged user namespaces (AppArmor), which makes the
+          # Chromium sandbox abort at startup — opt out in CI only; user
+          # machines keep the sandbox.
+          VINA_CHROMIUM_NO_SANDBOX: "1"
 
       - name: Lint
         run: pnpm lint

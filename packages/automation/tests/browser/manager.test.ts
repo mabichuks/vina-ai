@@ -4,11 +4,11 @@ import fs from 'node:fs/promises';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createBrowserManager } from '../../src/browser/manager.js';
 
-// Mock the launch module so individual tests can override the function's
+// Mock the cdp module so individual tests can override the function's
 // return value. By default we passthrough to the real implementation.
-vi.mock('../../src/browser/launch.js', async () => {
-  const actual = await vi.importActual<typeof import('../../src/browser/launch.js')>(
-    '../../src/browser/launch.js',
+vi.mock('../../src/browser/cdp.js', async () => {
+  const actual = await vi.importActual<typeof import('../../src/browser/cdp.js')>(
+    '../../src/browser/cdp.js',
   );
   return { ...actual };
 });
@@ -19,7 +19,7 @@ beforeEach(async () => {
   dataDir = await fs.mkdtemp(path.join(os.tmpdir(), 'vina-mgr-test-'));
 });
 afterEach(async () => {
-  await fs.rm(dataDir, { recursive: true, force: true });
+  await fs.rm(dataDir, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
 });
 
 describe('BrowserManager', () => {
@@ -79,8 +79,8 @@ describe('BrowserManager', () => {
   it('evicts a failed launch from the cache so the next call retries', async () => {
     // First call: force a launch failure via mock.
     const launchMock = vi.spyOn(
-      await import('../../src/browser/launch.js'),
-      'launchSiteContext',
+      await import('../../src/browser/cdp.js'),
+      'launchCdpSession',
     );
     launchMock.mockRejectedValueOnce(new Error('chromium missing'));
 

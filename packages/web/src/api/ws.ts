@@ -50,6 +50,7 @@ interface SearchCompletedPayload {
 }
 interface SearchFailedPayload {
   error_kind: string;
+  will_retry?: boolean;
 }
 
 /**
@@ -95,8 +96,18 @@ function updateSearchProgressFor(eventType: string, payload: unknown): void {
       break;
     }
     case 'search:failed': {
-      const errorKind = (payload as SearchFailedPayload | undefined)?.error_kind ?? 'unknown';
-      store.markError(errorKind);
+      const p = payload as SearchFailedPayload | undefined;
+      // Session expiry retries are pointless from the user's seat — surface
+      // the actionable error immediately instead of "retrying…".
+      if (p?.error_kind === 'session_expired') {
+        store.markError('session_expired');
+        break;
+      }
+      if (p?.will_retry) {
+        store.markRetrying();
+        break;
+      }
+      store.markError(p?.error_kind ?? 'unknown');
       break;
     }
   }

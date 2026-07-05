@@ -72,9 +72,9 @@ describe('001_init: settings / llm_providers FK', () => {
        VALUES ('01PROV', 'anthropic', 'Claude', 'claude-opus-4-7', '2026-04-28T10:00:00Z')`,
     ).run();
 
+    // Migration 007 seeds the 'app' row; update it to point at the provider.
     db.prepare(
-      `INSERT INTO settings (id, mode, approval, active_llm_provider_id, updated_at)
-       VALUES ('app', 'autonomous', 'review-first', '01PROV', '2026-04-28T10:00:00Z')`,
+      `UPDATE settings SET active_llm_provider_id = '01PROV' WHERE id = 'app'`,
     ).run();
 
     // Deleting the provider while settings references it must fail (RESTRICT).
@@ -89,8 +89,8 @@ describe('001_init: settings / llm_providers FK', () => {
     expect(() =>
       db
         .prepare(
-          `INSERT INTO settings (id, mode, approval, updated_at)
-           VALUES ('global', 'autonomous', 'review-first', '2026-04-28T10:00:00Z')`,
+          `INSERT INTO settings (id, easy_apply_mode, updated_at)
+           VALUES ('global', 'autonomous', '2026-04-28T10:00:00Z')`,
         )
         .run(),
     ).toThrow(/CHECK/);
@@ -334,6 +334,22 @@ describe('005_tailored_pdf_paths', () => {
     const names = new Set(cols.map((c) => c.name));
     expect(names.has('tailored_cv_pdf_path')).toBe(true);
     expect(names.has('tailored_cover_letter_pdf_path')).toBe(true);
+    db.close();
+  });
+});
+
+describe('006_browser_stealth', () => {
+  it('adds browser_stealth column to settings defaulting to 0 (opt-in masking per ADR-021)', () => {
+    const db = freshDb();
+    const cols = db.prepare(`PRAGMA table_info(settings)`).all() as {
+      name: string;
+      dflt_value: string | null;
+      notnull: number;
+    }[];
+    const col = cols.find((c) => c.name === 'browser_stealth');
+    expect(col).toBeDefined();
+    expect(col?.notnull).toBe(1);
+    expect(col?.dflt_value).toBe('0');
     db.close();
   });
 });

@@ -26,9 +26,10 @@ function parseLogLevel(input: string | undefined): ServerConfig['logLevel'] {
 }
 
 function parsePort(input: string | undefined): number {
-  if (!input) return DEFAULT_PORT;
+  if (input === undefined) return DEFAULT_PORT;
   const n = Number.parseInt(input, 10);
-  return Number.isFinite(n) && n > 0 && n < 65536 ? n : DEFAULT_PORT;
+  // `0` means bind an ephemeral port (tests rely on this); reject NaN / out-of-range.
+  return Number.isFinite(n) && n >= 0 && n < 65536 ? n : DEFAULT_PORT;
 }
 
 function ensureDir(dir: string): void {

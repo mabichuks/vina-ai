@@ -1,9 +1,10 @@
-import { useEffect, useRef, useState } from 'react';
+import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import type { JobStatus } from '@vina/shared';
 import {
   useApplications,
-  useInfiniteJobs,
+  useAutoApplyJob,
+  useJobsPage,
   useLinkedInStatus,
   useMarkJobApplied,
   usePrepareJob,
@@ -11,12 +12,15 @@ import {
   useSearchPreferences,
   useSkipJob,
 } from '../../api/resources.js';
+import { PaginationBar } from '../../components/ui/pagination-bar.js';
 import { SearchActivityPanel } from '../../components/search/SearchActivityPanel.js';
 import { SearchNowButton } from '../../components/search/SearchNowButton.js';
 import { useUiStore } from '../../store/ui-store.js';
 import { applyHref, JobCard } from './JobCard.js';
 
 type Tab = 'new' | 'applied' | 'skipped';
+
+const PAGE_SIZE = 10;
 
 const TAB_LABELS: Record<Tab, string> = {
   new: 'New',
@@ -30,7 +34,9 @@ const TAB_LABELS: Record<Tab, string> = {
 // becomes visible.
 const STATUS_FILTER_FOR_TAB: Record<Tab, JobStatus | JobStatus[]> = {
   new: ['new', 'scored'],
-  applied: 'applied_manually',
+  // Easy Apply submissions land as 'submitted'; the manual pipeline uses
+  // 'applied_manually'. The user-facing Applied tab means both.
+  applied: ['applied_manually', 'submitted'],
   skipped: 'skipped',
 };
 
@@ -40,36 +46,46 @@ export function JobsPage(): JSX.Element {
   const linkedin = useLinkedInStatus({ pollMs: 5000 });
   const minScore = prefs.data?.score_threshold ?? 70;
 
-  const jobs = useInfiniteJobs({
+  const [sort, setSort] = useState<'score' | 'date'>('score');
+  const [applyMethod, setApplyMethod] = useState<'' | 'auto' | 'manual'>('');
+  const [siteId, setSiteId] = useState<'' | 'linkedin' | 'indeed' | 'google'>('');
+
+  const [page, setPage] = useState(1);
+  // Filter changes re-anchor to page 1 — page 7 of a different filter set is
+  // meaningless. React's adjust-state-during-render pattern: compare a derived
+  // key; if it changed, reset page synchronously in this render cycle instead
+  // of scheduling an effect that would cause a phantom extra fetch.
+  const filterKey = `${tab}:${minScore}:${sort}:${applyMethod}:${siteId}`;
+  const [prevKey, setPrevKey] = useState(filterKey);
+  if (prevKey !== filterKey) {
+    setPrevKey(filterKey);
+    setPage(1);
+  }
+
+  const jobs = useJobsPage({
     status: STATUS_FILTER_FOR_TAB[tab],
     ...(tab === 'new' && { min_score: minScore }),
-    page_size: 25,
+    ...(applyMethod && { apply_method: applyMethod }),
+    ...(siteId && { site_id: siteId }),
+    sort,
+    page,
+    page_size: PAGE_SIZE,
   });
 
-  // IntersectionObserver-driven infinite scroll: when the sentinel scrolls
-  // into view we ask for the next page. The sentinel sits below the last
-  // card; if there's nothing more to load it never fires.
-  const sentinelRef = useRef<HTMLDivElement | null>(null);
-  useEffect(() => {
-    const el = sentinelRef.current;
-    if (!el) return undefined;
-    if (!jobs.hasNextPage) return undefined;
-    const obs = new IntersectionObserver(
-      (entries) => {
-        if (entries.some((e) => e.isIntersecting) && !jobs.isFetchingNextPage) {
-          jobs.fetchNextPage();
-        }
-      },
-      { rootMargin: '200px' },
-    );
-    obs.observe(el);
-    return () => obs.disconnect();
-  }, [jobs.hasNextPage, jobs.isFetchingNextPage, jobs.fetchNextPage]);
+  // Clamp page to the last real page when the total shrinks under the current
+  // filter (e.g. the user skips/applies the last job on the last page — the
+  // server returns items:[], total > 0, and page > totalPages). Without this
+  // clamp the UI shows an empty state with no pagination controls.
+  const totalPages = Math.max(1, Math.ceil(jobs.total / PAGE_SIZE));
+  if (!jobs.isLoading && jobs.total > 0 && page > totalPages) {
+    setPage(totalPages);
+  }
 
   const markApplied = useMarkJobApplied();
   const skip = useSkipJob();
   const reopen = useReopenJob();
   const prepare = usePrepareJob();
+  const autoApply = useAutoApplyJob();
   const pushToast = useUiStore((s) => s.pushToast);
 
   // For each manual-apply job, surface "Tailoring…" or "Ready to apply" badges
@@ -130,19 +146,54 @@ export function JobsPage(): JSX.Element {
         ))}
       </nav>
 
+      <div className="flex flex-wrap items-center gap-3">
+        <ControlSelect
+          label="Sort"
+          value={sort}
+          onChange={(v) => setSort(v as 'score' | 'date')}
+          options={[
+            { value: 'score', label: 'Best match' },
+            { value: 'date', label: 'Newest' },
+          ]}
+        />
+        <ControlSelect
+          label="Apply type"
+          value={applyMethod}
+          onChange={(v) => setApplyMethod(v as '' | 'auto' | 'manual')}
+          options={[
+            { value: '', label: 'All' },
+            { value: 'auto', label: 'Easy Apply' },
+            { value: 'manual', label: 'External' },
+          ]}
+        />
+        <ControlSelect
+          label="Source"
+          value={siteId}
+          onChange={(v) => setSiteId(v as '' | 'linkedin' | 'indeed' | 'google')}
+          options={[
+            { value: '', label: 'All sources' },
+            { value: 'linkedin', label: 'LinkedIn' },
+            { value: 'google', label: 'Google Jobs' },
+            { value: 'indeed', label: 'Indeed' },
+          ]}
+        />
+      </div>
+
       {jobs.isLoading ? (
         <p className="text-sm text-ink-secondary">Loading…</p>
-      ) : jobs.pages.length === 0 ? (
+      ) : jobs.items.length === 0 ? (
         <p className="text-sm text-ink-secondary">
-          {tab === 'new'
-            ? 'No new jobs yet. Try Search now once LinkedIn is connected.'
-            : tab === 'applied'
-              ? 'You haven’t marked anything applied yet.'
-              : 'Nothing skipped.'}
+          {applyMethod || siteId
+            ? 'No jobs match the current filters.'
+            : tab === 'new'
+              ? 'No new jobs yet. Try Search now once LinkedIn is connected.'
+              : tab === 'applied'
+                ? 'You haven’t marked anything applied yet.'
+                : 'Nothing skipped.'}
         </p>
       ) : (
         <ul className="space-y-3">
-          {jobs.pages.map((job) => (
+          {jobs.items.map((job) => (
             <li key={job.id}>
               <JobCard
                 job={job}
@@ -164,6 +215,26 @@ export function JobsPage(): JSX.Element {
                   }
                 }}
                 onApply={() => window.open(applyHref(job), '_blank', 'noreferrer')}
+                onAutoApply={
+                  job.apply_method === 'auto' && tab === 'new'
+                    ? async () => {
+                        try {
+                          const r = await autoApply.mutate(job.id);
+                          pushToast({
+                            kind: r.deduped ? 'info' : 'success',
+                            message: r.deduped
+                              ? 'Already queued.'
+                              : 'Auto-apply queued.',
+                          });
+                        } catch (err) {
+                          pushToast({
+                            kind: 'error',
+                            message: err instanceof Error ? err.message : String(err),
+                          });
+                        }
+                      }
+                    : undefined
+                }
                 onMarkApplied={async () => {
                   await markApplied.mutate(job.id);
                   pushToast({ kind: 'success', message: 'Marked applied.' });
@@ -179,20 +250,47 @@ export function JobsPage(): JSX.Element {
               />
             </li>
           ))}
-          <li>
-            {/* Intersection sentinel — when this enters the viewport we ask
-                for the next page. Empty by design; the spacing comes from the
-                outer ul's space-y. */}
-            <div ref={sentinelRef} />
-            {jobs.isFetchingNextPage && (
-              <p className="text-center text-xs text-ink-muted">Loading more…</p>
-            )}
-            {!jobs.hasNextPage && jobs.pages.length > 0 && (
-              <p className="text-center text-xs text-ink-muted">End of list.</p>
-            )}
-          </li>
         </ul>
       )}
+      {!jobs.isLoading && (
+        <PaginationBar
+          page={page}
+          pageSize={PAGE_SIZE}
+          total={jobs.total}
+          onPageChange={(p) => {
+            setPage(p);
+            window.scrollTo({ top: 0 });
+          }}
+        />
+      )}
     </section>
+  );
+}
+
+interface ControlSelectProps {
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+  options: ReadonlyArray<{ value: string; label: string }>;
+}
+
+function ControlSelect({ label, value, onChange, options }: ControlSelectProps): JSX.Element {
+  return (
+    <label className="flex items-center gap-2">
+      <span className="font-mono text-2xs uppercase tracking-wide text-ink-secondary">
+        {label}
+      </span>
+      <select
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        className="rounded-md border border-border-default bg-surface-sunken px-2 py-1.5 text-sm text-ink-primary outline-none focus:border-accent"
+      >
+        {options.map((o) => (
+          <option key={o.value} value={o.value}>
+            {o.label}
+          </option>
+        ))}
+      </select>
+    </label>
   );
 }

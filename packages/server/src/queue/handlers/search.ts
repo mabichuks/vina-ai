@@ -13,7 +13,7 @@ import type { ResolveSelectorInput, SelectorResult } from '@vina/orchestrator';
 import { findSiteById, updateSiteSession, type SiteRow } from '../../db/repositories/sites.js';
 import { insertJob } from '../../db/repositories/jobs.js';
 import { enqueue, getInFlightScoreJobIds } from '../../db/repositories/task-queue.js';
-import { insertAlert } from '../../db/repositories/alerts.js';
+import { insertAlert, listAlerts } from '../../db/repositories/alerts.js';
 import {
   findScheduleById,
   incrementScheduleFailures,
@@ -215,11 +215,11 @@ export interface SearchPayload {
 
 /**
  * Payload as seen by the branch functions: the persisted `SearchPayload`
- * plus a non-persisted `_signal` slot the worker mutates onto the parsed
- * object before invoking the handler. The leading underscore marks it as
- * transient (it is never re-serialized).
+ * plus non-persisted transient slots the worker mutates onto the parsed
+ * object before invoking the handler. The leading underscore marks them as
+ * transient (they are never re-serialized).
  */
-type RunPayload = SearchPayload & { _signal?: AbortSignal };
+type RunPayload = SearchPayload & { _signal?: AbortSignal; _will_retry?: boolean };
 
 export function createSearchHandler(
   deps: SearchHandlerDeps,
@@ -266,7 +266,13 @@ async function runBrowserSearch(
     try {
       await page.goto(deps.feedUrlOverride ?? FEED_URL);
 
-      if (await adapter.onSessionExpired(page)) {
+      // LinkedIn doesn't bounce logged-out browsers to /login — it redirects
+      // /feed to the guest homepage and keeps serving public pages. Landing
+      // anywhere other than the feed is as conclusive as a login redirect.
+      if (
+        (await adapter.onSessionExpired(page)) ||
+        !(await adapter.onLoginSuccess(page))
+      ) {
         throw new LinkedInSessionExpiredError();
       }
 
@@ -342,6 +348,11 @@ async function runBrowserSearch(
         // couldn't extract a usable id/title (e.g. the bare anchor on the
         // 2026 AI-search SRP). Run the same recovery flow.
         if (!signal?.aborted && listings.length === 0) {
+          // A guest page yields zero cards "successfully" — don't burn LLM
+          // selector-recovery calls on a page we can't be logged into.
+          if (await adapter.onSessionExpired(page)) {
+            throw new LinkedInSessionExpiredError();
+          }
           const recovered = await recoverViaSelectorResolver();
           if (recovered.length > 0) listings = recovered;
         }
@@ -534,16 +545,23 @@ async function runBrowserSearch(
       task_id: payload.task_id ?? 'unknown',
       site_id: site.id,
       error_kind: errorKind,
+      will_retry: payload._will_retry === true,
     });
 
     if (isSessionExpired) {
-      insertAlert(deps.db, {
-        kind: 'linkedin_session_expired',
-        severity: 'action_required',
-        title: 'LinkedIn session expired',
-        description: 'Re-connect LinkedIn from Settings to resume searches.',
-        site_id: site.id,
-      });
+      // The worker retries session-expired searches — one actionable alert is
+      // enough. Only insert when there is no existing open alert of this kind
+      // so retries don't pile up identical action_required rows in the UI.
+      const existing = listAlerts(deps.db, { kind: 'linkedin_session_expired', status: 'open' });
+      if (existing.length === 0) {
+        insertAlert(deps.db, {
+          kind: 'linkedin_session_expired',
+          severity: 'action_required',
+          title: 'LinkedIn session expired',
+          description: 'Re-connect LinkedIn from Settings to resume searches.',
+          site_id: site.id,
+        });
+      }
       deps.bus.emit('linkedin:session-expired', { at: new Date().toISOString() });
     } else {
       const raw = err instanceof Error ? err.message : String(err);
@@ -626,6 +644,7 @@ async function runApiSearch(
       task_id: payload.task_id ?? 'unknown',
       site_id: site.id,
       error_kind: 'unknown',
+      will_retry: payload._will_retry === true,
     });
     if (payload.schedule_id) incrementScheduleFailures(deps.db, payload.schedule_id);
     throw new ValidationError('SerpAPI key not configured');
@@ -764,6 +783,7 @@ async function runApiSearch(
       task_id: payload.task_id ?? 'unknown',
       site_id: site.id,
       error_kind: 'unknown',
+      will_retry: payload._will_retry === true,
     });
     if (payload.schedule_id) {
       incrementScheduleFailures(deps.db, payload.schedule_id);

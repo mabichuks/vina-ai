@@ -232,7 +232,7 @@ describe('score handler — autonomous-mode auto-enqueue', () => {
       is_default: true,
     });
     const { updateSettings } = await import('../../../src/db/repositories/settings.js');
-    updateSettings(db, { mode: 'autonomous' });
+    updateSettings(db, { easy_apply_mode: 'autonomous' });
     const { upsertSearchPreferences } = await import(
       '../../../src/db/repositories/search-preferences.js'
     );
@@ -246,7 +246,7 @@ describe('score handler — autonomous-mode auto-enqueue', () => {
     expect(pending.find((t) => t.kind === 'prepare_manual_apply')).toBeDefined();
   });
 
-  it('does NOT enqueue when mode=supervised', async () => {
+  it('does NOT enqueue when easy_apply_mode=manual', async () => {
     insertCv(db, {
       label: 'main',
       original_filename: 'cv.pdf',
@@ -256,7 +256,7 @@ describe('score handler — autonomous-mode auto-enqueue', () => {
       is_default: true,
     });
     const { updateSettings } = await import('../../../src/db/repositories/settings.js');
-    updateSettings(db, { mode: 'supervised' });
+    updateSettings(db, { easy_apply_mode: 'manual' });
     const job = seedManualJob('auto-2');
     await autonomousHandler(82)({ job_id: job.id });
     const { listPending } = await import('../../../src/db/repositories/task-queue.js');
@@ -273,7 +273,7 @@ describe('score handler — autonomous-mode auto-enqueue', () => {
       is_default: true,
     });
     const { updateSettings } = await import('../../../src/db/repositories/settings.js');
-    updateSettings(db, { mode: 'autonomous' });
+    updateSettings(db, { easy_apply_mode: 'autonomous' });
     const { upsertSearchPreferences } = await import(
       '../../../src/db/repositories/search-preferences.js'
     );
@@ -284,7 +284,7 @@ describe('score handler — autonomous-mode auto-enqueue', () => {
     expect(listPending(db).find((t) => t.kind === 'prepare_manual_apply')).toBeUndefined();
   });
 
-  it('does NOT enqueue when apply_method=auto (Phase C territory)', async () => {
+  it('enqueues an apply task when autonomous + apply_method=auto + gate allows', async () => {
     insertCv(db, {
       label: 'main',
       original_filename: 'cv.pdf',
@@ -294,10 +294,47 @@ describe('score handler — autonomous-mode auto-enqueue', () => {
       is_default: true,
     });
     const { updateSettings } = await import('../../../src/db/repositories/settings.js');
-    updateSettings(db, { mode: 'autonomous' });
+    updateSettings(db, { easy_apply_mode: 'autonomous' });
+    const { upsertSearchPreferences } = await import(
+      '../../../src/db/repositories/search-preferences.js'
+    );
+    upsertSearchPreferences(db, { score_threshold: 70 });
     const job = seedManualJob('auto-4', 'auto');
+
     await autonomousHandler(82)({ job_id: job.id });
+
     const { listPending } = await import('../../../src/db/repositories/task-queue.js');
-    expect(listPending(db).find((t) => t.kind === 'prepare_manual_apply')).toBeUndefined();
+    const pending = listPending(db);
+    expect(pending.find((t) => t.kind === 'apply')).toBeDefined();
+    // Manual-apply enqueuer must not have fired for an auto-apply job.
+    expect(pending.find((t) => t.kind === 'prepare_manual_apply')).toBeUndefined();
+  });
+
+  it('does NOT enqueue an apply task when the gate blocks (circuit breaker tripped)', async () => {
+    insertCv(db, {
+      label: 'main',
+      original_filename: 'cv.pdf',
+      mime_type: 'application/pdf',
+      file_path: '/tmp/cv.pdf',
+      extracted_text: 'x',
+      is_default: true,
+    });
+    const { updateSettings } = await import('../../../src/db/repositories/settings.js');
+    updateSettings(db, {
+      easy_apply_mode: 'autonomous',
+      apply_consecutive_failure_limit: 5,
+    });
+    const { upsertSearchPreferences } = await import(
+      '../../../src/db/repositories/search-preferences.js'
+    );
+    upsertSearchPreferences(db, { score_threshold: 70 });
+    // Trip the breaker by pushing consecutive_failures past the limit.
+    db.prepare(`UPDATE apply_rate_limit SET consecutive_failures = 99`).run();
+
+    const job = seedManualJob('auto-5', 'auto');
+    await autonomousHandler(95)({ job_id: job.id });
+
+    const { listPending } = await import('../../../src/db/repositories/task-queue.js');
+    expect(listPending(db).find((t) => t.kind === 'apply')).toBeUndefined();
   });
 });

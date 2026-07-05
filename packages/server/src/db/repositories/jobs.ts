@@ -32,11 +32,16 @@ export interface JobFilters {
   min_score?: number;
   /** Free-text search across title, company, description (case-insensitive LIKE). */
   search?: string;
+  /** Result ordering: 'score' (default — best match first) or 'date' (newest first). */
+  sort?: 'score' | 'date';
   limit?: number;
   offset?: number;
 }
 
-export function listJobs(db: DatabaseType, filters: JobFilters = {}): Job[] {
+function buildJobWhere(filters: Omit<JobFilters, 'limit' | 'offset'>): {
+  whereSql: string;
+  params: Record<string, unknown>;
+} {
   const where: string[] = [];
   const params: Record<string, unknown> = {};
 
@@ -76,12 +81,24 @@ export function listJobs(db: DatabaseType, filters: JobFilters = {}): Job[] {
     params['search'] = `%${filters.search}%`;
   }
 
-  // Best matches first (score DESC), unscored rows pinned to the bottom so
-  // the worklist stays stable while scores stream in. Ties broken by recency.
+  return { whereSql: where.length ? `WHERE ${where.join(' AND ')}` : '', params };
+}
+
+export function listJobs(db: DatabaseType, filters: JobFilters = {}): Job[] {
+  const { whereSql, params } = buildJobWhere(filters);
+
+  // ORDER BY comes from this fixed whitelist — `sort` is user input and must
+  // never reach the SQL string directly.
+  const ORDER_BY: Record<'score' | 'date', string> = {
+    // Best matches first (score DESC), unscored rows pinned to the bottom so
+    // the worklist stays stable while scores stream in. Ties broken by recency.
+    score: 'match_score DESC NULLS LAST, discovered_at DESC, id DESC',
+    date: 'discovered_at DESC, id DESC',
+  };
   const sql = `
     SELECT * FROM jobs
-    ${where.length ? `WHERE ${where.join(' AND ')}` : ''}
-    ORDER BY match_score DESC NULLS LAST, discovered_at DESC, id DESC
+    ${whereSql}
+    ORDER BY ${ORDER_BY[filters.sort ?? 'score']}
     LIMIT @limit OFFSET @offset
   `;
   params['limit'] = filters.limit ?? 100;
@@ -89,6 +106,17 @@ export function listJobs(db: DatabaseType, filters: JobFilters = {}): Job[] {
 
   const rows = db.prepare(sql).all(params) as JobRow[];
   return rows.map(rowToJob);
+}
+
+export function countJobs(
+  db: DatabaseType,
+  filters: Omit<JobFilters, 'limit' | 'offset'> = {},
+): number {
+  const { whereSql, params } = buildJobWhere(filters);
+  const row = db
+    .prepare(`SELECT COUNT(*) AS n FROM jobs ${whereSql}`)
+    .get(params) as { n: number };
+  return row.n;
 }
 
 export function findJobById(db: DatabaseType, id: string): Job | null {

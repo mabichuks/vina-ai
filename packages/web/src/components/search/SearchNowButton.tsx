@@ -41,11 +41,13 @@ export function SearchNowButton(): JSX.Element {
   ].filter((x): x is string => x !== null);
 
   const inFlight =
-    runNow.isPending || phase === 'discovering' || phase === 'scoring';
+    runNow.isPending || phase === 'discovering' || phase === 'retrying' || phase === 'scoring';
 
   const label = (() => {
     if (runNow.isPending) return 'Starting search…';
     switch (phase) {
+      case 'retrying':
+        return 'Retrying…';
       case 'discovering':
         return listingsFound > 0
           ? `${gerund ?? 'Discovering'}… (${listingsFound} found)`

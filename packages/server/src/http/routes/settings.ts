@@ -19,9 +19,14 @@ import { parse } from '../parse.js';
 function toResponse(row: SettingsRow): Settings {
   return {
     id: 'app',
-    mode: row.mode,
-    approval: row.approval,
+    easy_apply_mode: row.easy_apply_mode,
+    autonomous_apply_dry_run: row.autonomous_apply_dry_run,
+    apply_daily_cap: row.apply_daily_cap,
+    apply_min_interval_seconds: row.apply_min_interval_seconds,
+    apply_listing_max_age_days: row.apply_listing_max_age_days,
+    apply_consecutive_failure_limit: row.apply_consecutive_failure_limit,
     browser_headful: row.browser_headful,
+    browser_stealth: row.browser_stealth,
     paused: row.paused,
     active_llm_provider_id: row.active_llm_provider_id,
     has_serpapi_key: row.encrypted_serpapi_key !== null,
@@ -66,10 +71,25 @@ export async function settingsRoutes(
     // Apply the non-secret fields. The serpapi_key path above already
     // touched the row; one more update is fine — settings is a singleton.
     const row = updateSettings(db, {
-      ...(input.mode !== undefined && { mode: input.mode }),
-      ...(input.approval !== undefined && { approval: input.approval }),
+      ...(input.easy_apply_mode !== undefined && { easy_apply_mode: input.easy_apply_mode }),
+      ...(input.autonomous_apply_dry_run !== undefined && {
+        autonomous_apply_dry_run: input.autonomous_apply_dry_run,
+      }),
+      ...(input.apply_daily_cap !== undefined && { apply_daily_cap: input.apply_daily_cap }),
+      ...(input.apply_min_interval_seconds !== undefined && {
+        apply_min_interval_seconds: input.apply_min_interval_seconds,
+      }),
+      ...(input.apply_listing_max_age_days !== undefined && {
+        apply_listing_max_age_days: input.apply_listing_max_age_days,
+      }),
+      ...(input.apply_consecutive_failure_limit !== undefined && {
+        apply_consecutive_failure_limit: input.apply_consecutive_failure_limit,
+      }),
       ...(input.browser_headful !== undefined && {
         browser_headful: input.browser_headful,
+      }),
+      ...(input.browser_stealth !== undefined && {
+        browser_stealth: input.browser_stealth,
       }),
       ...(input.paused !== undefined && { paused: input.paused }),
       ...(input.active_llm_provider_id !== undefined && {

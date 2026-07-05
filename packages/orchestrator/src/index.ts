@@ -1,5 +1,5 @@
 export { buildModel, type ProviderConfig } from './providers/registry.js';
-export { SCORE_SYSTEM, scoreUserPrompt, type ScoreInput } from './prompts/score.js';
+export { scoreUserPrompt, type ScoreInput } from './prompts/score.js';
 export {
   runScoreJob,
   ScoreSchema,
@@ -24,6 +24,25 @@ export {
   SaveTailoredCoverLetterInputSchema,
 } from './tools/types.js';
 export {
+  type AutoApplyToolKit,
+  type FieldResolution,
+  type FormField,
+  type FormFieldKind,
+  type JobSlice,
+  type NewAlertInput,
+  type ResolveSource,
+  type SubmitOutcome,
+  type UiRef,
+} from './tools/auto-apply-toolkit.js';
+export {
+  runApply,
+  type ApplyEvent,
+  type ApplyInput,
+  type ApplyOutcome,
+  type ApplyResult,
+  type RunApplyOptions,
+} from './graphs/apply.js';
+export {
   runTailorCv,
   renderTailoredDocx,
   renderTailoredPdf,
@@ -31,11 +50,7 @@ export {
   type TailorCvOutput,
   type TailorCvHeader,
 } from './graphs/tailor-cv.js';
-export {
-  TAILOR_CV_SYSTEM,
-  tailorCvUserPrompt,
-  type TailorCvInput,
-} from './prompts/tailor-cv.js';
+export { tailorCvUserPrompt, type TailorCvInput } from './prompts/tailor-cv.js';
 export {
   runTailorCoverLetter,
   renderTailoredCoverLetterDocx,
@@ -45,7 +60,6 @@ export {
   type CoverLetterHeader,
 } from './graphs/tailor-cover-letter.js';
 export {
-  TAILOR_COVER_LETTER_SYSTEM,
   tailorCoverLetterUserPrompt,
   type TailorCoverLetterInput,
 } from './prompts/tailor-cover-letter.js';
@@ -55,3 +69,51 @@ export {
   type PrepareManualApplyInput,
   type PrepareManualApplyResult,
 } from './graphs/prepare-manual-apply.js';
+export {
+  decideUnresolvedField,
+  FallbackDecisionSchema,
+  _resetBrowserApplySkillCache,
+  type ApplyFallbackInput,
+  type ApplyFallbackMessages,
+  type DecideUnresolvedFieldOptions,
+  type FallbackDecision,
+  type StructuredApplyDecider,
+} from './graphs/apply-fallback.js';
+export {
+  loadSkill,
+  parseSkill,
+  resolveSkillPath,
+  type Skill as SkillFile,
+  type SkillMeta,
+} from './skills/loader.js';
+export {
+  createSkillRegistry,
+  resolveSkillsDefaultsDir,
+  type CreateSkillRegistryOptions,
+  type Skill,
+  type SkillRegistry,
+  type SkillSummary,
+} from './skills/registry.js';
+export {
+  getDefaultSkillRegistry,
+  _resetDefaultSkillRegistry,
+} from './skills/default-registry.js';
+export {
+  createSkillTools,
+  LoadSkillInputSchema,
+  ListSkillsInputSchema,
+  type LoadSkillInput,
+  type ListSkillsInput,
+  type SkillTools,
+} from './tools/skill-tools.js';
+export {
+  createPromptLoader,
+  resolveDefaultsDir as resolvePromptDefaultsDir,
+  type PromptDoc,
+  type PromptLoader,
+  type CreatePromptLoaderOptions,
+} from './prompts/loader.js';
+export {
+  getDefaultPromptLoader,
+  _resetDefaultPromptLoader,
+} from './prompts/default-loader.js';

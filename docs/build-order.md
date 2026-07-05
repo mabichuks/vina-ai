@@ -6,17 +6,16 @@ This is a recommendation, not a contract. If a milestone's scope changes, update
 
 ---
 
-## Current status (2026-05-13)
+## Current status (2026-06-21)
 
 The milestones below were planned before the LinkedIn end-to-end slice landed and ADR-019 was accepted. They remain as the long-form reference, but the active sequence is now:
 
 | State | Milestones |
 |---|---|
-| **Shipped** | M0 – M10 in their original form; M11 in a form that overlaps with the LinkedIn end-to-end slice (see `docs/superpowers/specs/2026-05-04-linkedin-end-to-end-slice-design.md`, marked Implemented 2026-05-10) |
+| **Shipped** | M0 – M10 in their original form; M11 in a form that overlaps with the LinkedIn end-to-end slice (see `docs/superpowers/specs/2026-05-04-linkedin-end-to-end-slice-design.md`, marked Implemented 2026-05-10); M15 follow-up (autonomous Easy Apply end-to-end — single mode, gate, literal-evidence form fill, EEO short-circuit, saved-answers UI, dashboard kill switch). Plan: `docs/superpowers/plans/2026-06-21-autonomous-easy-apply.md`. ADR-023. |
 | **Skipped (ADR-019)** | ~~M12 (Indeed adapter)~~, ~~M17 (Apply graph for Indeed)~~. Removed from scope. |
 | **Active queue** | **Phase A — Google Jobs via SerpAPI.** Replaces and supersedes the original M13. Spec: `docs/superpowers/specs/2026-05-13-google-jobs-source-design.md`. Plan: `docs/superpowers/plans/2026-05-13-google-jobs-source.md`. |
 | | **Phase B — Manual-apply pipeline.** Wakes the dormant tailor-cv / tailor-cover-letter / prepare-manual-apply graphs and adds the Ready-to-Apply surface. Folds in the original M14, M16, and M19. Spec: `docs/superpowers/specs/2026-05-13-manual-apply-pipeline-design.md`. Plan: `docs/superpowers/plans/2026-05-13-manual-apply-pipeline.md`. |
-| **Deferred indefinitely** | M15 — Apply graph and form-walker (LinkedIn Easy Apply auto-submit). Out of active queue; logged in `SPEC.md` §12. The manual-apply pipeline covers Easy Apply listings via Prepare materials, so auto-submit is no longer load-bearing. Reversing the deferral means writing the apply graph + LinkedIn form walker. |
 | **Unchanged downstream** | M18 (Alerts UI — partially shipped by the LinkedIn slice, balance lands during Phase B), M20 (Chatbot), M21 (Application detail), M22 (Polish, dashboards), M23 (Hardening) |
 | **Pre-release** | **M24 — Installer & release pipeline** (ADR-020). One-line `install.sh` / `install.ps1` against GitHub Release tarballs; tag-push CI to produce the tarball. Design: `docs/installer.md`. Sized small (~2–3 days) and runs after M23, before any public release. |
 
@@ -460,6 +459,46 @@ Full design lives in `docs/installer.md`. The model is GitHub Release tarball + 
 - `--dry-run` exits 0 with no filesystem changes; `--no-playwright` finishes without Chromium and `vina doctor` flags the missing browser with an actionable hint
 - Tag push to `main` produces exactly one tarball + two installer-script assets, with the asset filename matching `vina-<X.Y.Z>.tar.gz`
 - README's install section is the one-liner — `npm`, `npx`, and `pnpm` are absent from user-facing copy outside the explicit dev-setup section
+
+## Milestone 25 — Managed CDP, snapshot/act, prompts → MD, skill system
+
+**Goal:** Replace the selector-based automation transport with a managed CDP transport + snapshot/ref primitive (ADR-022); add opt-in stealth masking (ADR-021); move every prompt out of TypeScript into editable `.md` files; ship the on-demand skill system with seven starter skills and a chatbot authoring flow.
+
+Five connected workstreams, shipped as separate green-before-the-next changes:
+
+1. **ADRs + settings schema.** Apply ADR-013 status change and append ADR-021 + ADR-022 to `docs/decisions.md` (done). In `packages/shared`: add `browser_stealth: boolean` (default `false`) to the `Settings` zod schema and inferred type, with a round-trip fixture test. Update `docs/database-schema.md` settings notes and `docs/api-spec.md` if settings are exposed there. Done when: schemas compile, fixture test passes, no behaviour change yet.
+
+2. **Managed CDP transport (no interaction-model change yet).** Replace `launchPersistentContext` with launch-Chromium-with-loopback-debug-port + `chromium.connectOverCDP`, keeping the same persistent `userDataDir`. Bind `--remote-debugging-address=127.0.0.1`; never `0.0.0.0`. Add `browser/cdp.ts`; keep `BrowserManager`'s public interface unchanged. Implement `browser/stealth.ts` as a no-op when `browser_stealth=false`, returning masking args/hooks only when `true`. Load any stealth dependency lazily/conditionally so the default install is unaffected. Update `browser-automation.md` §2 and §10. Done when: existing E2E fixtures pass unchanged through the CDP transport; `stealth.ts` unit tests cover both states; loopback binding asserted.
+
+3. **Snapshot/ref primitive.** Add `snapshot/snapshot.ts` (accessibility tree → `UiTree`) and `snapshot/refs.ts` (ref allocation + label-based re-resolution). Types per `browser-automation.md` §3. Extend `SiteAdapter` with `snapshot()` and ref-based `act()`; add `ref` to `FormField` with `selector?` retained as fallback. Done when: snapshot/ref unit tests pass against fixture pages; adapters compile with the new interface.
+
+4. **Deterministic-first walker + stale-ref recovery.** Rework `forms/form-walker.ts` to enumerate via snapshot, resolve values deterministically (profile → profile_answers → CV), mark `unknown` otherwise, re-snapshot after each step, and recover a stale ref exactly once before failing. Keep the LLM strictly as the fallback for `unknown` fields / unexpected states, one decision per call, within the apply token budget. Done when: fixture E2E covers a full Easy Apply (zero LLM calls), a missing-field pause/alert/resume, a multi-step form, and a one-shot stale-ref recovery.
+
+5. **Prompts → Markdown.** Full design in `docs/prompt-system.md`. Migration order:
+   1. Create `prompts/*.md` defaults (verbatim copies).
+   2. Add loader + frontmatter schema + tests proving byte-identical render.
+   3. Switch each graph to the loader, one at a time, running the identity test.
+   4. Add server REST + ToolKit methods + validation.
+   5. Wire chatbot tools + the `prompt-editing` skill + guardrails.
+   6. Add the Settings → Prompts UI last.
+   Mark `apply` and `system-base` `editable_by_user: false`. Keep the no-fabrication sentinel check. Done when: all graphs render from `.md`; identity tests pass; prompt CRUD + ToolKit methods + validation in place; Settings → Prompts UI works.
+
+6. **Skill system + `browser-apply`.** Full design in `docs/skill-system.md`. Build order:
+   1. Registry + frontmatter schema + loader, with the seven starter skills as read-only defaults. Inject `index()` into graphs.
+   2. `loadSkill` tool + pre-load `browser-apply` in the apply graph.
+   3. Server REST + ToolKit methods + guardrails.
+   4. Chatbot authoring procedure + Settings → Skills UI.
+   Wire chatbot prompt/skill tools with the guarded propose-then-confirm flow and the server-enforced guardrails (editable flags, capability allowlist clamp, safety-skill protection). Done when: registry tests pass (override-wins, lazy body, capability clamp); apply graph loads the skill; a chatbot preference produces a *proposed* edit and writes only after confirmation.
+
+**Cross-cutting rules.**
+
+- Keep ADR-007 (manual CAPTCHA only) intact — do not add any solver.
+- Keep ADR-002 (local-first) intact — CDP port loopback-only; nothing leaves the machine.
+- Respect token budgets in `langgraph-orchestrator.md` §8 — the LLM fallback and any prompt/skill bodies must not blow the apply cap.
+- Update every spec touched in the same change; code that disagrees with a spec is a bug.
+- Real-Chrome attach is out of scope (ADR-022) — do not implement it.
+
+**Acceptance (end state).** A standard LinkedIn Easy Apply runs end to end with no LLM calls in the fill loop, surviving DOM/class-name churn via refs; unknown fields fall back to a single LLM decision; CAPTCHA/session/missing-field escalate as before; prompts and skills are editable markdown the chatbot can update on request with confirmation; and stealth masking is available but off unless the user enables `browser_stealth`.
 
 ---
 

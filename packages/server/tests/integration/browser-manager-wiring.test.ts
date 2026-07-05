@@ -11,6 +11,6 @@ describe('bootServer wires BrowserManager', () => {
     expect(typeof booted.browserManager.getContext).toBe('function');
     expect(typeof booted.browserManager.closeAll).toBe('function');
     await booted.shutdown();
-    fs.rmSync(tmp, { recursive: true, force: true });
+    fs.rmSync(tmp, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
   });
 });

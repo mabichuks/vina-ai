@@ -3,6 +3,7 @@ import type { BaseChatModel } from '@langchain/core/language_models/chat_models'
 import {
   runPrepareManualApply,
   type ManualApplyToolKit,
+  type PromptLoader,
   type StructuredScorer,
 } from '@vina/orchestrator';
 import { ConflictError, createLogger, NotFoundError } from '@vina/shared';
@@ -24,6 +25,8 @@ export interface PrepareManualApplyHandlerDeps {
   bus: EventBus;
   buildModel: () => Promise<BaseChatModel>;
   toolKit: ManualApplyToolKit;
+  /** Optional — user-override-aware loader. Falls back to packaged defaults. */
+  promptLoader?: PromptLoader;
 }
 
 export interface PrepareManualApplyPayload {
@@ -73,6 +76,7 @@ export function createPrepareManualApplyHandler(
       },
       model as unknown as StructuredScorer,
       deps.toolKit,
+      deps.promptLoader ? { promptLoader: deps.promptLoader } : {},
     );
 
     const external_apply_url = job.external_apply_url ?? job.url;

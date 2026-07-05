@@ -3,11 +3,19 @@ import type { Database as DatabaseType } from 'better-sqlite3';
 import { z } from 'zod';
 import { NotFoundError } from '@vina/shared';
 import { findSiteById } from '../../db/repositories/sites.js';
-import { enqueue, listPending, setNextAttemptAt } from '../../db/repositories/task-queue.js';
+import {
+  cancel as cancelTaskRow,
+  enqueue,
+  findById,
+  listCancellableSearchTasks,
+  listPending,
+  setNextAttemptAt,
+} from '../../db/repositories/task-queue.js';
 import {
   cancelActiveTask,
   cancelTasksForSite,
 } from '../../queue/active-tasks.js';
+import type { EventBus } from '../../events/bus.js';
 import { parse } from '../parse.js';
 
 const BodySchema = z.object({ site_id: z.string().min(1) });
@@ -23,9 +31,9 @@ const CancelBodySchema = z
 
 export async function searchRoutes(
   app: FastifyInstance,
-  deps: { db: DatabaseType; poke: () => void },
+  deps: { db: DatabaseType; poke: () => void; bus: EventBus },
 ): Promise<void> {
-  const { db, poke } = deps;
+  const { db, poke, bus } = deps;
 
   app.post('/api/searches/run-now', async (req, reply) => {
     const body = parse(BodySchema, req.body);
@@ -61,13 +69,60 @@ export async function searchRoutes(
     return reply.status(202).send({ task_id: task.id, deduped: false });
   });
 
+  /**
+   * Cancel one task: abort the live signal if it's running, flip the row so
+   * a pending retry never runs. When nothing is executing the task (backoff
+   * window) no handler will emit `search:cancelled` — emit it here so the
+   * UI leaves its retrying state.
+   */
+  const cancelOne = (taskId: string): number => {
+    const row = findById(db, taskId);
+    const flipped = row && row.kind === 'search' ? cancelTaskRow(db, taskId) : false;
+    const aborted = cancelActiveTask(taskId);
+    if (flipped && !aborted && row) {
+      let siteId: string | undefined;
+      try {
+        siteId = (JSON.parse(row.payload) as { site_id?: string }).site_id;
+      } catch {
+        siteId = undefined;
+      }
+      bus.emit('search:cancelled', {
+        task_id: taskId,
+        site_id: siteId ?? 'unknown',
+        listings_added: 0,
+        scored: 0,
+      });
+    }
+    return flipped || aborted ? 1 : 0;
+  };
+
   app.post('/api/searches/cancel', async (req) => {
     const body = parse(CancelBodySchema, req.body, 'request body');
     if (body.task_id) {
-      const cancelled = cancelActiveTask(body.task_id) ? 1 : 0;
-      return { cancelled };
+      return { cancelled: cancelOne(body.task_id) };
     }
-    const cancelled = cancelTasksForSite(body.site_id!);
-    return { cancelled };
+    // Site-wide: abort live registrations first (authoritative for running
+    // work), then flip their rows plus any backoff rows for the site.
+    const abortedIds = cancelTasksForSite(body.site_id!);
+    for (const id of abortedIds) cancelTaskRow(db, id);
+    let flippedExtra = 0;
+    for (const row of listCancellableSearchTasks(db, body.site_id!)) {
+      if (cancelTaskRow(db, row.id)) {
+        flippedExtra += 1;
+        let siteId: string | undefined;
+        try {
+          siteId = (JSON.parse(row.payload) as { site_id?: string }).site_id;
+        } catch {
+          siteId = undefined;
+        }
+        bus.emit('search:cancelled', {
+          task_id: row.id,
+          site_id: siteId ?? body.site_id!,
+          listings_added: 0,
+          scored: 0,
+        });
+      }
+    }
+    return { cancelled: abortedIds.length + flippedExtra };
   });
 }

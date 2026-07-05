@@ -29,13 +29,29 @@ describe('settings repository', () => {
   it('getOrInit creates defaults; partial update preserves untouched columns', () => {
     const db = freshTestDb();
     const seed = getOrInitSettings(db);
-    expect(seed.mode).toBe('supervised');
+    expect(seed.easy_apply_mode).toBe('manual');
     expect(seed.encrypted_serpapi_key).toBeNull();
 
     const updated = updateSettings(db, { paused: true });
     expect(updated.paused).toBe(true);
-    expect(updated.mode).toBe(seed.mode);
-    expect(updated.approval).toBe(seed.approval);
+    expect(updated.easy_apply_mode).toBe(seed.easy_apply_mode);
+    expect(updated.autonomous_apply_dry_run).toBe(seed.autonomous_apply_dry_run);
+    db.close();
+  });
+
+  it('browser_stealth defaults to false; partial update toggles it and preserves other fields', () => {
+    const db = freshTestDb();
+    const seed = getOrInitSettings(db);
+    expect(seed.browser_stealth).toBe(false);
+
+    const enabled = updateSettings(db, { browser_stealth: true });
+    expect(enabled.browser_stealth).toBe(true);
+    expect(enabled.browser_headful).toBe(seed.browser_headful);
+    expect(enabled.paused).toBe(seed.paused);
+
+    // Untouched field stays as set.
+    updateSettings(db, { paused: true });
+    expect(getOrInitSettings(db).browser_stealth).toBe(true);
     db.close();
   });
 

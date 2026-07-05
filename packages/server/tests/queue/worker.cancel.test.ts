@@ -69,6 +69,29 @@ describe('worker — search cancellation', () => {
     expect(observedTaskId).toBe(task.id);
   });
 
+  it('stamps _will_retry on search payloads while attempts remain', async () => {
+    let observed: boolean | undefined;
+    const worker = createWorker({
+      db,
+      bus: createEventBus(),
+      handlers: {
+        search: async (payload) => {
+          observed = (payload as { _will_retry?: boolean })._will_retry;
+        },
+        score: async () => undefined,
+        tailor: async () => undefined,
+        apply: async () => undefined,
+        prepare_manual_apply: async () => undefined,
+        resume: async () => undefined,
+      },
+      pollIntervalMs: 5,
+    });
+    enqueue(db, { kind: 'search', payload: { site_id: 'google' }, max_attempts: 3 });
+    worker.start();
+    await vi.waitFor(() => expect(observed).toBe(true), { timeout: 2_000, interval: 25 });
+    await worker.stop();
+  });
+
   it('cancelActiveTask flips the row to cancelled with reason=cancelled_by_user, no retry', async () => {
     const worker = createWorker({
       db,

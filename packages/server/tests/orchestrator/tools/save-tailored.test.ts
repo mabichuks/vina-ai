@@ -9,7 +9,7 @@ beforeEach(() => {
   dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'vina-tk-'));
 });
 afterEach(() => {
-  fs.rmSync(dataDir, { recursive: true, force: true });
+  fs.rmSync(dataDir, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
 });
 
 describe('manual-apply tool kit (server impl)', () => {

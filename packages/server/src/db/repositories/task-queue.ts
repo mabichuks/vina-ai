@@ -108,7 +108,10 @@ export function claimNext(db: DatabaseType, kind?: TaskKind): Task | null {
 }
 
 export function complete(db: DatabaseType, id: string): void {
-  db.prepare(`UPDATE task_queue SET status = 'completed' WHERE id = ?`).run(id);
+  // Guard against overwriting a cancelled row. The cancel route can flip a
+  // running row directly; a handler finishing without observing the abort must
+  // not resurrect it to completed.
+  db.prepare(`UPDATE task_queue SET status = 'completed' WHERE id = ? AND status = 'running'`).run(id);
 }
 
 /** Look up a task row by id (or null if it was deleted). */
@@ -118,16 +121,43 @@ export function findById(db: DatabaseType, id: string): Task | null {
 }
 
 /**
- * Flip a `pending`/`running` task to `cancelled`. Idempotent — a late cancel
- * arriving after the row has already completed or failed leaves it alone, so
- * a doubled cancel signal won't rewrite a terminal state.
+ * Flip a `pending`/`running` task to `cancelled`. Returns true when a row
+ * was actually flipped (i.e. the task was cancellable). Idempotent — a late
+ * cancel arriving after the row has already completed or failed leaves it
+ * alone, so a doubled cancel signal won't rewrite a terminal state.
  */
-export function cancel(db: DatabaseType, id: string, reason = 'cancelled_by_user'): void {
-  db.prepare(
-    `UPDATE task_queue
-       SET status = 'cancelled', failed_reason = ?
-     WHERE id = ? AND status IN ('pending', 'running')`,
-  ).run(reason, id);
+export function cancel(db: DatabaseType, id: string, reason = 'cancelled_by_user'): boolean {
+  const info = db
+    .prepare(
+      `UPDATE task_queue
+         SET status = 'cancelled', failed_reason = ?
+       WHERE id = ? AND status IN ('pending', 'running')`,
+    )
+    .run(reason, id);
+  return info.changes > 0;
+}
+
+/**
+ * Search tasks a user Stop can act on — pending rows (retry backoff) and any
+ * running rows whose registration is already gone; callers flip them to
+ * cancelled so the worker never (re)runs them. Signal aborting for truly
+ * running tasks happens via the active-tasks registry, not here.
+ * Payload is JSON; site filtering happens in JS.
+ */
+export function listCancellableSearchTasks(db: DatabaseType, siteId: string): Task[] {
+  const rows = db
+    .prepare(
+      `SELECT * FROM task_queue
+        WHERE kind = 'search' AND status IN ('pending', 'running')`,
+    )
+    .all() as TaskRow[];
+  return rows.map(rowToTask).filter((r) => {
+    try {
+      return (JSON.parse(r.payload) as { site_id?: string }).site_id === siteId;
+    } catch {
+      return false;
+    }
+  });
 }
 
 /**

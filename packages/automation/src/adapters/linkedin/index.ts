@@ -1,8 +1,22 @@
 import type { Locator, Page } from 'playwright';
 import type { SearchPreferences, WorkModel } from '@vina/shared';
 import { firstVisible, getHref, isExternalUrl } from '../../detect/apply-method.js';
+import { isSessionExpiredOnPage } from '../../detect/session.js';
 import { sleepBetweenListings } from '../../browser/humanise.js';
 import type { SiteAdapter } from '../adapter.js';
+import { actOnSession, snapshotSession } from '../session-actions.js';
+import {
+  advanceLinkedInStep,
+  closeLinkedInApplication,
+  fillLinkedInField,
+  inspectLinkedInFields,
+  startLinkedInApplication,
+  submitLinkedInApplication,
+  takeLinkedInScreenshot,
+  uploadLinkedInCoverLetter,
+  uploadLinkedInCv,
+} from './application.js';
+import { LINKEDIN_SESSION_HEURISTICS } from './heuristics.js';
 import type { JobDetail, RawListing } from '../types.js';
 import {
   APPLY_BUTTON_ROOT_SELECTOR,
@@ -243,7 +257,7 @@ export const linkedInAdapter: SiteAdapter = {
   },
 
   async onSessionExpired(page) {
-    return new URL(page.url()).pathname.startsWith('/login');
+    return isSessionExpiredOnPage(page, LINKEDIN_SESSION_HEURISTICS);
   },
 
   async *search(page, prefs, signal) {
@@ -316,6 +330,44 @@ export const linkedInAdapter: SiteAdapter = {
       return { method: 'manual', externalApplyUrl: null };
     }
     return { method: 'manual', externalApplyUrl: href };
+  },
+
+  // ADR-022: snapshot/act surface. LinkedIn delegates to the shared helper
+  // — the deterministic walker (M15) and LLM fallback both speak this API.
+  async snapshot(session) {
+    return snapshotSession(session);
+  },
+  async act(session, ref, action, value) {
+    return actOnSession(session, ref, action, value);
+  },
+
+  // M15 form-driving surface — see `application.ts`.
+  startApplication(page, listing) {
+    return startLinkedInApplication(page, listing);
+  },
+  inspectFields(session) {
+    return inspectLinkedInFields(session);
+  },
+  fillField(session, ref, value) {
+    return fillLinkedInField(session, ref, value);
+  },
+  uploadCv(session, path) {
+    return uploadLinkedInCv(session, path);
+  },
+  uploadCoverLetter(session, path) {
+    return uploadLinkedInCoverLetter(session, path);
+  },
+  advanceStep(session) {
+    return advanceLinkedInStep(session);
+  },
+  submit(session) {
+    return submitLinkedInApplication(session);
+  },
+  takeScreenshot(session) {
+    return takeLinkedInScreenshot(session);
+  },
+  closeApplication(session) {
+    return closeLinkedInApplication(session);
   },
 };
 

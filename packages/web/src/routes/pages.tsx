@@ -14,6 +14,7 @@ import { downloadAuthed } from '../api/client.js';
 import { SearchActivityPanel } from '../components/search/SearchActivityPanel.js';
 import { SearchNowButton } from '../components/search/SearchNowButton.js';
 import { Button } from '../components/ui/button.js';
+import { EasyApplyCard } from './dashboard/EasyApplyCard.js';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -115,6 +116,7 @@ export default function Dashboard(): JSX.Element {
         )}
       </div>
       <SearchActivityPanel />
+      <EasyApplyCard />
       {ready.data.length > 0 && (
         <section className="rounded-lg border border-border-subtle bg-surface-raised p-4">
           <header className="flex items-center justify-between">

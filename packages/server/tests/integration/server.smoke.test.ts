@@ -16,7 +16,7 @@ afterEach(async () => {
     await booted.shutdown();
     booted = null;
   }
-  fs.rmSync(tmpDir, { recursive: true, force: true });
+  fs.rmSync(tmpDir, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
 });
 
 describe('server smoke', () => {

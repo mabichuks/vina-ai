@@ -11,10 +11,14 @@ import { create } from 'zustand';
  *   idle          → user clicks Search now
  *   discovering   → `search:started` received
  *                   `jobs:updated` events during this phase count as listings
+ *   retrying      → `search:failed { will_retry: true }` received
+ *                   non-terminal; Stop button remains visible
+ *                   retrying → discovering when retry's `search:started` arrives
+ *                   retrying → done(wasCancelled) on `search:cancelled`
  *   scoring       → `search:completed { scored }` received
  *                   `jobs:updated` events now count as score completions
  *   done          → scoredCount ≥ totalToScore (auto-resets to idle after 4s)
- *   error         → `search:failed` (auto-resets to idle after 8s)
+ *   error         → `search:failed` terminal (auto-resets to idle after 8s)
  *
  * The store is intentionally loose: `jobs:updated` events also fire when the
  * user marks something applied/skipped, so counts can drift by one or two
@@ -22,7 +26,7 @@ import { create } from 'zustand';
  * progress," not strict accounting.
  */
 
-export type SearchPhase = 'idle' | 'discovering' | 'scoring' | 'done' | 'error';
+export type SearchPhase = 'idle' | 'discovering' | 'retrying' | 'scoring' | 'done' | 'error';
 
 interface SearchProgressState {
   phase: SearchPhase;
@@ -61,6 +65,7 @@ interface SearchProgressActions {
   countScored: (n: number) => void;
   markDone: () => void;
   markCancelled: () => void;
+  markRetrying: () => void;
   markError: (errorKind: string) => void;
   reset: () => void;
 }
@@ -138,6 +143,10 @@ export const useSearchProgressStore = create<SearchProgressState & SearchProgres
         s.phase === 'done' && s.wasCancelled
           ? s
           : { phase: 'done', wasCancelled: true, phaseChangedAt: Date.now() },
+      ),
+    markRetrying: () =>
+      set((s) =>
+        s.phase === 'retrying' ? s : { phase: 'retrying', phaseChangedAt: Date.now() },
       ),
     markError: (errorKind) =>
       set((s) =>

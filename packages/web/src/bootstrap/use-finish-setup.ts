@@ -61,9 +61,10 @@ export function useFirstDefaultStep(): OptionalStep | null {
     return { label: 'Schedule', path: '/onboarding/schedule' };
   }
 
-  // Mode: still default if both fields match the skip defaults.
+  // Mode: still default if the user hasn't moved away from the conservative
+  // 'manual' easy_apply_mode (the post-install default per ADR-022).
   const s = settings.data;
-  if (s && s.mode === 'supervised' && s.approval === 'review-first') {
+  if (s && s.easy_apply_mode === 'manual') {
     return { label: 'Mode', path: '/onboarding/mode' };
   }
 

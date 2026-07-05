@@ -63,6 +63,15 @@ describe('SearchActivityPanel — Stop button', () => {
     });
   });
 
+  it('keeps Stop visible while a failed search awaits retry', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response('{}', { status: 200 }));
+    useSearchProgressStore.getState().beginDiscovering({ taskId: 't9' });
+    useSearchProgressStore.getState().markRetrying();
+    renderPanel();
+    expect(await screen.findByRole('button', { name: /stop/i })).toBeInTheDocument();
+    expect(screen.getByText(/retrying/i)).toBeInTheDocument();
+  });
+
   it('prefixes "Cancelled" in the headline after a search:cancelled transition', () => {
     useSearchProgressStore.getState().beginDiscovering({ taskId: 't1' });
     useSearchProgressStore.getState().markCancelled();

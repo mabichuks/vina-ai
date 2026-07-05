@@ -27,12 +27,12 @@ describe('settings routes', () => {
     expect(body).not.toHaveProperty('encrypted_serpapi_key');
   });
 
-  it('PATCH unknown mode returns 400', async () => {
+  it('PATCH invalid easy_apply_mode value returns 400', async () => {
     const res = await h.app.inject({
       method: 'PATCH',
       url: '/api/settings',
       headers: auth(h.token),
-      payload: { mode: 'manual' },
+      payload: { easy_apply_mode: 'supervised' }, // 'supervised' is not a valid EasyApplyMode
     });
     expect(res.statusCode).toBe(400);
   });
@@ -45,6 +45,41 @@ describe('settings routes', () => {
       payload: { active_llm_provider_id: '01NONEXISTENT' },
     });
     expect(res.statusCode).toBe(409);
+  });
+
+  it('GET returns browser_stealth=false by default; PATCH toggles it and persists across requests', async () => {
+    const before = await h.app.inject({
+      method: 'GET',
+      url: '/api/settings',
+      headers: auth(h.token),
+    });
+    expect((before.json() as Record<string, unknown>)['browser_stealth']).toBe(false);
+
+    const patch = await h.app.inject({
+      method: 'PATCH',
+      url: '/api/settings',
+      headers: auth(h.token),
+      payload: { browser_stealth: true },
+    });
+    expect(patch.statusCode).toBe(200);
+    expect((patch.json() as Record<string, unknown>)['browser_stealth']).toBe(true);
+
+    const after = await h.app.inject({
+      method: 'GET',
+      url: '/api/settings',
+      headers: auth(h.token),
+    });
+    expect((after.json() as Record<string, unknown>)['browser_stealth']).toBe(true);
+  });
+
+  it('PATCH browser_stealth with a non-boolean returns 400', async () => {
+    const res = await h.app.inject({
+      method: 'PATCH',
+      url: '/api/settings',
+      headers: auth(h.token),
+      payload: { browser_stealth: 'yes' },
+    });
+    expect(res.statusCode).toBe(400);
   });
 
   it('DELETE /serpapi-key clears the key and disables Google Jobs', async () => {

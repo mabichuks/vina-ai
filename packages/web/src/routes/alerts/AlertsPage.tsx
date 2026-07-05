@@ -5,6 +5,7 @@ import {
   tailoredCoverLetterUrl,
   tailoredCvUrl,
   useAlerts,
+  useClearResolvedAlerts,
   useDismissAlert,
   useMarkApplied,
   useResolveAlert,
@@ -55,12 +56,34 @@ function severityBadge(alert: Alert): string {
 
 export function AlertsPage(): JSX.Element {
   const alerts = useAlerts();
+  const clearResolved = useClearResolvedAlerts();
+  const pushToast = useUiStore((s) => s.pushToast);
 
   return (
     <section className="space-y-4">
-      <h1 className="font-display text-3xl font-headline tracking-tight text-ink-primary">
-        Alerts
-      </h1>
+      <header className="flex items-baseline justify-between gap-3">
+        <h1 className="font-display text-3xl font-headline tracking-tight text-ink-primary">
+          Alerts
+        </h1>
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={async () => {
+            try {
+              await clearResolved.mutate();
+              pushToast({ kind: 'info', message: 'Cleared resolved alerts.' });
+            } catch (err) {
+              pushToast({
+                kind: 'error',
+                message: err instanceof Error ? err.message : String(err),
+              });
+            }
+          }}
+          disabled={clearResolved.isPending}
+        >
+          Clear resolved
+        </Button>
+      </header>
 
       {alerts.isLoading ? (
         <p className="text-sm text-ink-secondary">Loading…</p>

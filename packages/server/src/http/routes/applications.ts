@@ -2,20 +2,29 @@ import fs from 'node:fs';
 import type { FastifyInstance } from 'fastify';
 import type { Database as DatabaseType } from 'better-sqlite3';
 import { z } from 'zod';
-import { APPLICATION_STATUSES, NotFoundError } from '@vina/shared';
+import { APPLICATION_STATUSES, ConflictError, NotFoundError } from '@vina/shared';
 import {
   findApplicationById,
   listApplications,
   markApplicationApplied,
   markApplicationSkipped,
+  updateApplicationStatus,
 } from '../../db/repositories/applications.js';
 import { findJobById } from '../../db/repositories/jobs.js';
 import { listAlerts, resolveAlert } from '../../db/repositories/alerts.js';
 import type { EventBus } from '../../events/bus.js';
+import { enqueueEasyApplyForJob } from '../../queue/easy-apply-enqueuer.js';
 import { parse } from '../parse.js';
 
+/**
+ * `status=all` is a sentinel meaning "no filter" — the Applications page
+ * uses it to surface every in-flight + terminal application in one list.
+ * Existing callers (Ready-to-Apply page) still pass an explicit status.
+ */
 const ListQuerySchema = z.object({
-  status: z.enum(APPLICATION_STATUSES).optional(),
+  status: z
+    .union([z.enum(APPLICATION_STATUSES), z.literal('all')])
+    .optional(),
   page: z.coerce.number().int().min(1).default(1),
   page_size: z.coerce.number().int().min(1).max(100).default(50),
 });
@@ -69,13 +78,33 @@ export async function applicationRoutes(
 
   app.get('/api/applications', async (req) => {
     const q = parse(ListQuerySchema, req.query, 'query');
-    const status = q.status ?? 'ready_for_manual_apply';
+    const filter = q.status ?? 'ready_for_manual_apply';
     const items = listApplications(db, {
-      status,
+      ...(filter !== 'all' && { status: filter }),
       limit: q.page_size,
       offset: (q.page - 1) * q.page_size,
     });
-    return { items, page: q.page, page_size: q.page_size };
+    // Embed a thin job slice per application so the list page doesn't
+    // need a second N round-trips. The fields are the minimum the UI
+    // shows: title, company, score, apply method, listing URL.
+    const enriched = items.map((it) => {
+      const job = findJobById(db, it.job_id);
+      return {
+        ...it,
+        job: job
+          ? {
+              id: job.id,
+              title: job.title,
+              company: job.company,
+              location: job.location,
+              match_score: job.match_score,
+              apply_method: job.apply_method,
+              url: job.url,
+            }
+          : null,
+      };
+    });
+    return { items: enriched, page: q.page, page_size: q.page_size };
   });
 
   app.get('/api/applications/:id', async (req) => {
@@ -150,5 +179,32 @@ export async function applicationRoutes(
     });
     bus.emit('jobs:updated', { ids: [next.job_id] });
     return next;
+  });
+
+  // Re-run a dead auto-application. The old row is terminalised (failed)
+  // so the enqueuer's active-application dedupe can't return it, then a
+  // fresh application + apply task is created through the normal path.
+  app.post('/api/applications/:id/retry', async (req, reply) => {
+    const { id } = parse(IdParams, req.params, 'route params');
+    const application = findApplicationById(db, id);
+    if (!application) throw new NotFoundError(`Application ${id} not found`);
+    if (application.apply_method !== 'auto') {
+      throw new ConflictError('Only auto (Easy Apply) applications can be retried');
+    }
+    if (!['awaiting_user', 'failed'].includes(application.status)) {
+      throw new ConflictError(`Cannot retry an application in status ${application.status}`);
+    }
+    if (application.status === 'awaiting_user') {
+      updateApplicationStatus(db, id, 'failed', {
+        failure_reason: application.failure_reason ?? 'superseded_by_retry',
+      });
+      bus.emit('application:updated', { id, status: 'failed' });
+    }
+    const result = enqueueEasyApplyForJob(db, bus, application.job_id);
+    return reply.status(202).send({
+      application_id: result.application_id,
+      status: result.status,
+      deduped: result.deduped,
+    });
   });
 }

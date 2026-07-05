@@ -38,6 +38,16 @@ describe('search-progress-store — currentTaskId + cancellation', () => {
   });
 });
 
+describe('search-progress-store — retrying phase', () => {
+  it('markRetrying holds a non-terminal retrying phase and keeps the task id', () => {
+    useSearchProgressStore.getState().beginDiscovering({ taskId: 't7' });
+    useSearchProgressStore.getState().markRetrying();
+    const s = useSearchProgressStore.getState();
+    expect(s.phase).toBe('retrying');
+    expect(s.currentTaskId).toBe('t7');
+  });
+});
+
 describe('search-progress-store — pre-scoring race buffer', () => {
   it('buffers score completions that arrive during discovering and folds them into scoredCount on beginScoring', () => {
     const s = useSearchProgressStore.getState();

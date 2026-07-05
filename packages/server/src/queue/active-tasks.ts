@@ -32,16 +32,17 @@ export function cancelActiveTask(taskId: string): boolean {
   return true;
 }
 
-export function cancelTasksForSite(site_id: string): number {
-  let n = 0;
-  for (const [id, entry] of activeTasks) {
-    if (entry.site_id === site_id) {
+/** Abort every active task registered for `siteId`; returns their task ids. */
+export function cancelTasksForSite(siteId: string): string[] {
+  const ids: string[] = [];
+  for (const [taskId, entry] of activeTasks) {
+    if (entry.site_id === siteId) {
       entry.abort();
-      activeTasks.delete(id);
-      n += 1;
+      activeTasks.delete(taskId);
+      ids.push(taskId);
     }
   }
-  return n;
+  return ids;
 }
 
 /** Test seam. Not exported through the package index. */

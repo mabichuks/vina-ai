@@ -13,7 +13,7 @@ describe('SQLite client singleton', () => {
 
   afterEach(() => {
     closeDb();
-    fs.rmSync(tmpDir, { recursive: true, force: true });
+    fs.rmSync(tmpDir, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
   });
 
   it('creates the DB file and WAL companion files on first write', () => {

@@ -39,19 +39,32 @@ Non-goals: visual no-code users, mobile-only users, recruiters posting jobs.
 
 ## 5. Operating Modes
 
-The user selects, and can change at any time, one of two modes:
+Vina ships a single `easy_apply_mode` setting that the user can change at any time. It governs whether Vina submits Easy Apply listings on the user's behalf (see ADR-023):
 
-1. **Autonomous** — Vina searches, ranks, tailors, and applies without asking. It still pauses on blockers
-2. **Supervised** — Vina searches and ranks. The user picks which jobs to apply to. Vina then proceeds as in autonomous mode for the picked jobs
+1. **`manual` (default)** — Vina searches, ranks, and tailors CVs. The user explicitly opts each job into the apply pipeline by clicking **Auto-apply** on a JobCard. Nothing is submitted without that click.
+2. **`autonomous`** — When a job clears the user's score threshold and the [Easy Apply gate](#easy-apply-gate) allows, Vina enqueues the apply task automatically. The user sees a risk-disclosure dialog on activation and a kill switch on the dashboard.
 
-Independently, an **approval setting** controls per-application behaviour:
+Independently, an `autonomous_apply_dry_run` toggle lets the user observe gate decisions and would-be applies (logged + counted toward velocity) without actually submitting. Recommended for the first week on autonomous.
 
-- `auto-apply` — Tailored CV is submitted without review
-- `review-first` — Tailored CV is shown in the UI; user clicks "Approve" before Vina submits
+The "approval / review-first" concept was removed (see ADR-023): tailored CVs are always submitted when the form-fill flow completes successfully. The browser-apply skill's "literal evidence or skip" rule plus the EEO short-circuit are the safety net — Vina never fabricates an answer to clear a form.
 
-These are orthogonal: a user can be in supervised mode with auto-apply, or autonomous mode with review-first, etc.
+### Easy Apply gate
 
-For **manual-apply jobs** (Google Jobs results, plus any LinkedIn listing that redirects externally), the approval mode is implicit — the user always reviews before they apply, because they're the one doing the submission.
+Every path to `runApply` consults a single gate that can block, dry-run, or allow:
+
+| Check | Setting | Default |
+|---|---|---|
+| Daily cap on successful submissions | `apply_daily_cap` | 10 |
+| Minimum interval between attempts | `apply_min_interval_seconds` | 300 (5 min); 0 disables |
+| Skip listings older than | `apply_listing_max_age_days` | 14 |
+| Pause after N consecutive failures | `apply_consecutive_failure_limit` | 5 (auto-flips `easy_apply_mode` back to `manual` and raises an alert) |
+| Score threshold | `search_preferences.score_threshold` | 70 |
+| In-flight task for same job | (idempotency; current task is excluded) | — |
+| System paused | `settings.paused` | false |
+
+The handler re-checks the gate at task pickup — call sites (score handler, JobCard button) treat the gate as advisory.
+
+For **manual-apply jobs** (Google Jobs results, plus any LinkedIn listing that redirects externally), the user always reviews and submits in their own browser; the autonomous mode still tailors materials but cannot submit on the user's behalf.
 
 ## 6. The Two Application Workflows
 
@@ -103,18 +116,25 @@ Install ─▶ vina start ─▶ Browser opens UI
                        External redirect / Google ─▶ apply_method = 'manual'
                               │
                               ▼
-                    [supervised] User selects ─┐
-                    [autonomous] AI selects ───┤
+                    Per job, decide whether to enqueue an apply task:
+                       easy_apply_mode = 'manual':
+                          User clicks Auto-apply (auto) / Prepare (manual)
+                       easy_apply_mode = 'autonomous' + score ≥ threshold:
+                          apply_method = 'auto' ─▶ Easy Apply gate (cap, throttle,
+                                                    freshness, idempotency, breaker)
+                                                    ─▶ allow / dry_run / block
+                          apply_method = 'manual' ─▶ tailoring enqueued
                                                ▼
-                                    For each selected job:
-                                       Tailor CV
+                                    For each enqueued job:
+                                       Tailor CV (skipped on LinkedIn — uses profile resume)
                                        │
                                        ├─ apply_method = 'auto':
-                                       │     [review-first] Wait for approval
-                                       │     Apply via Playwright
+                                       │     Handler re-checks the gate
+                                       │     Apply via Playwright (literal-evidence rule;
+                                       │       EEO/demographic questions always skipped)
                                        │        ├─ success ─▶ submitted
                                        │        ├─ blocker ─▶ alert, awaiting_user, move on
-                                       │        └─ failure ─▶ failed
+                                       │        └─ failure ─▶ failed (5 in a row → mode flips to manual)
                                        │
                                        └─ apply_method = 'manual':
                                              Tailor cover letter (if applicable)
@@ -125,9 +145,8 @@ Install ─▶ vina start ─▶ Browser opens UI
                               │
                               ▼
                     User returns, sees alerts:
-                       Provides missing data ─▶ application resumes
+                       Provides missing data ─▶ application resumes; answer saved to profile_answers
                        Solves CAPTCHA       ─▶ application resumes
-                       Approves CV          ─▶ application proceeds
                        Reviews ready-to-apply ─▶ applies externally, marks as done
 ```
 

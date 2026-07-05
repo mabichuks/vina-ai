@@ -86,6 +86,8 @@ const SearchFailedPayload = z.object({
   task_id: z.string(),
   site_id: z.string(),
   error_kind: z.enum(['session_expired', 'network', 'unknown']),
+  /** True when the worker will re-run this task (attempts remain). */
+  will_retry: z.boolean().optional(),
 });
 const SearchCancelledPayload = z.object({
   task_id: z.string(),
