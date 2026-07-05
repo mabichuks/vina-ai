@@ -188,7 +188,16 @@ export async function launchCdpSession(
     '--no-default-browser-check',
     '--password-store=basic',
     '--use-mock-keychain',
-    ...(headless ? ['--headless=new'] : []),
+    // Playwright's own launcher adds this by default on Linux; our raw
+    // spawn must too — CI containers/VMs mount a small /dev/shm and
+    // Chromium aborts (SIGABRT) before CDP comes up without it.
+    '--disable-dev-shm-usage',
+    ...(headless ? ['--headless=new', '--disable-gpu'] : []),
+    // Chromium's sandbox needs unprivileged user namespaces, which some CI
+    // kernels (Ubuntu 24.04 AppArmor default) restrict — the process aborts
+    // at startup. Explicit opt-in only: user machines keep the sandbox for
+    // real browsing sessions.
+    ...(process.env['VINA_CHROMIUM_NO_SANDBOX'] === '1' ? ['--no-sandbox'] : []),
     ...stealthLaunchArgs(stealth),
   ];
 
