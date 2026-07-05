@@ -47,6 +47,8 @@ export function SearchActivityPanel(): JSX.Element | null {
         return listingsFound > 0
           ? `${gerund ?? 'Discovering'} · ${listingsFound} found`
           : `${gerund ?? 'Discovering'}…`;
+      case 'retrying':
+        return 'Search failed · retrying shortly…';
       case 'scoring':
         return totalToScore > 0
           ? `${gerund ?? 'Scoring'} · ${scoredCount}/${totalToScore}`
@@ -98,7 +100,7 @@ export function SearchActivityPanel(): JSX.Element | null {
       <div className="flex items-baseline justify-between gap-3 text-sm">
         <span className="font-medium">{headline}</span>
         <div className="flex items-center gap-3">
-          {phase === 'discovering' && currentTaskId && (
+          {(phase === 'discovering' || phase === 'retrying') && currentTaskId && (
             <Button
               variant="ghost"
               size="sm"

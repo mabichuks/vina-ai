@@ -37,6 +37,10 @@ describe('events catalog', () => {
         { application_id: '01A', applied_at: '2026-04-29T10:00:00Z' },
       ],
       [EVENTS.QUEUE_UPDATED, { pending: 3, running: 1 }],
+      [
+        EVENTS.SEARCH_FAILED,
+        { task_id: '01T', site_id: 'linkedin', error_kind: 'unknown', will_retry: true },
+      ],
     ] as const;
     for (const [name, payload] of fixtures) {
       expect(EVENT_PAYLOADS[name].parse(payload)).toEqual(payload);

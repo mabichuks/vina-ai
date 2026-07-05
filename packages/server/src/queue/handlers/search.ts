@@ -215,11 +215,11 @@ export interface SearchPayload {
 
 /**
  * Payload as seen by the branch functions: the persisted `SearchPayload`
- * plus a non-persisted `_signal` slot the worker mutates onto the parsed
- * object before invoking the handler. The leading underscore marks it as
- * transient (it is never re-serialized).
+ * plus non-persisted transient slots the worker mutates onto the parsed
+ * object before invoking the handler. The leading underscore marks them as
+ * transient (they are never re-serialized).
  */
-type RunPayload = SearchPayload & { _signal?: AbortSignal };
+type RunPayload = SearchPayload & { _signal?: AbortSignal; _will_retry?: boolean };
 
 export function createSearchHandler(
   deps: SearchHandlerDeps,
@@ -545,6 +545,7 @@ async function runBrowserSearch(
       task_id: payload.task_id ?? 'unknown',
       site_id: site.id,
       error_kind: errorKind,
+      will_retry: payload._will_retry === true,
     });
 
     if (isSessionExpired) {
@@ -637,6 +638,7 @@ async function runApiSearch(
       task_id: payload.task_id ?? 'unknown',
       site_id: site.id,
       error_kind: 'unknown',
+      will_retry: payload._will_retry === true,
     });
     if (payload.schedule_id) incrementScheduleFailures(deps.db, payload.schedule_id);
     throw new ValidationError('SerpAPI key not configured');
@@ -775,6 +777,7 @@ async function runApiSearch(
       task_id: payload.task_id ?? 'unknown',
       site_id: site.id,
       error_kind: 'unknown',
+      will_retry: payload._will_retry === true,
     });
     if (payload.schedule_id) {
       incrementScheduleFailures(deps.db, payload.schedule_id);

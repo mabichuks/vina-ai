@@ -153,6 +153,12 @@ export function createWorker(options: WorkerOptions): WorkerHandle {
       abortSignal = registerActiveTask(task.id, payloadSiteId);
       (payload as Record<string, unknown>)._signal = abortSignal;
       (payload as Record<string, unknown>).task_id = task.id;
+      // Same transient-slot trick as _signal: lets the handler annotate
+      // search:failed with whether the worker will re-run the task, without
+      // widening TaskHandler<P>. task.attempts is the post-claim attempt
+      // count — the same value the retry decision in the catch uses.
+      (payload as Record<string, unknown>)._will_retry =
+        task.attempts < task.max_attempts;
     }
 
     try {
