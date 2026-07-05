@@ -238,6 +238,9 @@ export async function runApply(
       outcome: 'failed',
       applicationId: input.applicationId,
       reason: 'form_too_long',
+      // The createAlert above already carries the screenshot — stop the
+      // apply handler from inserting a second, plainer alert.
+      alertRaised: true,
       events,
     };
   } finally {
