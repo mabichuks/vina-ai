@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import {
   enqueue,
   fail as failTask,
-  findTaskById,
+  findById,
   listPending,
   setNextAttemptAt,
 } from '../../src/db/repositories/task-queue.js';
@@ -181,7 +181,7 @@ describe('POST /api/searches/cancel', () => {
       payload: { task_id: t.id },
     });
     expect(res.json()).toEqual({ cancelled: 1 });
-    expect(findTaskById(h.db, t.id)?.status).toBe('cancelled');
+    expect(findById(h.db, t.id)?.status).toBe('cancelled');
   });
 
   it('cancel by site_id sweeps pending search rows and leaves other sites alone', async () => {
@@ -196,9 +196,9 @@ describe('POST /api/searches/cancel', () => {
       payload: { site_id: 'linkedin' },
     });
     expect(res.json()).toEqual({ cancelled: 1 });
-    expect(findTaskById(h.db, mine.id)?.status).toBe('cancelled');
-    expect(findTaskById(h.db, other.id)?.status).toBe('pending');
-    expect(findTaskById(h.db, score.id)?.status).toBe('pending');
+    expect(findById(h.db, mine.id)?.status).toBe('cancelled');
+    expect(findById(h.db, other.id)?.status).toBe('pending');
+    expect(findById(h.db, score.id)?.status).toBe('pending');
   });
 
   it('double-cancel is idempotent — second call reports 0', async () => {

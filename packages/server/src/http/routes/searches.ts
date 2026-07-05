@@ -6,7 +6,7 @@ import { findSiteById } from '../../db/repositories/sites.js';
 import {
   cancel as cancelTaskRow,
   enqueue,
-  findTaskById,
+  findById,
   listCancellableSearchTasks,
   listPending,
   setNextAttemptAt,
@@ -76,7 +76,7 @@ export async function searchRoutes(
    * UI leaves its retrying state.
    */
   const cancelOne = (taskId: string): number => {
-    const row = findTaskById(db, taskId);
+    const row = findById(db, taskId);
     const flipped = row && row.kind === 'search' ? cancelTaskRow(db, taskId) : false;
     const aborted = cancelActiveTask(taskId);
     if (flipped && !aborted && row) {

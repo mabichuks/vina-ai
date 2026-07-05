@@ -134,11 +134,6 @@ export function cancel(db: DatabaseType, id: string, reason = 'cancelled_by_user
   return info.changes > 0;
 }
 
-export function findTaskById(db: DatabaseType, id: string): Task | null {
-  const row = db.prepare(`SELECT * FROM task_queue WHERE id = ?`).get(id) as Task | undefined;
-  return row ?? null;
-}
-
 /**
  * Search tasks a user Stop can act on: running rows (abort the in-memory
  * signal) and pending rows (retry backoff — flip directly so the worker
@@ -150,8 +145,8 @@ export function listCancellableSearchTasks(db: DatabaseType, siteId: string): Ta
       `SELECT * FROM task_queue
         WHERE kind = 'search' AND status IN ('pending', 'running')`,
     )
-    .all() as Task[];
-  return rows.filter((r) => {
+    .all() as TaskRow[];
+  return rows.map(rowToTask).filter((r) => {
     try {
       return (JSON.parse(r.payload) as { site_id?: string }).site_id === siteId;
     } catch {
