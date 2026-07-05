@@ -155,5 +155,22 @@ export function externalNoUrlDetailPage(): string {
   );
 }
 
+/**
+ * Logged-out "jserp" guest SERP: job cards exist but carry
+ * `public_jobs_*` tracking names and /jobs/view/ anchors instead of the
+ * authenticated SPA structure. Mirrors what LinkedIn serves when the
+ * session cookie has expired (plus an authwall modal).
+ */
+export function guestSearchResultsPage(): string {
+  return `<!doctype html><html><head><title>563 Software jobs in United Kingdom</title></head>
+<body>
+  <div role="dialog" class="authwall-modal">Sign in to view more jobs</div>
+  <ul class="jobs-search__results-list">
+    <li><a data-tracking-control-name="public_jobs_jserp-result_search-card" href="/jobs/view/101">Senior Software Engineer</a></li>
+    <li><a data-tracking-control-name="public_jobs_jserp-result_search-card" href="/jobs/view/102">Backend Engineer</a></li>
+  </ul>
+</body></html>`;
+}
+
 /** Exported for tests that want to assert on listing data directly. */
 export { FIXTURE_LISTINGS };

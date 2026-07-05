@@ -1,6 +1,7 @@
 import type { Locator, Page } from 'playwright';
 import type { SearchPreferences, WorkModel } from '@vina/shared';
 import { firstVisible, getHref, isExternalUrl } from '../../detect/apply-method.js';
+import { isSessionExpiredOnPage } from '../../detect/session.js';
 import { sleepBetweenListings } from '../../browser/humanise.js';
 import type { SiteAdapter } from '../adapter.js';
 import { actOnSession, snapshotSession } from '../session-actions.js';
@@ -15,6 +16,7 @@ import {
   uploadLinkedInCoverLetter,
   uploadLinkedInCv,
 } from './application.js';
+import { LINKEDIN_SESSION_HEURISTICS } from './heuristics.js';
 import type { JobDetail, RawListing } from '../types.js';
 import {
   APPLY_BUTTON_ROOT_SELECTOR,
@@ -255,7 +257,7 @@ export const linkedInAdapter: SiteAdapter = {
   },
 
   async onSessionExpired(page) {
-    return new URL(page.url()).pathname.startsWith('/login');
+    return isSessionExpiredOnPage(page, LINKEDIN_SESSION_HEURISTICS);
   },
 
   async *search(page, prefs, signal) {

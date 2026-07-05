@@ -294,10 +294,17 @@ long-established account that has always presented a consistent fingerprint can
 itself look anomalous. Prefer enabling it early in an account's automation
 history rather than mid-stream. Per-site caps remain in force either way.
 
-## 11. Session Expiry Detection (unchanged)
+## 11. Session Expiry Detection
 
-`detect/session.ts` (per-adapter): LinkedIn redirect to `/login` or a `#username`
-field where content should be; Indeed redirect to `/account/login`. On detection:
+`detect/session.ts` provides a cross-adapter heuristics system; each adapter
+shares one `SessionExpiredHeuristics` constant (exported from its own module).
+
+LinkedIn expiry detection matches `/login`, `/uas/login`, `/authwall` URL paths
+**and** the DOM marker `[data-tracking-control-name^="public_jobs_"]`, because
+LinkedIn serves logged-out visitors real guest pages (with public_jobs tracking
+attributes and authwall modals) rather than redirecting to a login URL.
+
+Indeed redirect to `/account/login`. On detection:
 emit `session_expired`, mark `sites.session_valid_at = null`, create a
 `session_expired` alert, return `SubmitResult { ok: false, reason: 'session_expired' }`.
 User resolves by re-running `POST /api/sites/{site}/login`.

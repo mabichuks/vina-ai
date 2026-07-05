@@ -67,6 +67,21 @@ describe('linkedInAdapter — login predicates', () => {
     await page.goto(`${fixture.url}/feed`);
     expect(await linkedInAdapter.onSessionExpired(page)).toBe(false);
   }, 30_000);
+
+  it('onSessionExpired detects the logged-out guest SERP', async () => {
+    await page.goto(`${fixture.url}/jobs/search-guest`);
+    expect(await linkedInAdapter.onSessionExpired(page)).toBe(true);
+  }, 30_000);
+
+  it('onSessionExpired detects the authwall path', async () => {
+    await page.goto(`${fixture.url}/authwall`);
+    expect(await linkedInAdapter.onSessionExpired(page)).toBe(true);
+  }, 30_000);
+
+  it('onSessionExpired stays false on the authenticated SRP', async () => {
+    await page.goto(`${fixture.url}/jobs/search?keywords=x`);
+    expect(await linkedInAdapter.onSessionExpired(page)).toBe(false);
+  }, 30_000);
 });
 
 describe('linkedInAdapter.search', () => {

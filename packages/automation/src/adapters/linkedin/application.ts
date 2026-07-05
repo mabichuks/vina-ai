@@ -11,6 +11,7 @@ import { resolveRef } from '../../snapshot/refs.js';
 import { detectCaptchaOnPage } from '../../detect/captcha.js';
 import { isSessionExpiredOnPage } from '../../detect/session.js';
 import { findElementByGoal } from '../element-locator.js';
+import { LINKEDIN_SESSION_HEURISTICS } from './heuristics.js';
 import type { RawListing } from '../types.js';
 
 const log = createLogger('automation.linkedin.application');
@@ -76,11 +77,6 @@ const SUBMIT_SUCCESS_SELECTORS = [
   'button:has-text("Done")',
   'button[aria-label="Dismiss"]:has-text("Done")',
 ] as const;
-
-const LINKEDIN_SESSION_HEURISTICS = {
-  loginPathPatterns: [/^\/login/, /^\/uas\/login/],
-  textPatterns: ['Sign in to continue'],
-} as const;
 
 async function firstPresent(
   page: Page,
