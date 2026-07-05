@@ -266,7 +266,13 @@ async function runBrowserSearch(
     try {
       await page.goto(deps.feedUrlOverride ?? FEED_URL);
 
-      if (await adapter.onSessionExpired(page)) {
+      // LinkedIn doesn't bounce logged-out browsers to /login — it redirects
+      // /feed to the guest homepage and keeps serving public pages. Landing
+      // anywhere other than the feed is as conclusive as a login redirect.
+      if (
+        (await adapter.onSessionExpired(page)) ||
+        !(await adapter.onLoginSuccess(page))
+      ) {
         throw new LinkedInSessionExpiredError();
       }
 
@@ -342,6 +348,11 @@ async function runBrowserSearch(
         // couldn't extract a usable id/title (e.g. the bare anchor on the
         // 2026 AI-search SRP). Run the same recovery flow.
         if (!signal?.aborted && listings.length === 0) {
+          // A guest page yields zero cards "successfully" — don't burn LLM
+          // selector-recovery calls on a page we can't be logged into.
+          if (await adapter.onSessionExpired(page)) {
+            throw new LinkedInSessionExpiredError();
+          }
           const recovered = await recoverViaSelectorResolver();
           if (recovered.length > 0) listings = recovered;
         }
