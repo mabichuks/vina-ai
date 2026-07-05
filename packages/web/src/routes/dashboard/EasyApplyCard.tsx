@@ -1,4 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { api } from '../../api/client.js';
 import { Button } from '../../components/ui/button.js';
 
 interface RecentApply {
@@ -20,24 +21,21 @@ interface Summary {
   recent: RecentApply[];
 }
 
+// Raw fetch() here once caused a permanent "Loading…" card: the API needs a
+// bearer token, so every unauthenticated call 401'd and the query never
+// resolved. Always go through the shared `api` client — it attaches the
+// token and re-bootstraps it after a daemon restart.
 async function fetchSummary(): Promise<Summary> {
-  const r = await fetch('/api/dashboard/easy-apply');
-  if (!r.ok) throw new Error('Failed to fetch Easy Apply summary');
-  return (await r.json()) as Summary;
+  return api<Summary>('/api/dashboard/easy-apply');
 }
 
 async function patchMode(mode: 'autonomous' | 'manual'): Promise<void> {
-  const r = await fetch('/api/settings', {
-    method: 'PATCH',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ easy_apply_mode: mode }),
-  });
-  if (!r.ok) throw new Error('Failed to update mode');
+  await api('/api/settings', { method: 'PATCH', body: { easy_apply_mode: mode } });
 }
 
 export function EasyApplyCard(): JSX.Element {
   const qc = useQueryClient();
-  const { data } = useQuery({
+  const { data, isError } = useQuery({
     queryKey: ['dashboard', 'easy-apply'],
     queryFn: fetchSummary,
     refetchInterval: 30_000,
@@ -49,6 +47,16 @@ export function EasyApplyCard(): JSX.Element {
       void qc.invalidateQueries({ queryKey: ['settings'] });
     },
   });
+
+  // Distinguish a failed query from a pending one — a card stuck on
+  // "Loading…" hides real errors from the user.
+  if (isError) {
+    return (
+      <section className="rounded-lg border border-border-subtle bg-surface-raised p-4">
+        <p className="text-sm text-danger">Couldn’t load Easy Apply activity.</p>
+      </section>
+    );
+  }
 
   if (!data) {
     return (

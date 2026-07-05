@@ -1,5 +1,7 @@
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { NotFoundError } from '@vina/shared';
+import { api } from '../../api/client.js';
 import { Button } from '../../components/ui/button.js';
 
 interface ProfileAnswer {
@@ -11,24 +13,24 @@ interface ProfileAnswer {
   updated_at: string;
 }
 
+// Must go through the shared `api` client — the API needs a bearer token,
+// and raw fetch() left this tile failing with 401s forever.
 async function fetchAnswers(): Promise<ProfileAnswer[]> {
-  const r = await fetch('/api/profile-answers');
-  if (!r.ok) throw new Error('Failed to fetch answers');
-  const body = (await r.json()) as { answers: ProfileAnswer[] };
+  const body = await api<{ answers: ProfileAnswer[] }>('/api/profile-answers');
   return body.answers;
 }
 
 async function forgetAnswer(key: string): Promise<void> {
-  const r = await fetch(`/api/profile-answers/${encodeURIComponent(key)}`, {
-    method: 'DELETE',
-  });
-  // 404 = already gone — treat as success so concurrent forgets don't error.
-  if (!r.ok && r.status !== 404) throw new Error('Failed to forget answer');
+  try {
+    await api(`/api/profile-answers/${encodeURIComponent(key)}`, { method: 'DELETE' });
+  } catch (err) {
+    // 404 = already gone — treat as success so concurrent forgets don't error.
+    if (!(err instanceof NotFoundError)) throw err;
+  }
 }
 
 async function clearAllAnswers(): Promise<void> {
-  const r = await fetch('/api/profile-answers', { method: 'DELETE' });
-  if (!r.ok) throw new Error('Failed to clear answers');
+  await api('/api/profile-answers', { method: 'DELETE' });
 }
 
 export function AnswersTile(): JSX.Element {

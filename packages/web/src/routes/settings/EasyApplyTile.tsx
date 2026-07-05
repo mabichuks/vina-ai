@@ -1,22 +1,17 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
 import type { Settings, SettingsUpdate } from '@vina/shared';
+import { api } from '../../api/client.js';
 import { AutonomousRiskDialog } from './AutonomousRiskDialog.js';
 
+// Must go through the shared `api` client — the API needs a bearer token,
+// and raw fetch() left this tile permanently on "Loading…" (401 forever).
 async function fetchSettings(): Promise<Settings> {
-  const r = await fetch('/api/settings');
-  if (!r.ok) throw new Error('Failed to fetch settings');
-  return (await r.json()) as Settings;
+  return api<Settings>('/api/settings');
 }
 
 async function patchSettings(update: SettingsUpdate): Promise<Settings> {
-  const r = await fetch('/api/settings', {
-    method: 'PATCH',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify(update),
-  });
-  if (!r.ok) throw new Error('Failed to update settings');
-  return (await r.json()) as Settings;
+  return api<Settings>('/api/settings', { method: 'PATCH', body: update });
 }
 
 export function EasyApplyTile(): JSX.Element {
