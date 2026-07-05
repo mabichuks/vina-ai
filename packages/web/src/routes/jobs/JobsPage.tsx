@@ -20,7 +20,7 @@ import { applyHref, JobCard } from './JobCard.js';
 
 type Tab = 'new' | 'applied' | 'skipped';
 
-const PAGE_SIZE = 25;
+const PAGE_SIZE = 10;
 
 const TAB_LABELS: Record<Tab, string> = {
   new: 'New',

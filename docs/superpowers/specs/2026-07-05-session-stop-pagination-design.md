@@ -117,8 +117,9 @@ fetching and list-footer mechanics change.
      first/last always visible), "Showing X–Y of N". Pure props
      (`page`, `pageSize`, `total`, `onPageChange`), no data awareness.
    - `JobsPage`: local `page` state; filter changes (status tab, min-score)
-     reset to page 1; page size stays 25; sentinel/IntersectionObserver code
-     removed. Scroll to top of the list on page change.
+     reset to page 1; page size 10 (user decision 2026-07-05, was 25);
+     sentinel/IntersectionObserver code removed. Scroll to top of the list
+     on page change.
    - `useInfiniteJobs` is deleted (JobsPage is its only consumer).
 
 ### Tests
