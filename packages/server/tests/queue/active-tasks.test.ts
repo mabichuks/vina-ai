@@ -28,11 +28,11 @@ describe('active-tasks registry', () => {
     expect(signal.aborted).toBe(false);
   });
 
-  it('cancelTasksForSite aborts every task on that site and returns the count', () => {
+  it('cancelTasksForSite aborts every task on that site and returns the aborted ids', () => {
     const s1 = registerActiveTask('a', 'google');
     const s2 = registerActiveTask('b', 'google');
     const s3 = registerActiveTask('c', 'linkedin');
-    expect(cancelTasksForSite('google')).toBe(2);
+    expect(cancelTasksForSite('google')).toEqual(['a', 'b']);
     expect(s1.aborted).toBe(true);
     expect(s2.aborted).toBe(true);
     expect(s3.aborted).toBe(false);

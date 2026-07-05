@@ -170,6 +170,23 @@ Used in supervised mode: explicit user request to apply. Server inspects `apply_
 
 Triggers an immediate search across all enabled sources, bypassing the schedule. Returns 202.
 
+## Searches
+
+### `POST /api/searches/run-now`
+
+Body: `{ site_id: string }`. Enqueues an immediate search task for the given site, bypassing the schedule. Returns `202 { task_id, deduped }`. If a pending task already exists with `attempts === 0` the existing id is returned with `deduped: true`. If the task is in retry backoff (`attempts > 0`) `next_attempt_at` is fast-forwarded to now, the worker is poked, and the response includes `retried: true`.
+
+### `POST /api/searches/cancel`
+
+Body: `{ task_id?: string, site_id?: string }`. At least one must be provided.
+
+Cancels running **and** pending (retry-backoff) search tasks:
+
+- **`task_id`**: cancels the single named task. If the task is actively running, its in-memory abort signal is fired. If it is pending in retry backoff, its `task_queue` row is flipped to `cancelled` directly (the worker will never claim it). For backoff rows a `search:cancelled` WebSocket event is emitted immediately, since no handler is executing to emit it.
+- **`site_id`**: sweeps all cancellable tasks for that site — first aborts any live in-memory registrations, then flips all remaining `pending` rows for that site. A `search:cancelled` WebSocket event is emitted for each backoff row that is flipped.
+
+`cancelled` in the response counts distinct tasks acted on (rows flipped plus signals aborted, without double-counting). A second identical call returns `{ cancelled: 0 }` — idempotent.
+
 ## Applications
 
 ### `GET /api/applications`
@@ -305,6 +322,7 @@ Returns a streamed ZIP with the database and all files. For backup.
 | `site:login_status`                  | `{ login_id, status, reason? }`                                                                                       |
 | `system:status`                      | full status object — sent on subscribe and every 5s while connected                                                   |
 | `queue:updated`                      | `{ pending: number, running: number }`                                                                                |
+| `search:cancelled`                   | `{ task_id, site_id, listings_added, scored }` — fired when a search task is cancelled (by the handler if running, or by the cancel route if the task was in retry backoff) |
 
 ### Client → Server envelope
 

@@ -118,16 +118,46 @@ export function findById(db: DatabaseType, id: string): Task | null {
 }
 
 /**
- * Flip a `pending`/`running` task to `cancelled`. Idempotent — a late cancel
- * arriving after the row has already completed or failed leaves it alone, so
- * a doubled cancel signal won't rewrite a terminal state.
+ * Flip a `pending`/`running` task to `cancelled`. Returns true when a row
+ * was actually flipped (i.e. the task was cancellable). Idempotent — a late
+ * cancel arriving after the row has already completed or failed leaves it
+ * alone, so a doubled cancel signal won't rewrite a terminal state.
  */
-export function cancel(db: DatabaseType, id: string, reason = 'cancelled_by_user'): void {
-  db.prepare(
-    `UPDATE task_queue
-       SET status = 'cancelled', failed_reason = ?
-     WHERE id = ? AND status IN ('pending', 'running')`,
-  ).run(reason, id);
+export function cancel(db: DatabaseType, id: string, reason = 'cancelled_by_user'): boolean {
+  const info = db
+    .prepare(
+      `UPDATE task_queue
+         SET status = 'cancelled', failed_reason = ?
+       WHERE id = ? AND status IN ('pending', 'running')`,
+    )
+    .run(reason, id);
+  return info.changes > 0;
+}
+
+export function findTaskById(db: DatabaseType, id: string): Task | null {
+  const row = db.prepare(`SELECT * FROM task_queue WHERE id = ?`).get(id) as Task | undefined;
+  return row ?? null;
+}
+
+/**
+ * Search tasks a user Stop can act on: running rows (abort the in-memory
+ * signal) and pending rows (retry backoff — flip directly so the worker
+ * never claims them). Payload is JSON; site filtering happens in JS.
+ */
+export function listCancellableSearchTasks(db: DatabaseType, siteId: string): Task[] {
+  const rows = db
+    .prepare(
+      `SELECT * FROM task_queue
+        WHERE kind = 'search' AND status IN ('pending', 'running')`,
+    )
+    .all() as Task[];
+  return rows.filter((r) => {
+    try {
+      return (JSON.parse(r.payload) as { site_id?: string }).site_id === siteId;
+    } catch {
+      return false;
+    }
+  });
 }
 
 /**

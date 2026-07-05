@@ -1,5 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { listPending } from '../../src/db/repositories/task-queue.js';
+import {
+  enqueue,
+  fail as failTask,
+  findTaskById,
+  listPending,
+  setNextAttemptAt,
+} from '../../src/db/repositories/task-queue.js';
 import {
   registerActiveTask,
   _resetActiveTasksForTests,
@@ -161,5 +167,50 @@ describe('POST /api/searches/cancel', () => {
       payload: {},
     });
     expect(res.statusCode).toBe(400);
+  });
+
+  it('flips a pending retry-backoff search task to cancelled', async () => {
+    const t = enqueue(h.db, { kind: 'search', payload: { site_id: 'linkedin' } });
+    failTask(h.db, t.id, 'handler_timeout: search exceeded 300000ms', true);
+    setNextAttemptAt(h.db, t.id, new Date(Date.now() + 60_000).toISOString());
+
+    const res = await h.app.inject({
+      method: 'POST',
+      url: '/api/searches/cancel',
+      headers: auth(h.token),
+      payload: { task_id: t.id },
+    });
+    expect(res.json()).toEqual({ cancelled: 1 });
+    expect(findTaskById(h.db, t.id)?.status).toBe('cancelled');
+  });
+
+  it('cancel by site_id sweeps pending search rows and leaves other sites alone', async () => {
+    const mine = enqueue(h.db, { kind: 'search', payload: { site_id: 'linkedin' } });
+    const other = enqueue(h.db, { kind: 'search', payload: { site_id: 'google' } });
+    const score = enqueue(h.db, { kind: 'score', payload: { job_id: 'j1' } });
+
+    const res = await h.app.inject({
+      method: 'POST',
+      url: '/api/searches/cancel',
+      headers: auth(h.token),
+      payload: { site_id: 'linkedin' },
+    });
+    expect(res.json()).toEqual({ cancelled: 1 });
+    expect(findTaskById(h.db, mine.id)?.status).toBe('cancelled');
+    expect(findTaskById(h.db, other.id)?.status).toBe('pending');
+    expect(findTaskById(h.db, score.id)?.status).toBe('pending');
+  });
+
+  it('double-cancel is idempotent — second call reports 0', async () => {
+    const t = enqueue(h.db, { kind: 'search', payload: { site_id: 'linkedin' } });
+    const fire = () =>
+      h.app.inject({
+        method: 'POST',
+        url: '/api/searches/cancel',
+        headers: auth(h.token),
+        payload: { task_id: t.id },
+      });
+    expect((await fire()).json()).toEqual({ cancelled: 1 });
+    expect((await fire()).json()).toEqual({ cancelled: 0 });
   });
 });

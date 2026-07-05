@@ -76,7 +76,7 @@ export async function buildApp(deps: BuildAppDeps): Promise<FastifyInstance> {
     await applicationRoutes(api, { db: deps.db, bus: deps.bus });
     await dashboardRoutes(api, { db: deps.db });
     await alertRoutes(api, { db: deps.db, bus: deps.bus, poke: deps.poke });
-    await searchRoutes(api, { db: deps.db, poke: deps.poke });
+    await searchRoutes(api, { db: deps.db, poke: deps.poke, bus: deps.bus });
   });
   await registerStatic(app);
 
