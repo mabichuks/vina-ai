@@ -188,10 +188,12 @@ export async function launchCdpSession(
     '--no-default-browser-check',
     '--password-store=basic',
     '--use-mock-keychain',
-    // Playwright's own launcher adds this by default on Linux; our raw
-    // spawn must too — CI containers/VMs mount a small /dev/shm and
-    // Chromium aborts (SIGABRT) before CDP comes up without it.
+    // Playwright's own launcher adds these by default; our raw spawn must
+    // too — CI containers/VMs mount a small /dev/shm and Chromium aborts
+    // (SIGABRT) before CDP comes up without it, and the crashpad handler
+    // otherwise lingers past close() writing into the profile dir.
     '--disable-dev-shm-usage',
+    '--disable-breakpad',
     ...(headless ? ['--headless=new', '--disable-gpu'] : []),
     // Chromium's sandbox needs unprivileged user namespaces, which some CI
     // kernels (Ubuntu 24.04 AppArmor default) restrict — the process aborts
@@ -213,9 +215,14 @@ export async function launchCdpSession(
   );
 
   const spawnFn = opts.spawnFn ?? childProcess.spawn;
+  // POSIX: detach so Chromium leads its own process group — close() can then
+  // sweep the WHOLE group (crashpad_handler and renderers included). The
+  // crash handler outlives the main process and keeps writing into the
+  // profile dir, which broke profile cleanup on CI (ENOTEMPTY).
+  const posix = process.platform !== 'win32';
   const proc = spawnFn(executable, args, {
     stdio: ['ignore', 'pipe', 'pipe'],
-    detached: false,
+    detached: posix,
   });
   proc.on('error', (err) => log.warn({ err, siteId: opts.siteId }, 'chromium process error'));
 
@@ -224,6 +231,7 @@ export async function launchCdpSession(
   } catch (err) {
     try {
       proc.kill('SIGKILL');
+      if (posix && typeof proc.pid === 'number') process.kill(-proc.pid, 'SIGKILL');
     } catch {
       // ignored — best-effort cleanup on failed launch
     }
@@ -284,6 +292,17 @@ export async function launchCdpSession(
           resolve();
         }
       });
+    }
+    // Sweep the process group: helper processes (crashpad_handler) survive
+    // the main process and keep writing into the profile dir, racing any
+    // caller that deletes it right after close(). Negative pid = the group
+    // Chromium leads (we spawn detached on POSIX).
+    if (process.platform !== 'win32' && typeof proc.pid === 'number') {
+      try {
+        process.kill(-proc.pid, 'SIGKILL');
+      } catch {
+        // ignored — group already gone
+      }
     }
   }
 
