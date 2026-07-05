@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   type JobInsertInput,
+  countJobs,
   insertJob,
   listJobs,
   updateJobScore,
@@ -61,6 +62,23 @@ describe('jobs repository', () => {
     expect(scoredIds).toEqual([linkedinAuto.id]);
 
     expect(listJobs(db, { search: 'kafka' }).map((j) => j.external_id)).toEqual(['b']);
+    db.close();
+  });
+
+  it('countJobs applies the same filters as listJobs', () => {
+    const db = freshTestDb();
+    insertJob(db, jobInput({ external_id: 'c1', status: 'scored' }));
+    insertJob(db, jobInput({ external_id: 'c2', status: 'scored' }));
+    insertJob(db, jobInput({ external_id: 'c3', status: 'scored' }));
+    insertJob(db, jobInput({ external_id: 'c4', status: 'scored' }));
+    // Give three of them a high score and one a low score
+    const jobs = listJobs(db, { status: 'scored' });
+    updateJobScore(db, jobs[0]!.id, 80, 'ok');
+    updateJobScore(db, jobs[1]!.id, 85, 'ok');
+    updateJobScore(db, jobs[2]!.id, 90, 'ok');
+    updateJobScore(db, jobs[3]!.id, 30, 'low');
+    expect(countJobs(db, { status: 'scored', min_score: 70 })).toBe(3);
+    expect(countJobs(db, {})).toBe(4);
     db.close();
   });
 });

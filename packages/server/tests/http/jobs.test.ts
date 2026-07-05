@@ -58,6 +58,18 @@ describe('GET /api/jobs', () => {
     expect(res.json().items).toHaveLength(2);
     expect(res.json().page).toBe(2);
   });
+
+  it('returns a filter-aware total independent of page size', async () => {
+    for (let i = 0; i < 5; i++) seedJob({ score: 80, status: 'scored' });
+    seedJob({ score: 10, status: 'scored' });
+    const res = await h.app.inject({
+      method: 'GET',
+      url: '/api/jobs?status=scored&min_score=70&page=1&page_size=2',
+      headers: auth(h.token),
+    });
+    expect(res.json().items).toHaveLength(2);
+    expect(res.json().total).toBe(5);
+  });
 });
 
 describe('GET /api/jobs/:id', () => {

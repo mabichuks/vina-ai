@@ -2,7 +2,7 @@ import type { FastifyInstance } from 'fastify';
 import type { Database as DatabaseType } from 'better-sqlite3';
 import { z } from 'zod';
 import { JOB_STATUSES, NotFoundError, type JobStatus } from '@vina/shared';
-import { findJobById, listJobs, updateJobStatus } from '../../db/repositories/jobs.js';
+import { countJobs, findJobById, listJobs, updateJobStatus } from '../../db/repositories/jobs.js';
 import { enqueueEasyApplyForJob } from '../../queue/easy-apply-enqueuer.js';
 import { enqueueManualApplyForJob } from '../../queue/manual-apply-enqueuer.js';
 import type { EventBus } from '../../events/bus.js';
@@ -41,13 +41,13 @@ export async function jobRoutes(
     // Unwrap single-element arrays so the existing repo path stays warm.
     const status =
       q.status && q.status.length === 1 ? q.status[0] : q.status;
-    const items = listJobs(db, {
+    const filterArgs = {
       ...(status && { status }),
       ...(q.min_score !== undefined && { min_score: q.min_score }),
-      limit: q.page_size,
-      offset,
-    });
-    return { items, page: q.page, page_size: q.page_size };
+    };
+    const items = listJobs(db, { ...filterArgs, limit: q.page_size, offset });
+    const total = countJobs(db, filterArgs);
+    return { items, page: q.page, page_size: q.page_size, total };
   });
 
   app.get('/api/jobs/:id', async (req) => {

@@ -150,9 +150,12 @@ Query params:
 - `status` — comma-separated list of statuses to include
 - `site_id` — filter by site (`linkedin`, `indeed`, `google`)
 - `apply_method` — `auto` or `manual`
-- `min_score` — integer
+- `min_score` — integer (0–100)
 - `q` — full-text on title + company + description
-- `limit`, `cursor` — pagination
+- `page` — 1-based page number (default 1)
+- `page_size` — items per page, 1–100 (default 50)
+
+Response: `{ items: Job[], page: number, page_size: number, total: number }` where `total` is the filter-aware count of matching jobs independent of page size.
 
 ### `GET /api/jobs/:id`
 

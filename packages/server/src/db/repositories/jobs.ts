@@ -36,7 +36,10 @@ export interface JobFilters {
   offset?: number;
 }
 
-export function listJobs(db: DatabaseType, filters: JobFilters = {}): Job[] {
+function buildJobWhere(filters: Omit<JobFilters, 'limit' | 'offset'>): {
+  whereSql: string;
+  params: Record<string, unknown>;
+} {
   const where: string[] = [];
   const params: Record<string, unknown> = {};
 
@@ -76,11 +79,17 @@ export function listJobs(db: DatabaseType, filters: JobFilters = {}): Job[] {
     params['search'] = `%${filters.search}%`;
   }
 
+  return { whereSql: where.length ? `WHERE ${where.join(' AND ')}` : '', params };
+}
+
+export function listJobs(db: DatabaseType, filters: JobFilters = {}): Job[] {
+  const { whereSql, params } = buildJobWhere(filters);
+
   // Best matches first (score DESC), unscored rows pinned to the bottom so
   // the worklist stays stable while scores stream in. Ties broken by recency.
   const sql = `
     SELECT * FROM jobs
-    ${where.length ? `WHERE ${where.join(' AND ')}` : ''}
+    ${whereSql}
     ORDER BY match_score DESC NULLS LAST, discovered_at DESC, id DESC
     LIMIT @limit OFFSET @offset
   `;
@@ -89,6 +98,17 @@ export function listJobs(db: DatabaseType, filters: JobFilters = {}): Job[] {
 
   const rows = db.prepare(sql).all(params) as JobRow[];
   return rows.map(rowToJob);
+}
+
+export function countJobs(
+  db: DatabaseType,
+  filters: Omit<JobFilters, 'limit' | 'offset'> = {},
+): number {
+  const { whereSql, params } = buildJobWhere(filters);
+  const row = db
+    .prepare(`SELECT COUNT(*) AS n FROM jobs ${whereSql}`)
+    .get(params) as { n: number };
+  return row.n;
 }
 
 export function findJobById(db: DatabaseType, id: string): Job | null {
