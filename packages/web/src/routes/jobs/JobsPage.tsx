@@ -34,7 +34,9 @@ const TAB_LABELS: Record<Tab, string> = {
 // becomes visible.
 const STATUS_FILTER_FOR_TAB: Record<Tab, JobStatus | JobStatus[]> = {
   new: ['new', 'scored'],
-  applied: 'applied_manually',
+  // Easy Apply submissions land as 'submitted'; the manual pipeline uses
+  // 'applied_manually'. The user-facing Applied tab means both.
+  applied: ['applied_manually', 'submitted'],
   skipped: 'skipped',
 };
 

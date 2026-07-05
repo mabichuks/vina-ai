@@ -1,3 +1,4 @@
+import { Fragment, useState } from 'react';
 import { Link } from 'react-router-dom';
 import type { ApplicationListItem, ApplicationStatus } from '@vina/shared';
 import { useApplications, useRetryApplication, tailoredCvUrl } from '../../api/resources.js';
@@ -38,6 +39,37 @@ function formatRelative(iso: string | null): string {
   return `${Math.round(seconds / 86_400)}d ago`;
 }
 
+export interface ApplicationGroup<T extends { job_id: string; started_at: string }> {
+  latest: T;
+  history: T[]; // older attempts, newest first
+}
+
+/**
+ * One group per job: the latest attempt is the representative row; older
+ * attempts (retries create one application per attempt) become expandable
+ * history. Rows arrive in any order — sort within group by started_at desc.
+ */
+export function groupByJob<T extends { job_id: string; started_at: string }>(
+  rows: T[],
+): ApplicationGroup<T>[] {
+  const byJob = new Map<string, T[]>();
+  for (const row of rows) {
+    const list = byJob.get(row.job_id) ?? [];
+    list.push(row);
+    byJob.set(row.job_id, list);
+  }
+  return [...byJob.values()]
+    .map((list) => {
+      const sorted = [...list].sort(
+        (a, b) => Date.parse(b.started_at) - Date.parse(a.started_at),
+      );
+      return { latest: sorted[0]!, history: sorted.slice(1) };
+    })
+    .sort(
+      (a, b) => Date.parse(b.latest.started_at) - Date.parse(a.latest.started_at),
+    );
+}
+
 export function ApplicationsPage(): JSX.Element {
   const { data, isLoading } = useApplications({
     status: 'all',
@@ -49,6 +81,21 @@ export function ApplicationsPage(): JSX.Element {
   const rows = [...data].sort((a, b) =>
     b.started_at.localeCompare(a.started_at),
   );
+
+  const groups = groupByJob(rows);
+
+  const [expanded, setExpanded] = useState<Set<string>>(new Set());
+  const toggle = (jobId: string): void => {
+    setExpanded((prev) => {
+      const next = new Set(prev);
+      if (next.has(jobId)) {
+        next.delete(jobId);
+      } else {
+        next.add(jobId);
+      }
+      return next;
+    });
+  };
 
   return (
     <section className="space-y-4">
@@ -93,8 +140,27 @@ export function ApplicationsPage(): JSX.Element {
               </tr>
             </thead>
             <tbody>
-              {rows.map((row) => (
-                <ApplicationRow key={row.id} row={row} />
+              {groups.map((group) => (
+                <Fragment key={group.latest.id}>
+                  <ApplicationRow
+                    row={group.latest}
+                    isRepresentative={true}
+                    historyCount={group.history.length}
+                    isExpanded={expanded.has(group.latest.job_id)}
+                    onToggle={() => toggle(group.latest.job_id)}
+                  />
+                  {expanded.has(group.latest.job_id) &&
+                    group.history.map((histRow) => (
+                      <ApplicationRow
+                        key={histRow.id}
+                        row={histRow}
+                        isRepresentative={false}
+                        historyCount={0}
+                        isExpanded={false}
+                        onToggle={() => undefined}
+                      />
+                    ))}
+                </Fragment>
               ))}
             </tbody>
           </table>
@@ -104,7 +170,21 @@ export function ApplicationsPage(): JSX.Element {
   );
 }
 
-function ApplicationRow({ row }: { row: ApplicationListItem }): JSX.Element {
+interface ApplicationRowProps {
+  row: ApplicationListItem;
+  isRepresentative: boolean;
+  historyCount: number;
+  isExpanded: boolean;
+  onToggle: () => void;
+}
+
+function ApplicationRow({
+  row,
+  isRepresentative,
+  historyCount,
+  isExpanded,
+  onToggle,
+}: ApplicationRowProps): JSX.Element {
   const cvHref = row.tailored_cv_path
     ? `${tailoredCvUrl(row.id)}?format=docx`
     : null;
@@ -115,7 +195,11 @@ function ApplicationRow({ row }: { row: ApplicationListItem }): JSX.Element {
   const pushToast = useUiStore((s) => s.pushToast);
 
   return (
-    <tr className="border-b border-border-subtle last:border-0">
+    <tr
+      className={`border-b border-border-subtle last:border-0${
+        isRepresentative ? '' : ' opacity-60'
+      }`}
+    >
       <td className="px-3 py-2 align-top">
         {row.job ? (
           <a
@@ -132,6 +216,16 @@ function ApplicationRow({ row }: { row: ApplicationListItem }): JSX.Element {
           </a>
         ) : (
           <span className="text-ink-muted">job missing</span>
+        )}
+        {isRepresentative && historyCount > 0 && (
+          <button
+            type="button"
+            className="ml-2 rounded-pill bg-surface-sunken px-2 py-0.5 font-mono text-2xs text-ink-secondary hover:text-ink-primary"
+            aria-expanded={isExpanded}
+            onClick={onToggle}
+          >
+            {'×'}{historyCount + 1} attempts
+          </button>
         )}
       </td>
       <td className="px-3 py-2 align-top text-xs text-ink-secondary">
@@ -177,7 +271,8 @@ function ApplicationRow({ row }: { row: ApplicationListItem }): JSX.Element {
         {!cvHref && !pdfHref ? <span className="text-ink-muted">—</span> : null}
       </td>
       <td className="px-3 py-2 align-top">
-        {row.apply_method === 'auto' &&
+        {isRepresentative &&
+          row.apply_method === 'auto' &&
           (row.status === 'awaiting_user' || row.status === 'failed') && (
             <Button
               variant="ghost"
