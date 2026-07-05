@@ -5,6 +5,7 @@ import { auth, buildTestApp, type TestAppHandle } from './helpers.js';
 import { insertJob } from '../../src/db/repositories/jobs.js';
 import { insertCv } from '../../src/db/repositories/cvs.js';
 import {
+  findApplicationById,
   insertApplication,
   setApplicationTailored,
 } from '../../src/db/repositories/applications.js';
@@ -218,5 +219,131 @@ describe('POST /api/applications/:id/skip', () => {
     const body = res.json();
     expect(body.status).toBe('skipped');
     expect(body.failure_reason).toBe('too junior');
+  });
+});
+
+describe('POST /api/applications/:id/retry', () => {
+  function seedAutoJob(): ReturnType<typeof insertJob> {
+    jobCounter += 1;
+    return insertJob(h.db, {
+      site_id: 'linkedin',
+      external_id: `auto-${jobCounter}`,
+      url: 'https://linkedin.com/jobs/123',
+      apply_method: 'auto',
+      title: 'Engineer',
+      company: 'Acme',
+      description: 'Build stuff',
+    });
+  }
+
+  it('flips an awaiting_user auto application to failed and enqueues a fresh attempt', async () => {
+    const job = seedAutoJob();
+    const old = insertApplication(h.db, {
+      job_id: job.id,
+      cv_id: cvId,
+      apply_method: 'auto',
+      status: 'awaiting_user',
+    });
+    // Give the old row a failure_reason to verify it is preserved
+    h.db
+      .prepare(`UPDATE applications SET failure_reason = ? WHERE id = ?`)
+      .run('form_unclear', old.id);
+
+    const res = await h.app.inject({
+      method: 'POST',
+      url: `/api/applications/${old.id}/retry`,
+      headers: auth(h.token),
+    });
+
+    expect(res.statusCode).toBe(202);
+    const body = res.json() as { application_id: string; status: string; deduped: boolean };
+    // A new application must have been created
+    expect(body.application_id).not.toBe(old.id);
+    expect(body.deduped).toBe(false);
+
+    // Old application must be failed, failure_reason preserved
+    const updated = findApplicationById(h.db, old.id);
+    expect(updated?.status).toBe('failed');
+    expect(updated?.failure_reason).toBe('form_unclear');
+
+    // New application must be queued with an apply task
+    const newApp = findApplicationById(h.db, body.application_id);
+    expect(newApp?.status).toBe('queued');
+    const pending = listPending(h.db);
+    expect(
+      pending.find(
+        (t) =>
+          t.kind === 'apply' &&
+          (JSON.parse(t.payload) as { application_id: string }).application_id ===
+            body.application_id,
+      ),
+    ).toBeDefined();
+  });
+
+  it('retries a failed auto application without touching the old row', async () => {
+    const job = seedAutoJob();
+    const old = insertApplication(h.db, {
+      job_id: job.id,
+      cv_id: cvId,
+      apply_method: 'auto',
+      status: 'failed',
+    });
+
+    const res = await h.app.inject({
+      method: 'POST',
+      url: `/api/applications/${old.id}/retry`,
+      headers: auth(h.token),
+    });
+
+    expect(res.statusCode).toBe(202);
+    const body = res.json() as { application_id: string; status: string; deduped: boolean };
+    expect(body.application_id).not.toBe(old.id);
+
+    // Old row must remain failed — route must not alter it
+    const stillFailed = findApplicationById(h.db, old.id);
+    expect(stillFailed?.status).toBe('failed');
+
+    // New application must be queued
+    const newApp = findApplicationById(h.db, body.application_id);
+    expect(newApp?.status).toBe('queued');
+  });
+
+  it('409s for manual applications and for submitted ones', async () => {
+    const manualJob = seedManualJob();
+    const manualApp = insertApplication(h.db, {
+      job_id: manualJob.id,
+      cv_id: cvId,
+      apply_method: 'manual',
+      status: 'ready_for_manual_apply',
+    });
+    const manualRes = await h.app.inject({
+      method: 'POST',
+      url: `/api/applications/${manualApp.id}/retry`,
+      headers: auth(h.token),
+    });
+    expect(manualRes.statusCode).toBe(409);
+
+    const autoJob = seedAutoJob();
+    const submittedApp = insertApplication(h.db, {
+      job_id: autoJob.id,
+      cv_id: cvId,
+      apply_method: 'auto',
+      status: 'submitted',
+    });
+    const submittedRes = await h.app.inject({
+      method: 'POST',
+      url: `/api/applications/${submittedApp.id}/retry`,
+      headers: auth(h.token),
+    });
+    expect(submittedRes.statusCode).toBe(409);
+  });
+
+  it('404s for unknown ids', async () => {
+    const res = await h.app.inject({
+      method: 'POST',
+      url: `/api/applications/nonexistent-id/retry`,
+      headers: auth(h.token),
+    });
+    expect(res.statusCode).toBe(404);
   });
 });

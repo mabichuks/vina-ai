@@ -896,6 +896,29 @@ export function useAutoApplyJob(): {
   return { mutate: (id) => mut.mutateAsync(id), isPending: mut.isPending };
 }
 
+export function useRetryApplication(): {
+  mutate: (id: string) => Promise<{ application_id: string; status: string; deduped: boolean }>;
+  isPending: boolean;
+} {
+  const qc = useQueryClient();
+  const mut = useMutation<
+    { application_id: string; status: string; deduped: boolean },
+    Error,
+    string
+  >({
+    mutationFn: (id) =>
+      api<{ application_id: string; status: string; deduped: boolean }>(
+        `/api/applications/${id}/retry`,
+        { method: 'POST', body: {} },
+      ),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ['applications'] });
+      void qc.invalidateQueries({ queryKey: ['jobs'] });
+    },
+  });
+  return { mutate: (id) => mut.mutateAsync(id), isPending: mut.isPending };
+}
+
 export function tailoredCvUrl(applicationId: string): string {
   return `/api/applications/${applicationId}/tailored-cv`;
 }

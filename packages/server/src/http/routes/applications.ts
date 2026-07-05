@@ -2,16 +2,18 @@ import fs from 'node:fs';
 import type { FastifyInstance } from 'fastify';
 import type { Database as DatabaseType } from 'better-sqlite3';
 import { z } from 'zod';
-import { APPLICATION_STATUSES, NotFoundError } from '@vina/shared';
+import { APPLICATION_STATUSES, ConflictError, NotFoundError } from '@vina/shared';
 import {
   findApplicationById,
   listApplications,
   markApplicationApplied,
   markApplicationSkipped,
+  updateApplicationStatus,
 } from '../../db/repositories/applications.js';
 import { findJobById } from '../../db/repositories/jobs.js';
 import { listAlerts, resolveAlert } from '../../db/repositories/alerts.js';
 import type { EventBus } from '../../events/bus.js';
+import { enqueueEasyApplyForJob } from '../../queue/easy-apply-enqueuer.js';
 import { parse } from '../parse.js';
 
 /**
@@ -177,5 +179,32 @@ export async function applicationRoutes(
     });
     bus.emit('jobs:updated', { ids: [next.job_id] });
     return next;
+  });
+
+  // Re-run a dead auto-application. The old row is terminalised (failed)
+  // so the enqueuer's active-application dedupe can't return it, then a
+  // fresh application + apply task is created through the normal path.
+  app.post('/api/applications/:id/retry', async (req, reply) => {
+    const { id } = parse(IdParams, req.params, 'route params');
+    const application = findApplicationById(db, id);
+    if (!application) throw new NotFoundError(`Application ${id} not found`);
+    if (application.apply_method !== 'auto') {
+      throw new ConflictError('Only auto (Easy Apply) applications can be retried');
+    }
+    if (!['awaiting_user', 'failed'].includes(application.status)) {
+      throw new ConflictError(`Cannot retry an application in status ${application.status}`);
+    }
+    if (application.status === 'awaiting_user') {
+      updateApplicationStatus(db, id, 'failed', {
+        failure_reason: application.failure_reason ?? 'superseded_by_retry',
+      });
+      bus.emit('application:updated', { id, status: 'failed' });
+    }
+    const result = enqueueEasyApplyForJob(db, bus, application.job_id);
+    return reply.status(202).send({
+      application_id: result.application_id,
+      status: result.status,
+      deduped: result.deduped,
+    });
   });
 }

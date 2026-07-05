@@ -1,6 +1,8 @@
 import { Link } from 'react-router-dom';
 import type { ApplicationListItem, ApplicationStatus } from '@vina/shared';
-import { useApplications, tailoredCvUrl } from '../../api/resources.js';
+import { useApplications, useRetryApplication, tailoredCvUrl } from '../../api/resources.js';
+import { useUiStore } from '../../store/ui-store.js';
+import { Button } from '../../components/ui/button.js';
 
 const STATUS_STYLE: Record<ApplicationStatus, string> = {
   queued: 'bg-surface-sunken text-ink-secondary',
@@ -87,6 +89,7 @@ export function ApplicationsPage(): JSX.Element {
                 <th className="px-3 py-2">Started</th>
                 <th className="px-3 py-2">Tailored</th>
                 <th className="px-3 py-2">CV</th>
+                <th className="px-3 py-2">Actions</th>
               </tr>
             </thead>
             <tbody>
@@ -108,6 +111,8 @@ function ApplicationRow({ row }: { row: ApplicationListItem }): JSX.Element {
   const pdfHref = row.tailored_cv_pdf_path
     ? `${tailoredCvUrl(row.id)}?format=pdf`
     : null;
+  const retry = useRetryApplication();
+  const pushToast = useUiStore((s) => s.pushToast);
 
   return (
     <tr className="border-b border-border-subtle last:border-0">
@@ -170,6 +175,29 @@ function ApplicationRow({ row }: { row: ApplicationListItem }): JSX.Element {
           </a>
         ) : null}
         {!cvHref && !pdfHref ? <span className="text-ink-muted">—</span> : null}
+      </td>
+      <td className="px-3 py-2 align-top">
+        {row.apply_method === 'auto' &&
+          (row.status === 'awaiting_user' || row.status === 'failed') && (
+            <Button
+              variant="ghost"
+              size="sm"
+              disabled={retry.isPending}
+              onClick={() =>
+                void retry
+                  .mutate(row.id)
+                  .then(() => pushToast({ kind: 'success', message: 'Retry queued.' }))
+                  .catch((err) =>
+                    pushToast({
+                      kind: 'error',
+                      message: err instanceof Error ? err.message : String(err),
+                    }),
+                  )
+              }
+            >
+              Retry
+            </Button>
+          )}
       </td>
     </tr>
   );

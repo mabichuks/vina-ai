@@ -223,7 +223,19 @@ For applications in `queued`, `awaiting_user`, or `ready_for_manual_apply`. Mark
 
 ### `POST /api/applications/:id/retry`
 
-For applications in `failed`. Re-enqueues if the failure was transient.
+**For auto (Easy Apply) applications only**, in status `awaiting_user` or `failed`.
+
+- If the application is `awaiting_user`, it is first transitioned to `failed` (preserving any existing `failure_reason`) so the enqueuer's active-application dedupe cannot return it.
+- A fresh application + `apply` task is then created via the normal enqueue path.
+
+Response `202`:
+```json
+{ "application_id": "<new-id>", "status": "queued", "deduped": false }
+```
+
+Errors:
+- `404` — application not found.
+- `409` — `apply_method` is not `auto`, or status is outside `('awaiting_user', 'failed')`.
 
 ### `POST /api/applications/:id/mark-applied`
 
