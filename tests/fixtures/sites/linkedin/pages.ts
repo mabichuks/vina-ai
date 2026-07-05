@@ -160,14 +160,17 @@ export function externalNoUrlDetailPage(): string {
  * `public_jobs_*` tracking names and /jobs/view/ anchors instead of the
  * authenticated SPA structure. Mirrors what LinkedIn serves when the
  * session cookie has expired (plus an authwall modal).
+ * Guest hrefs are slug-style (job title and company slug, with id at the tail),
+ * which is why the adapter cannot extract an external id from guest cards —
+ * the fixture must mirror that unextractable pattern.
  */
 export function guestSearchResultsPage(): string {
   return `<!doctype html><html><head><title>563 Software jobs in United Kingdom</title></head>
 <body>
   <div role="dialog" class="authwall-modal">Sign in to view more jobs</div>
   <ul class="jobs-search__results-list">
-    <li><a data-tracking-control-name="public_jobs_jserp-result_search-card" href="/jobs/view/101">Senior Software Engineer</a></li>
-    <li><a data-tracking-control-name="public_jobs_jserp-result_search-card" href="/jobs/view/102">Backend Engineer</a></li>
+    <li><a data-tracking-control-name="public_jobs_jserp-result_search-card" href="/jobs/view/senior-software-engineer-at-spectrum-it-recruitment-4306548812">Senior Software Engineer</a></li>
+    <li><a data-tracking-control-name="public_jobs_jserp-result_search-card" href="/jobs/view/backend-engineer-at-capital-on-tap-4306548813">Backend Engineer</a></li>
   </ul>
 </body></html>`;
 }
