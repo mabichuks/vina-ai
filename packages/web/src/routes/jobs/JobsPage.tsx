@@ -1,10 +1,10 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import type { JobStatus } from '@vina/shared';
 import {
   useApplications,
   useAutoApplyJob,
-  useInfiniteJobs,
+  useJobsPage,
   useLinkedInStatus,
   useMarkJobApplied,
   usePrepareJob,
@@ -12,6 +12,7 @@ import {
   useSearchPreferences,
   useSkipJob,
 } from '../../api/resources.js';
+import { PaginationBar } from '../../components/ui/pagination-bar.js';
 import { SearchActivityPanel } from '../../components/search/SearchActivityPanel.js';
 import { SearchNowButton } from '../../components/search/SearchNowButton.js';
 import { useUiStore } from '../../store/ui-store.js';
@@ -41,31 +42,22 @@ export function JobsPage(): JSX.Element {
   const linkedin = useLinkedInStatus({ pollMs: 5000 });
   const minScore = prefs.data?.score_threshold ?? 70;
 
-  const jobs = useInfiniteJobs({
+  const PAGE_SIZE = 25;
+  const [page, setPage] = useState(1);
+  // Filter changes re-anchor to page 1 — page 7 of a different filter set
+  // is meaningless. The setState-in-effect pattern is intentional here: we
+  // need a synchronous reset whenever the filter changes, not a derived value.
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setPage(1);
+  }, [tab, minScore]);
+
+  const jobs = useJobsPage({
     status: STATUS_FILTER_FOR_TAB[tab],
     ...(tab === 'new' && { min_score: minScore }),
-    page_size: 25,
+    page,
+    page_size: PAGE_SIZE,
   });
-
-  // IntersectionObserver-driven infinite scroll: when the sentinel scrolls
-  // into view we ask for the next page. The sentinel sits below the last
-  // card; if there's nothing more to load it never fires.
-  const sentinelRef = useRef<HTMLDivElement | null>(null);
-  useEffect(() => {
-    const el = sentinelRef.current;
-    if (!el) return undefined;
-    if (!jobs.hasNextPage) return undefined;
-    const obs = new IntersectionObserver(
-      (entries) => {
-        if (entries.some((e) => e.isIntersecting) && !jobs.isFetchingNextPage) {
-          jobs.fetchNextPage();
-        }
-      },
-      { rootMargin: '200px' },
-    );
-    obs.observe(el);
-    return () => obs.disconnect();
-  }, [jobs.hasNextPage, jobs.isFetchingNextPage, jobs.fetchNextPage]);
 
   const markApplied = useMarkJobApplied();
   const skip = useSkipJob();
@@ -134,7 +126,7 @@ export function JobsPage(): JSX.Element {
 
       {jobs.isLoading ? (
         <p className="text-sm text-ink-secondary">Loading…</p>
-      ) : jobs.pages.length === 0 ? (
+      ) : jobs.items.length === 0 ? (
         <p className="text-sm text-ink-secondary">
           {tab === 'new'
             ? 'No new jobs yet. Try Search now once LinkedIn is connected.'
@@ -144,7 +136,7 @@ export function JobsPage(): JSX.Element {
         </p>
       ) : (
         <ul className="space-y-3">
-          {jobs.pages.map((job) => (
+          {jobs.items.map((job) => (
             <li key={job.id}>
               <JobCard
                 job={job}
@@ -201,19 +193,18 @@ export function JobsPage(): JSX.Element {
               />
             </li>
           ))}
-          <li>
-            {/* Intersection sentinel — when this enters the viewport we ask
-                for the next page. Empty by design; the spacing comes from the
-                outer ul's space-y. */}
-            <div ref={sentinelRef} />
-            {jobs.isFetchingNextPage && (
-              <p className="text-center text-xs text-ink-muted">Loading more…</p>
-            )}
-            {!jobs.hasNextPage && jobs.pages.length > 0 && (
-              <p className="text-center text-xs text-ink-muted">End of list.</p>
-            )}
-          </li>
         </ul>
+      )}
+      {!jobs.isLoading && (
+        <PaginationBar
+          page={page}
+          pageSize={PAGE_SIZE}
+          total={jobs.total}
+          onPageChange={(p) => {
+            setPage(p);
+            window.scrollTo({ top: 0 });
+          }}
+        />
       )}
     </section>
   );

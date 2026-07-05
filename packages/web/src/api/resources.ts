@@ -1,5 +1,5 @@
 import {
-  useInfiniteQuery,
+  keepPreviousData,
   useMutation,
   useQuery,
   useQueryClient,
@@ -433,6 +433,7 @@ export interface JobsListResponse {
   items: Job[];
   page: number;
   page_size: number;
+  total: number;
 }
 
 export interface JobsFilters {
@@ -462,55 +463,38 @@ export function useJobs(filters: JobsFilters): { data: Job[]; isLoading: boolean
 }
 
 /**
- * Infinite-scroll jobs query. Auto-fetches the next page on `fetchNextPage()`;
- * the caller wires a sentinel via `IntersectionObserver` (or a "Load more"
- * button). Capped server-side at `page_size <= 100`; the UI passes 25 by
- * default to keep DOM weight bounded.
- *
- * Page numbers are 1-indexed (matches the REST API). `hasNextPage` is derived
- * by checking whether the last page returned a full `page_size` — when it
- * returns fewer, we've hit the end.
+ * Classic paged jobs query for the numbered-pagination Jobs page.
+ * `keepPreviousData` keeps the previous page's rows rendered while the next
+ * page loads, so page flips don't flash an empty list. The 'jobs' key prefix
+ * keeps the existing mutation invalidations (`['jobs']`) effective.
  */
-export function useInfiniteJobs(filters: Omit<JobsFilters, 'page'>): {
-  pages: Job[];
+export function useJobsPage(filters: JobsFilters): {
+  items: Job[];
+  total: number;
   isLoading: boolean;
-  isFetchingNextPage: boolean;
-  hasNextPage: boolean;
-  fetchNextPage: () => void;
 } {
   const pageSize = filters.page_size ?? 25;
-  const baseQs = (page: number): string => {
-    const qs = new URLSearchParams();
-    if (filters.status) {
-      qs.set(
-        'status',
-        Array.isArray(filters.status) ? filters.status.join(',') : filters.status,
-      );
-    }
-    if (filters.min_score !== undefined) qs.set('min_score', String(filters.min_score));
-    qs.set('page', String(page));
-    qs.set('page_size', String(pageSize));
-    return qs.toString();
-  };
+  const page = filters.page ?? 1;
+  const qs = new URLSearchParams();
+  if (filters.status) {
+    qs.set(
+      'status',
+      Array.isArray(filters.status) ? filters.status.join(',') : filters.status,
+    );
+  }
+  if (filters.min_score !== undefined) qs.set('min_score', String(filters.min_score));
+  qs.set('page', String(page));
+  qs.set('page_size', String(pageSize));
 
-  const q = useInfiniteQuery<JobsListResponse, Error>({
-    queryKey: ['jobs-infinite', { ...filters, page_size: pageSize }],
-    queryFn: ({ pageParam }) =>
-      api<JobsListResponse>(`/api/jobs?${baseQs(pageParam as number)}`),
-    initialPageParam: 1,
-    getNextPageParam: (lastPage) => {
-      if (lastPage.items.length < pageSize) return undefined;
-      return lastPage.page + 1;
-    },
+  const q = useQuery<JobsListResponse, Error>({
+    queryKey: ['jobs', 'page', qs.toString()],
+    queryFn: () => api<JobsListResponse>(`/api/jobs?${qs.toString()}`),
+    placeholderData: keepPreviousData,
   });
-
-  const flat: Job[] = (q.data?.pages ?? []).flatMap((p) => p.items);
   return {
-    pages: flat,
+    items: q.data?.items ?? [],
+    total: q.data?.total ?? 0,
     isLoading: q.isLoading,
-    isFetchingNextPage: q.isFetchingNextPage,
-    hasNextPage: q.hasNextPage ?? false,
-    fetchNextPage: () => void q.fetchNextPage(),
   };
 }
 
