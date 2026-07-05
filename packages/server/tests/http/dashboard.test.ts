@@ -97,4 +97,63 @@ describe('GET /api/dashboard/easy-apply', () => {
     expect(body.circuit_breaker_tripped).toBe(true);
     expect(body.consecutive_failures).toBe(5);
   });
+
+  it('recent dedupes to the latest application per job', async () => {
+    const cv = insertCv(h.db, {
+      label: 'Default',
+      original_filename: 'cv.pdf',
+      mime_type: 'application/pdf',
+      file_path: '/tmp/cv.pdf',
+      is_default: true,
+    });
+    const job = insertJob(h.db, {
+      site_id: 'linkedin',
+      external_id: 'auto-1',
+      url: 'https://x',
+      apply_method: 'auto',
+      title: 'Senior Engineer',
+      company: 'Acme',
+      description: 'desc',
+    });
+    updateJobScore(h.db, job.id, 92, null);
+
+    // Seed two applications for the same job: older failed, newer submitted
+    const olderApp = insertApplication(h.db, {
+      job_id: job.id,
+      cv_id: cv.id,
+      apply_method: 'auto',
+      status: 'failed',
+    });
+    const newerApp = insertApplication(h.db, {
+      job_id: job.id,
+      cv_id: cv.id,
+      apply_method: 'auto',
+      status: 'submitted',
+    });
+
+    // Force started_at ordering to ensure the newer app is truly newer
+    const olderTime = new Date(Date.now() - 60_000).toISOString(); // 1 min ago
+    const newerTime = new Date().toISOString();
+    h.db
+      .prepare(`UPDATE applications SET started_at = ? WHERE id = ?`)
+      .run(olderTime, olderApp.id);
+    h.db
+      .prepare(`UPDATE applications SET started_at = ? WHERE id = ?`)
+      .run(newerTime, newerApp.id);
+
+    const res = await h.app.inject({
+      method: 'GET',
+      url: '/api/dashboard/easy-apply',
+      headers: auth(h.token),
+    });
+    expect(res.statusCode).toBe(200);
+    const body = res.json() as {
+      recent: Array<{ application_id: string; title: string }>;
+    };
+
+    // Should contain exactly ONE entry for this job — the newer application
+    const jobEntries = body.recent.filter((r) => r.title === 'Senior Engineer');
+    expect(jobEntries).toHaveLength(1);
+    expect(jobEntries[0]?.application_id).toBe(newerApp.id);
+  });
 });

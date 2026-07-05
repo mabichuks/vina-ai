@@ -12,7 +12,7 @@ import {
   insertApplication,
   findApplicationById,
 } from '../../src/db/repositories/applications.js';
-import { insertJob, updateJobScore } from '../../src/db/repositories/jobs.js';
+import { insertJob, updateJobScore, findJobById } from '../../src/db/repositories/jobs.js';
 import { updateSettings } from '../../src/db/repositories/settings.js';
 import { insertCv } from '../../src/db/repositories/cvs.js';
 import { insertProfile } from '../../src/db/repositories/profile.js';
@@ -185,6 +185,9 @@ describe('M15 — end-to-end apply against fixture (Done-when)', () => {
       expect(after?.submitted_at).toBeTruthy();
       // LinkedIn uses the profile CV — no tailored DOCX is produced.
       expect(after?.tailored_cv_path).toBeNull();
+
+      const jobAfter = findJobById(db, job.id);
+      expect(jobAfter?.status).toBe('submitted');
 
       const events = listEvents(db, app.id);
       const kinds = events.map((e) => e.kind);

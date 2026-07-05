@@ -20,7 +20,7 @@ import {
   updateApplicationStatus,
 } from '../../db/repositories/applications.js';
 import { appendEvent } from '../../db/repositories/application-events.js';
-import { findJobById } from '../../db/repositories/jobs.js';
+import { findJobById, updateJobStatus } from '../../db/repositories/jobs.js';
 import { insertAlert } from '../../db/repositories/alerts.js';
 import {
   recordAttempt,
@@ -243,10 +243,14 @@ export function createApplyHandler(
       updateApplicationStatus(deps.db, app.id, 'submitted', {
         submitted_at: new Date().toISOString(),
       });
+      // The job row mirrors the terminal application state so the Jobs
+      // worklist drops it and the Applied tab picks it up.
+      updateJobStatus(deps.db, job.id, 'submitted');
       // Task 4.2 — successful submit resets consecutive failures + increments
       // daily count. Use a fresh ISO timestamp for accuracy.
       const completedAt = new Date().toISOString();
       recordSuccess(deps.db, completedAt, dayBucketFromIso(completedAt));
+      deps.bus.emit('jobs:updated', { ids: [job.id] });
       deps.bus.emit('application:updated', { id: app.id, status: 'submitted' });
     } else if (result.outcome === 'awaiting_user') {
       // missing_field / captcha / session_expired — these pause the application for the user.
