@@ -11,7 +11,7 @@ import {
 import { buildApp } from '../../src/app.js';
 import { buildConfig, type ServerConfig } from '../../src/config.js';
 import { _resetVaultForTests, initVault } from '../../src/secrets/vault.js';
-import { createEventBus } from '../../src/events/bus.js';
+import { createEventBus, type EventBus } from '../../src/events/bus.js';
 import {
   createLinkedInConnectService,
   type LinkedInConnectService,
@@ -23,6 +23,7 @@ import { freshTestDb } from '../db/helpers.js';
 export interface TestAppHandle {
   app: FastifyInstance;
   db: DatabaseType;
+  bus: EventBus;
   token: string;
   config: ServerConfig;
   browserManager: BrowserManagerHandle;
@@ -83,6 +84,7 @@ export async function buildTestApp(): Promise<TestAppHandle> {
   return {
     app,
     db,
+    bus,
     token: config.bearerToken,
     config,
     browserManager,

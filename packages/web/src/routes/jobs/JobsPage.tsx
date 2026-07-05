@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import type { JobStatus } from '@vina/shared';
 import {
@@ -19,6 +19,8 @@ import { useUiStore } from '../../store/ui-store.js';
 import { applyHref, JobCard } from './JobCard.js';
 
 type Tab = 'new' | 'applied' | 'skipped';
+
+const PAGE_SIZE = 25;
 
 const TAB_LABELS: Record<Tab, string> = {
   new: 'New',
@@ -42,15 +44,17 @@ export function JobsPage(): JSX.Element {
   const linkedin = useLinkedInStatus({ pollMs: 5000 });
   const minScore = prefs.data?.score_threshold ?? 70;
 
-  const PAGE_SIZE = 25;
   const [page, setPage] = useState(1);
-  // Filter changes re-anchor to page 1 — page 7 of a different filter set
-  // is meaningless. The setState-in-effect pattern is intentional here: we
-  // need a synchronous reset whenever the filter changes, not a derived value.
-  useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect
+  // Filter changes re-anchor to page 1 — page 7 of a different filter set is
+  // meaningless. React's adjust-state-during-render pattern: compare a derived
+  // key; if it changed, reset page synchronously in this render cycle instead
+  // of scheduling an effect that would cause a phantom extra fetch.
+  const filterKey = `${tab}:${minScore}`;
+  const [prevKey, setPrevKey] = useState(filterKey);
+  if (prevKey !== filterKey) {
+    setPrevKey(filterKey);
     setPage(1);
-  }, [tab, minScore]);
+  }
 
   const jobs = useJobsPage({
     status: STATUS_FILTER_FOR_TAB[tab],
@@ -58,6 +62,15 @@ export function JobsPage(): JSX.Element {
     page,
     page_size: PAGE_SIZE,
   });
+
+  // Clamp page to the last real page when the total shrinks under the current
+  // filter (e.g. the user skips/applies the last job on the last page — the
+  // server returns items:[], total > 0, and page > totalPages). Without this
+  // clamp the UI shows an empty state with no pagination controls.
+  const totalPages = Math.max(1, Math.ceil(jobs.total / PAGE_SIZE));
+  if (!jobs.isLoading && jobs.total > 0 && page > totalPages) {
+    setPage(totalPages);
+  }
 
   const markApplied = useMarkJobApplied();
   const skip = useSkipJob();

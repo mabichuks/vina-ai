@@ -108,7 +108,10 @@ export function claimNext(db: DatabaseType, kind?: TaskKind): Task | null {
 }
 
 export function complete(db: DatabaseType, id: string): void {
-  db.prepare(`UPDATE task_queue SET status = 'completed' WHERE id = ?`).run(id);
+  // Guard against overwriting a cancelled row. The cancel route can flip a
+  // running row directly; a handler finishing without observing the abort must
+  // not resurrect it to completed.
+  db.prepare(`UPDATE task_queue SET status = 'completed' WHERE id = ? AND status = 'running'`).run(id);
 }
 
 /** Look up a task row by id (or null if it was deleted). */
@@ -135,9 +138,11 @@ export function cancel(db: DatabaseType, id: string, reason = 'cancelled_by_user
 }
 
 /**
- * Search tasks a user Stop can act on: running rows (abort the in-memory
- * signal) and pending rows (retry backoff — flip directly so the worker
- * never claims them). Payload is JSON; site filtering happens in JS.
+ * Search tasks a user Stop can act on — pending rows (retry backoff) and any
+ * running rows whose registration is already gone; callers flip them to
+ * cancelled so the worker never (re)runs them. Signal aborting for truly
+ * running tasks happens via the active-tasks registry, not here.
+ * Payload is JSON; site filtering happens in JS.
  */
 export function listCancellableSearchTasks(db: DatabaseType, siteId: string): Task[] {
   const rows = db

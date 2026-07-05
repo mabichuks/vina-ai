@@ -184,6 +184,36 @@ describe('POST /api/searches/cancel', () => {
     expect(findById(h.db, t.id)?.status).toBe('cancelled');
   });
 
+  it('emits search:cancelled for a backoff row with the correct shape', async () => {
+    // A backoff row has no running handler, so the cancel route must emit
+    // search:cancelled itself — otherwise the UI is left in a retrying state
+    // with no event to clear it.
+    const t = enqueue(h.db, { kind: 'search', payload: { site_id: 'linkedin' } });
+    failTask(h.db, t.id, 'handler_timeout: search exceeded 300000ms', true);
+    setNextAttemptAt(h.db, t.id, new Date(Date.now() + 60_000).toISOString());
+
+    const received: unknown[] = [];
+    const unsub = h.bus.on('search:cancelled', (payload) => {
+      received.push(payload);
+    });
+
+    await h.app.inject({
+      method: 'POST',
+      url: '/api/searches/cancel',
+      headers: auth(h.token),
+      payload: { task_id: t.id },
+    });
+
+    unsub();
+    expect(received).toHaveLength(1);
+    expect(received[0]).toEqual({
+      task_id: t.id,
+      site_id: 'linkedin',
+      listings_added: 0,
+      scored: 0,
+    });
+  });
+
   it('cancel by site_id sweeps pending search rows and leaves other sites alone', async () => {
     const mine = enqueue(h.db, { kind: 'search', payload: { site_id: 'linkedin' } });
     const other = enqueue(h.db, { kind: 'search', payload: { site_id: 'google' } });

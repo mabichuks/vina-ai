@@ -121,6 +121,23 @@ describe('search handler — real LinkedIn flow', () => {
     expect(listAlerts(db, { kind: 'linkedin_session_expired' }).length).toBe(1);
   }, 60_000);
 
+  it('does not duplicate linkedin_session_expired alerts on retry', async () => {
+    // The worker retries session-expired searches — running the handler a
+    // second time must not pile up identical action_required alerts; one is
+    // enough for the user to act on.
+    const handler = createSearchHandler({
+      db,
+      bus: createEventBus(),
+      browserManager: bm,
+      adapters: { linkedin: linkedInAdapter },
+      feedUrlOverride: `${fixture.url}/login`,
+    });
+
+    await expect(handler({ site_id: 'linkedin' })).rejects.toThrow(/session/i);
+    await expect(handler({ site_id: 'linkedin' })).rejects.toThrow(/session/i);
+    expect(listAlerts(db, { kind: 'linkedin_session_expired' }).length).toBe(1);
+  }, 90_000);
+
   it('classifies the guest SERP as session-expired, not "0 listings"', async () => {
     const guest = await startLinkedInFixture({ serp: 'guest' });
     try {

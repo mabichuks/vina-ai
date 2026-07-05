@@ -13,7 +13,7 @@ import type { ResolveSelectorInput, SelectorResult } from '@vina/orchestrator';
 import { findSiteById, updateSiteSession, type SiteRow } from '../../db/repositories/sites.js';
 import { insertJob } from '../../db/repositories/jobs.js';
 import { enqueue, getInFlightScoreJobIds } from '../../db/repositories/task-queue.js';
-import { insertAlert } from '../../db/repositories/alerts.js';
+import { insertAlert, listAlerts } from '../../db/repositories/alerts.js';
 import {
   findScheduleById,
   incrementScheduleFailures,
@@ -549,13 +549,19 @@ async function runBrowserSearch(
     });
 
     if (isSessionExpired) {
-      insertAlert(deps.db, {
-        kind: 'linkedin_session_expired',
-        severity: 'action_required',
-        title: 'LinkedIn session expired',
-        description: 'Re-connect LinkedIn from Settings to resume searches.',
-        site_id: site.id,
-      });
+      // The worker retries session-expired searches — one actionable alert is
+      // enough. Only insert when there is no existing open alert of this kind
+      // so retries don't pile up identical action_required rows in the UI.
+      const existing = listAlerts(deps.db, { kind: 'linkedin_session_expired', status: 'open' });
+      if (existing.length === 0) {
+        insertAlert(deps.db, {
+          kind: 'linkedin_session_expired',
+          severity: 'action_required',
+          title: 'LinkedIn session expired',
+          description: 'Re-connect LinkedIn from Settings to resume searches.',
+          site_id: site.id,
+        });
+      }
       deps.bus.emit('linkedin:session-expired', { at: new Date().toISOString() });
     } else {
       const raw = err instanceof Error ? err.message : String(err);
