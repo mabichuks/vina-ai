@@ -12,24 +12,21 @@ import { detectCaptchaOnPage } from '../../detect/captcha.js';
 import { isSessionExpiredOnPage } from '../../detect/session.js';
 import { findElementByGoal } from '../element-locator.js';
 import { LINKEDIN_SESSION_HEURISTICS } from './heuristics.js';
+import { EASY_APPLY_SELECTORS } from './selectors.js';
 import type { RawListing } from '../types.js';
 
 const log = createLogger('automation.linkedin.application');
 
-/** Selectors for the Easy Apply button on the job detail page. */
-const EASY_APPLY_TRIGGER_SELECTORS = [
-  'button[data-testid="easy-apply"]',
-  'button:has-text("Easy Apply")',
-  // Test fixture form has no trigger — the form is already on the page.
-  // The startApplication flow detects this case via the form-root selector.
-] as const;
-
-/** Selectors for the Easy Apply form root / modal. First match wins. */
+/**
+ * Selectors for the Easy Apply form root / modal. First match wins.
+ * Deliberately NO bare 'form' catch-all: LinkedIn's job page always has a
+ * global-nav search <form>, which once masqueraded as the apply modal and
+ * sent the flow walking a form with no fields (2026-07-05 incident).
+ */
 const APPLY_FORM_ROOT_SELECTORS = [
   '[role="dialog"]',
   '#easy-apply',
   'form[data-vina-fixture="easy-apply"]',
-  'form',
 ] as const;
 
 const SUBMIT_BUTTON_SELECTORS = [
@@ -183,7 +180,7 @@ export async function startLinkedInApplication(
     lastTrigger = await findElementByGoal(
       page,
       'easy_apply',
-      EASY_APPLY_TRIGGER_SELECTORS,
+      EASY_APPLY_SELECTORS,
     );
     if (lastTrigger) break;
     await new Promise((r) => setTimeout(r, 500));

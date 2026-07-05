@@ -1,5 +1,6 @@
 import { startFixtureServer, type FixtureServerHandle } from '../../start-server.js';
 import {
+  easyApplyAnchorDetailPage,
   easyApplyDetailPage,
   externalNoUrlDetailPage,
   externalRedirectDetailPage,
@@ -54,6 +55,9 @@ export async function startLinkedInFixture(
     app.get(
       '/jobs/view/easy',
       async (_req, reply) => reply.type('text/html').send(easyApplyDetailPage()),
+    );
+    app.get('/jobs/view/easy-anchor', async (_req, reply) =>
+      reply.type('text/html').send(easyApplyAnchorDetailPage()),
     );
     app.get(
       '/jobs/view/ext',

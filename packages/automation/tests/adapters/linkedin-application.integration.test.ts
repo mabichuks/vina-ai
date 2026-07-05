@@ -1,10 +1,12 @@
 import os from 'node:os';
 import path from 'node:path';
 import fs from 'node:fs/promises';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { launchCdpSession, type CdpSessionHandle } from '../../src/browser/cdp.js';
 import { linkedInAdapter } from '../../src/adapters/linkedin/index.js';
 import type { RawListing } from '../../src/adapters/types.js';
+import { startLinkedInFixture } from '../../../../tests/fixtures/sites/linkedin/server.js';
+import type { FixtureServerHandle } from '../../../../tests/fixtures/start-server.js';
 
 let dataDir: string;
 let handle: CdpSessionHandle | null = null;
@@ -170,6 +172,57 @@ describe('linkedInAdapter — multi-step Easy Apply (integration)', () => {
     const step2Fields = await linkedInAdapter.inspectFields(session);
     expect(step2Fields.some((f) => f.canonicalKey === 'email')).toBe(true);
   }, 30_000);
+});
+
+describe('linkedInAdapter — anchor-variant Easy Apply (2026 CTA regression)', () => {
+  let fixture: FixtureServerHandle;
+
+  beforeAll(async () => {
+    fixture = await startLinkedInFixture();
+  });
+  afterAll(async () => {
+    await fixture.close();
+  });
+
+  it('clicks the 2026 anchor-variant Easy Apply CTA and completes the flow', async () => {
+    handle = await launchCdpSession({ siteId: 'apply-anchor', dataDir });
+    const page = await handle.context.newPage();
+    const cvPath = await writeFixtureCv();
+
+    // Navigate to the anchor-variant page that has a decoy global-nav <form>
+    // and an <a class="jobs-apply-button"> CTA (no button).
+    await page.goto(`${fixture.url}/jobs/view/easy-anchor`, { waitUntil: 'domcontentloaded' });
+
+    const session = await linkedInAdapter.startApplication(
+      page,
+      listing(`${fixture.url}/jobs/view/easy-anchor`),
+    );
+    expect(session.formId).toBeTruthy();
+
+    const fields = await linkedInAdapter.inspectFields(session);
+    expect(fields.some((f) => f.canonicalKey === 'first_name')).toBe(true);
+    expect(fields.some((f) => f.canonicalKey === 'last_name')).toBe(true);
+    expect(fields.some((f) => f.canonicalKey === 'email')).toBe(true);
+    expect(fields.some((f) => f.kind === 'file')).toBe(true);
+
+    for (const f of fields) {
+      if (f.canonicalKey === 'first_name') {
+        await linkedInAdapter.fillField(session, f.ref, 'Ada');
+      } else if (f.canonicalKey === 'last_name') {
+        await linkedInAdapter.fillField(session, f.ref, 'Lovelace');
+      } else if (f.canonicalKey === 'email') {
+        await linkedInAdapter.fillField(session, f.ref, 'ada@example.com');
+      }
+    }
+
+    await linkedInAdapter.uploadCv(session, cvPath);
+
+    const advance = await linkedInAdapter.advanceStep(session);
+    expect(advance.advanced).toBe(false);
+
+    const submit = await linkedInAdapter.submit(session);
+    expect(submit.ok).toBe(true);
+  }, 60_000);
 });
 
 describe('linkedInAdapter.submit — captcha / session-expired escalation', () => {
