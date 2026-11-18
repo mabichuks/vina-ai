@@ -18,6 +18,8 @@ export interface SettingsRow {
   browser_stealth: boolean;
   paused: boolean;
   active_llm_provider_id: string | null;
+  /** OpenCode session id for the single `vina-chat` conversation (issue #18). */
+  chat_session_id: string | null;
   encrypted_serpapi_key: Buffer | null;
   updated_at: string;
 }
@@ -34,6 +36,7 @@ interface RawSettingsRow {
   browser_stealth: number;
   paused: number;
   active_llm_provider_id: string | null;
+  chat_session_id: string | null;
   encrypted_serpapi_key: Buffer | null;
   updated_at: string;
 }
@@ -51,6 +54,7 @@ function rowToSettings(row: RawSettingsRow): SettingsRow {
     browser_stealth: row.browser_stealth === 1,
     paused: row.paused === 1,
     active_llm_provider_id: row.active_llm_provider_id,
+    chat_session_id: row.chat_session_id,
     encrypted_serpapi_key: row.encrypted_serpapi_key,
     updated_at: row.updated_at,
   };
@@ -72,6 +76,7 @@ const DEFAULTS: Omit<SettingsRow, 'updated_at'> = {
   browser_stealth: false,
   paused: false,
   active_llm_provider_id: null,
+  chat_session_id: null,
   encrypted_serpapi_key: null,
 };
 
@@ -89,12 +94,12 @@ export function getOrInitSettings(db: DatabaseType): SettingsRow {
         apply_min_interval_seconds, apply_listing_max_age_days,
         apply_consecutive_failure_limit,
         browser_headful, browser_stealth, paused,
-        active_llm_provider_id, encrypted_serpapi_key, updated_at)
+        active_llm_provider_id, chat_session_id, encrypted_serpapi_key, updated_at)
      VALUES ('app', @easy_apply_mode, @autonomous_apply_dry_run, @apply_daily_cap,
              @apply_min_interval_seconds, @apply_listing_max_age_days,
              @apply_consecutive_failure_limit,
              @browser_headful, @browser_stealth, @paused,
-             @active_llm_provider_id, @encrypted_serpapi_key, @updated_at)`,
+             @active_llm_provider_id, @chat_session_id, @encrypted_serpapi_key, @updated_at)`,
   ).run({
     easy_apply_mode: DEFAULTS.easy_apply_mode,
     autonomous_apply_dry_run: DEFAULTS.autonomous_apply_dry_run ? 1 : 0,
@@ -106,6 +111,7 @@ export function getOrInitSettings(db: DatabaseType): SettingsRow {
     browser_stealth: DEFAULTS.browser_stealth ? 1 : 0,
     paused: DEFAULTS.paused ? 1 : 0,
     active_llm_provider_id: DEFAULTS.active_llm_provider_id,
+    chat_session_id: DEFAULTS.chat_session_id,
     encrypted_serpapi_key: DEFAULTS.encrypted_serpapi_key,
     updated_at: now,
   });
@@ -129,6 +135,7 @@ export interface SettingsUpdatePatch {
   browser_stealth?: boolean;
   paused?: boolean;
   active_llm_provider_id?: string | null;
+  chat_session_id?: string | null;
   encrypted_serpapi_key?: Buffer | null;
 }
 
@@ -161,6 +168,9 @@ export function updateSettings(db: DatabaseType, patch: SettingsUpdatePatch): Se
     ...(patch.active_llm_provider_id !== undefined && {
       active_llm_provider_id: patch.active_llm_provider_id,
     }),
+    ...(patch.chat_session_id !== undefined && {
+      chat_session_id: patch.chat_session_id,
+    }),
     ...(patch.encrypted_serpapi_key !== undefined && {
       encrypted_serpapi_key: patch.encrypted_serpapi_key,
     }),
@@ -178,6 +188,7 @@ export function updateSettings(db: DatabaseType, patch: SettingsUpdatePatch): Se
        browser_headful=@browser_headful, browser_stealth=@browser_stealth,
        paused=@paused,
        active_llm_provider_id=@active_llm_provider_id,
+       chat_session_id=@chat_session_id,
        encrypted_serpapi_key=@encrypted_serpapi_key,
        updated_at=@updated_at
      WHERE id='app'`,
@@ -192,6 +203,7 @@ export function updateSettings(db: DatabaseType, patch: SettingsUpdatePatch): Se
     browser_stealth: next.browser_stealth ? 1 : 0,
     paused: next.paused ? 1 : 0,
     active_llm_provider_id: next.active_llm_provider_id,
+    chat_session_id: next.chat_session_id,
     encrypted_serpapi_key: next.encrypted_serpapi_key,
     updated_at: next.updated_at,
   });

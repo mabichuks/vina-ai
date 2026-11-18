@@ -221,3 +221,40 @@ export async function getActiveChatModel(db: DatabaseType): Promise<BaseChatMode
     ...(row.base_url !== null && { baseUrl: row.base_url }),
   });
 }
+
+/** OpenAI-compatible base URLs per provider kind, when no override is stored. */
+const DEFAULT_BASE_URLS: Record<LlmProviderKind, string> = {
+  anthropic: 'https://api.anthropic.com/v1',
+  openai: 'https://api.openai.com/v1',
+  ollama: 'http://localhost:11434/v1',
+};
+
+/**
+ * Resolve the active provider into the shape the OpenCode host driver injects
+ * (`{ model, baseURL, apiKey }`). Reuses the same settings + vault resolution
+ * as `getActiveChatModel` but returns plain fields instead of a LangChain
+ * model — the host routes every provider through `@ai-sdk/openai-compatible`.
+ *
+ * The key is decrypted here and returned **in memory only**; the host driver
+ * must never write or log it (ADR-024 §9).
+ */
+export async function resolveChatProvider(db: DatabaseType): Promise<{
+  model: string;
+  baseURL: string;
+  apiKey: string | null;
+}> {
+  const settings = getOrInitSettings(db);
+  if (!settings.active_llm_provider_id) {
+    throw new ConflictError('No active LLM provider configured');
+  }
+  const row = findLlmProviderById(db, settings.active_llm_provider_id);
+  if (!row) {
+    throw new NotFoundError(`Active LLM provider ${settings.active_llm_provider_id} not found`);
+  }
+  const apiKey = row.encrypted_api_key ? decrypt(row.encrypted_api_key) : null;
+  return {
+    model: row.model,
+    baseURL: row.base_url ?? DEFAULT_BASE_URLS[row.kind],
+    apiKey,
+  };
+}

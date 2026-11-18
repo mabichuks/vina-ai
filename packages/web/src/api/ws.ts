@@ -1,7 +1,9 @@
 import { useEffect, useRef } from 'react';
+import type { ChatMessage } from '@vina/shared';
 import { useUiStore } from '../store/ui-store.js';
 import { queryClient } from '../store/query-client.js';
 import { useSearchProgressStore } from '../store/search-progress-store.js';
+import { useChatStore } from '../store/chat-store.js';
 
 type Handler = (payload: unknown) => void;
 
@@ -51,6 +53,32 @@ interface SearchCompletedPayload {
 interface SearchFailedPayload {
   error_kind: string;
   will_retry?: boolean;
+}
+interface ChatTokenPayload {
+  message_id: string;
+  token: string;
+}
+
+/**
+ * Route chat lifecycle events to the chat store so the Chat page streams
+ * tokens and finalized rows without subscribing to the WS hub directly.
+ */
+function updateChatFor(eventType: string, payload: unknown): void {
+  const store = useChatStore.getState();
+  switch (eventType) {
+    case 'chat:token': {
+      const p = payload as ChatTokenPayload | undefined;
+      if (p?.message_id && typeof p.token === 'string') store.onToken(p.message_id, p.token);
+      break;
+    }
+    case 'chat:message': {
+      const p = payload as Partial<ChatMessage> | undefined;
+      if (p?.id && p.role && typeof p.content === 'string') {
+        store.onMessage(p as ChatMessage);
+      }
+      break;
+    }
+  }
 }
 
 /**
@@ -176,6 +204,7 @@ export function useWebSocket(token: string | null): UseWebSocketController {
         if (!envelope.type) return;
         invalidateQueriesFor(envelope.type);
         updateSearchProgressFor(envelope.type, envelope.payload);
+        updateChatFor(envelope.type, envelope.payload);
         const set = handlers.current.get(envelope.type);
         if (set) {
           for (const h of set) h(envelope.payload);

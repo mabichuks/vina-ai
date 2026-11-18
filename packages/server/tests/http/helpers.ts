@@ -18,6 +18,7 @@ import {
 } from '../../src/services/linkedin-connect-service.js';
 import { createPromptsService } from '../../src/services/prompts-service.js';
 import { createSkillsService } from '../../src/services/skills-service.js';
+import type { ChatService } from '../../src/services/chat-service.js';
 import { freshTestDb } from '../db/helpers.js';
 
 export interface TestAppHandle {
@@ -37,7 +38,9 @@ export interface TestAppHandle {
  * unique tmp data dir. Vault is initialised so routes that touch encrypted
  * columns work. Tests must call `cleanup()` in their afterEach.
  */
-export async function buildTestApp(): Promise<TestAppHandle> {
+export async function buildTestApp(
+  opts: { chat?: ChatService | null } = {},
+): Promise<TestAppHandle> {
   const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'vina-test-'));
 
   process.env['VINA_DISABLE_KEYTAR'] = '1';
@@ -70,6 +73,7 @@ export async function buildTestApp(): Promise<TestAppHandle> {
     linkedInConnectService,
     prompts,
     skills,
+    chat: opts.chat ?? null,
     poke: () => undefined,
   });
 

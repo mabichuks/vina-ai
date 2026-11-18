@@ -26,7 +26,9 @@ const ReadyToApply = lazy(() =>
 const Alerts = lazy(() =>
   import('./routes/alerts/AlertsPage.js').then((m) => ({ default: m.AlertsPage })),
 );
-const Chat = lazy(() => import('./routes/pages.js').then((m) => ({ default: m.Chat })));
+const Chat = lazy(() =>
+  import('./routes/chat/ChatPage.js').then((m) => ({ default: m.default })),
+);
 const Profile = lazy(() =>
   import('./routes/profile/ProfilePage.js').then((m) => ({ default: m.ProfilePage })),
 );

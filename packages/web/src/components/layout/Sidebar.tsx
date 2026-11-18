@@ -16,6 +16,7 @@ const ITEMS: NavItem[] = [
   { to: '/ready', label: 'Ready to apply', badgeAlertKind: 'ready_for_manual_apply' },
   { to: '/applications', label: 'Applications' },
   { to: '/alerts', label: 'Alerts', badgeAlertKind: ANY_OPEN_ALERT },
+  { to: '/chat', label: 'Chat' },
   { to: '/profile', label: 'Profile' },
   { to: '/settings', label: 'Settings' },
 ];

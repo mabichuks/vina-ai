@@ -25,6 +25,7 @@ import type {
   SettingsUpdate,
   SkillDetail,
   SkillSummary,
+  ChatMessage,
 } from '@vina/shared';
 import { api } from './client.js';
 
@@ -1052,4 +1053,45 @@ export function useDeleteSkill(): {
     onSuccess: () => qc.invalidateQueries({ queryKey: ['skills'] }),
   });
   return { mutate: (id) => mut.mutateAsync(id), isPending: mut.isPending };
+}
+
+/* ------------------------------------------------------------------ */
+/* Chat                                                                */
+/* ------------------------------------------------------------------ */
+
+export function useChatMessages(): {
+  data: ChatMessage[];
+  isLoading: boolean;
+} {
+  const q = useQuery<{ items: ChatMessage[] }>({
+    queryKey: ['chat'],
+    queryFn: () => api<{ items: ChatMessage[] }>('/api/chat/messages'),
+  });
+  return { data: q.data?.items ?? [], isLoading: q.isLoading };
+}
+
+export function useSendChatMessage(): {
+  mutate: (text: string) => Promise<ChatMessage>;
+  isPending: boolean;
+} {
+  const qc = useQueryClient();
+  const mut = useMutation<ChatMessage, Error, string>({
+    mutationFn: (text) => api<ChatMessage>('/api/chat/messages', { method: 'POST', body: { text } }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['chat'] }),
+  });
+  return { mutate: (text) => mut.mutateAsync(text), isPending: mut.isPending };
+}
+
+export function useClearChat(): {
+  mutate: () => Promise<void>;
+  isPending: boolean;
+} {
+  const qc = useQueryClient();
+  const mut = useMutation<void, Error, void>({
+    mutationFn: async () => {
+      await api('/api/chat/messages', { method: 'DELETE' });
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['chat'] }),
+  });
+  return { mutate: () => mut.mutateAsync(), isPending: mut.isPending };
 }

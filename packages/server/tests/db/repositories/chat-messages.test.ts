@@ -35,4 +35,13 @@ describe('chat_messages repository', () => {
     );
     db.close();
   });
+
+  it('accepts a caller-supplied id so the SDK message id is stable', () => {
+    const db = freshTestDb();
+    const msg = appendMessage(db, { id: 'msg-stable-1', role: 'assistant', content: 'hi' });
+    expect(msg.id).toBe('msg-stable-1');
+    const stored = listRecent(db, 1)[0];
+    expect(stored?.id).toBe('msg-stable-1');
+    db.close();
+  });
 });

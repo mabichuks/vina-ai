@@ -23,12 +23,14 @@ import { searchPreferencesRoutes } from './http/routes/search-preferences.js';
 import { settingsRoutes } from './http/routes/settings.js';
 import { siteRoutes } from './http/routes/sites.js';
 import { systemRoutes } from './http/routes/system.js';
+import { chatRoutes } from './http/routes/chat.js';
 import { registerStatic } from './http/static.js';
 import { MAX_UPLOAD_BYTES } from './http/upload-limits.js';
 import { registerWebSocket } from './http/ws.js';
 import type { EventBus } from './events/bus.js';
 import type { PromptsService } from './services/prompts-service.js';
 import type { SkillsService } from './services/skills-service.js';
+import type { ChatService } from './services/chat-service.js';
 
 export interface BuildAppDeps {
   db: DatabaseType;
@@ -40,6 +42,8 @@ export interface BuildAppDeps {
   linkedInConnectService: LinkedInConnectService;
   prompts: PromptsService;
   skills: SkillsService;
+  /** null when the OpenCode host failed to boot (chat degrades to unavailable). */
+  chat: ChatService | null;
   poke: () => void;
 }
 
@@ -77,6 +81,7 @@ export async function buildApp(deps: BuildAppDeps): Promise<FastifyInstance> {
     await dashboardRoutes(api, { db: deps.db });
     await alertRoutes(api, { db: deps.db, bus: deps.bus, poke: deps.poke });
     await searchRoutes(api, { db: deps.db, poke: deps.poke, bus: deps.bus });
+    if (deps.chat) await chatRoutes(api, { chat: deps.chat });
   });
   await registerStatic(app);
 
