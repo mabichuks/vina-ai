@@ -4,9 +4,9 @@ import type { LlmProviderKind } from '@vina/shared';
 export interface ProviderConfig {
   kind: LlmProviderKind;
   model: string;
-  /** Plaintext API key — required for `anthropic` and `openai`. */
+  /** Plaintext API key — required for `anthropic`, `openai`, and `ollama-cloud`. */
   apiKey?: string | null;
-  /** Endpoint override — only meaningful for `ollama`. */
+  /** Endpoint override — only meaningful for `ollama` and `ollama-cloud`. */
   baseUrl?: string | null;
 }
 
@@ -39,6 +39,17 @@ export async function buildModel(cfg: ProviderConfig): Promise<BaseChatModel> {
       return new ChatOllama({
         model: cfg.model,
         ...(cfg.baseUrl && { baseUrl: cfg.baseUrl }),
+      });
+    }
+    case 'ollama-cloud': {
+      // Hosted Ollama speaks the OpenAI protocol (https://ollama.com/v1) and
+      // requires a key — ChatOllama targets the keyless local server, so build
+      // an OpenAI-compatible client instead.
+      const { ChatOpenAI } = await import('@langchain/openai');
+      return new ChatOpenAI({
+        model: cfg.model,
+        configuration: { baseURL: cfg.baseUrl ?? 'https://ollama.com/v1' },
+        ...(cfg.apiKey && { apiKey: cfg.apiKey }),
       });
     }
   }

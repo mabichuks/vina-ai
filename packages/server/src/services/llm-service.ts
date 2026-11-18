@@ -112,6 +112,8 @@ export async function validateProvider(input: ValidateProviderInput): Promise<Va
       return validateOpenai(input.api_key ?? '');
     case 'ollama':
       return validateOllama(input.base_url ?? 'http://localhost:11434');
+    case 'ollama-cloud':
+      return validateOllamaCloud(input.api_key ?? '');
   }
 }
 
@@ -199,6 +201,43 @@ async function validateOllama(baseUrl: string): Promise<ValidateResult> {
 }
 
 /**
+ * Validates a hosted Ollama Cloud key against the OpenAI-compatible endpoint
+ * (https://ollama.com/v1). Prefers the model-listing endpoint; if the host
+ * omits it (404/405), falls back to a minimal chat call so validation still
+ * exercises the credential rather than the model list.
+ */
+async function validateOllamaCloud(apiKey: string): Promise<ValidateResult> {
+  if (!apiKey) return { ok: false, reason: 'auth_failed' };
+  const headers = { authorization: `Bearer ${apiKey}` };
+  try {
+    const list = await fetchWithTiming('https://ollama.com/v1/models', {
+      method: 'GET',
+      headers,
+    });
+    if (list.res.ok) return { ok: true, latency_ms: list.latency_ms };
+
+    // Model listing not exposed — fall back to a minimal chat completion.
+    if (list.res.status === 404 || list.res.status === 405) {
+      const chat = await fetchWithTiming('https://ollama.com/v1/chat/completions', {
+        method: 'POST',
+        headers: { ...headers, 'content-type': 'application/json' },
+        body: JSON.stringify({
+          model: 'deepseek-v4.1-flash:cloud',
+          messages: [{ role: 'user', content: 'ping' }],
+          max_tokens: 1,
+        }),
+      });
+      if (chat.res.ok) return { ok: true, latency_ms: chat.latency_ms };
+      return await classifyResponse(chat.res);
+    }
+
+    return await classifyResponse(list.res);
+  } catch {
+    return { ok: false, reason: 'network' };
+  }
+}
+
+/**
  * Resolves the user-selected active LLM provider, decrypts its key, and
  * returns a configured LangChain chat model. Throws ConflictError if no
  * provider is selected (a clear "configure provider first" UX) or
@@ -227,6 +266,7 @@ const DEFAULT_BASE_URLS: Record<LlmProviderKind, string> = {
   anthropic: 'https://api.anthropic.com/v1',
   openai: 'https://api.openai.com/v1',
   ollama: 'http://localhost:11434/v1',
+  'ollama-cloud': 'https://ollama.com/v1',
 };
 
 /**

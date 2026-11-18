@@ -185,6 +185,85 @@ describe('validateProvider', () => {
     expect(calledUrl).toBe('http://localhost:11434/api/version');
   });
 
+  it('ollama-cloud hits /v1/models with a Bearer token', async () => {
+    let calledUrl = '';
+    let calledHeaders: Headers | undefined;
+    mockFetch((url, init) => {
+      calledUrl = url;
+      calledHeaders = new Headers(init?.headers);
+      return new Response('{"data":[]}', { status: 200 });
+    });
+    const result = await validateProvider({
+      kind: 'ollama-cloud',
+      model: 'deepseek-v4.1-flash:cloud',
+      api_key: 'ollama-cloud-key',
+    });
+    expect(result.ok).toBe(true);
+    expect(calledUrl).toBe('https://ollama.com/v1/models');
+    expect(calledHeaders?.get('authorization')).toBe('Bearer ollama-cloud-key');
+  });
+
+  it.each([
+    [401, 'auth_failed'],
+    [403, 'auth_failed'],
+    [429, 'rate_limited'],
+    [500, 'other'],
+  ])('ollama-cloud %i → reason=%s', async (status, reason) => {
+    mockFetch(() => new Response('', { status }));
+    const result = await validateProvider({
+      kind: 'ollama-cloud',
+      model: 'deepseek-v4.1-flash:cloud',
+      api_key: 'ollama-cloud-key',
+    });
+    expect(result).toMatchObject({ ok: false, reason });
+  });
+
+  it('ollama-cloud falls back to /v1/chat/completions when model listing is absent', async () => {
+    const calls: string[] = [];
+    mockFetch((url) => {
+      calls.push(url);
+      if (url.endsWith('/models')) return new Response('', { status: 404 });
+      return new Response('{"choices":[]}', { status: 200 });
+    });
+    const result = await validateProvider({
+      kind: 'ollama-cloud',
+      model: 'deepseek-v4.1-flash:cloud',
+      api_key: 'ollama-cloud-key',
+    });
+    expect(result.ok).toBe(true);
+    expect(calls).toEqual([
+      'https://ollama.com/v1/models',
+      'https://ollama.com/v1/chat/completions',
+    ]);
+  });
+
+  it('ollama-cloud missing api_key short-circuits to auth_failed (no fetch)', async () => {
+    const fetchSpy = vi.fn();
+    vi.stubGlobal('fetch', fetchSpy);
+    const result = await validateProvider({
+      kind: 'ollama-cloud',
+      model: 'deepseek-v4.1-flash:cloud',
+    });
+    expect(result).toEqual({ ok: false, reason: 'auth_failed' });
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
+  it('ollama-cloud key round-trips through the vault like anthropic/openai', () => {
+    const plaintext = 'ollama-cloud-secret-key';
+    const provider = createProvider(db, {
+      kind: 'ollama-cloud',
+      label: 'Hosted Ollama',
+      model: 'deepseek-v4.1-flash:cloud',
+      api_key: plaintext,
+    });
+    const raw = db
+      .prepare(`SELECT encrypted_api_key FROM llm_providers WHERE id = ?`)
+      .get(provider.id) as { encrypted_api_key: Buffer };
+    expect(raw.encrypted_api_key).toBeInstanceOf(Buffer);
+    expect(raw.encrypted_api_key.toString('utf8')).not.toContain(plaintext);
+    expect(getDecryptedApiKey(db, provider.id)).toBe(plaintext);
+  });
+
   it('network error → reason=network', async () => {
     vi.stubGlobal(
       'fetch',

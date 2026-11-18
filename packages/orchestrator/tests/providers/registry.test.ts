@@ -27,4 +27,14 @@ describe('buildModel', () => {
     });
     expect(ollama).toBeInstanceOf(ChatOllama);
   });
+
+  it('ollama-cloud builds an OpenAI-compatible client, not a local ChatOllama', async () => {
+    const cloud = await buildModel({
+      kind: 'ollama-cloud',
+      model: 'deepseek-v4.1-flash:cloud',
+      apiKey: 'ollama-cloud-key',
+    });
+    expect(cloud).toBeInstanceOf(ChatOpenAI);
+    expect(cloud).not.toBeInstanceOf(ChatOllama);
+  });
 });

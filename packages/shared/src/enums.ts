@@ -64,7 +64,7 @@ export type AlertSeverity = (typeof ALERT_SEVERITIES)[number];
 export const ALERT_STATUSES = ['open', 'resolved', 'dismissed'] as const;
 export type AlertStatus = (typeof ALERT_STATUSES)[number];
 
-export const LLM_PROVIDER_KINDS = ['anthropic', 'openai', 'ollama'] as const;
+export const LLM_PROVIDER_KINDS = ['anthropic', 'openai', 'ollama', 'ollama-cloud'] as const;
 export type LlmProviderKind = (typeof LLM_PROVIDER_KINDS)[number];
 
 export const TASK_KINDS = [
