@@ -748,3 +748,87 @@ Apply and what safety primitives must be in place to make it acceptable.
   why any submitted answer was chosen. The Applications-page display of
   this is deferred until a per-application event-detail view exists.
 - ADR-009 is superseded; SPEC.md §5 reflects the new model.
+
+---
+
+## ADR-024: Hybrid orchestration — OpenCode SDK for reasoning, Vina-owned deterministic tools
+
+**Status:** Accepted. Supersedes ADR-005. Retains ADR-022 and ADR-023.
+
+**Context.** The orchestrator package (2,979 lines) is a bespoke agent harness:
+tool calling, prompt loading, skill registry, provider abstraction, and chat
+memory. The `jobs` harness already encodes the same job-search procedure as
+markdown skills, written for Claude Code, Codex, and opencode, in ~9,600 lines
+of prose with no runtime. Two things changed since ADR-005 chose LangGraph:
+
+- The code has drifted off the ADR's premise. `apply.ts` is plain async and says
+  so in its own header; LangGraph survives mainly in `chat.ts`. The "state
+  machine" argument no longer describes the system.
+- OpenCode V2 exposes an embeddable host (`@opencode/sdk`) with sessions,
+  compaction, MCP client, permission requests, and transforms for agents,
+  skills, commands, tools, and MCP servers. Playwright MCP supplies exactly the
+  snapshot/act browser loop ADR-022 described, including `--cdp-endpoint` so the
+  browser can remain Vina's stealth-configured Chromium.
+
+Rewriting everything as an agent loop was rejected: LinkedIn Easy Apply is the
+one path where determinism is cheap, fast, and testable, and 863 tests cover it.
+
+**Decision.** Split the system on a single line — OpenCode decides, Vina acts.
+
+- OpenCode is the reasoning runtime. One `OpenCode.create()` host per Vina
+  process, one location rooted at `<dataDir>/workspace`. A unit of work is a
+  session: a sweep, one role's materials, one review round, one chat turn.
+- Vina owns facts and effects: SQLite, files, scheduler, queue, rate limits, the
+  Easy Apply gate, PDF rendering, and job discovery. These are exposed to the
+  agent **only** through a first-party plugin's `vina` tool namespace. The agent
+  never reads the database or touches the filesystem directly.
+- LinkedIn Easy Apply stays deterministic and is exposed as one tool,
+  `vina_easy_apply(applicationId)`. The existing `runApply` walker, field
+  resolver, EEO short-circuit, and gate run inside that tool. No agent step
+  types into an Easy Apply form.
+- Playwright MCP drives external ATS systems (the manual-apply pipeline) and
+  LinkedIn non-Easy-Apply listings, attached over CDP to Vina's managed
+  Chromium. Those flows end at `ready_for_manual_apply`, so no agent ever
+  submits an external form.
+- ADR-023 is unchanged: `vina_easy_apply` calls `checkEasyApplyGate` and the
+  mode/cap/velocity/freshness/idempotency/circuit-breaker rules still apply.
+  Agent-initiated calls additionally pass `ctx.permission.assert`; UI-initiated
+  applies do not, since the user already acted.
+- Migration is staged. LangGraph is frozen now — no new graphs — and removed in
+  stage 3 once score, tailor, and chat have moved. Prompt modules and the
+  skill registry go with it; the harness skills are vendored as the skill pack.
+
+**Reasons.**
+
+- The procedure is already written and validated once. Porting it beats
+  re-deriving it in TypeScript, and a markdown edit is a cheaper iteration than
+  a graph change.
+- Deleting the harness plumbing removes ~3k lines of code whose only job was
+  reimplementing sessions, compaction, provider auth, and tool dispatch.
+- `permission.assert` / `permission.reply` is a real approval primitive, so the
+  read-back-then-submit gate stops being bespoke UI state.
+- Keeping the deterministic walker preserves the zero-token path on a standard
+  Easy Apply form, the anti-fabrication short-circuit, and the regression suite.
+- Playwright MCP replaces ~1,900 lines of selector maintenance with the
+  accessibility-tree loop ADR-022 already chose, without changing the browser
+  posture.
+
+**Consequences.**
+
+- Vina gains a second runtime with its own release cadence, so the version is
+  pinned and upgraded deliberately. SDK-on-Node support is proven (see
+  `opencode-orchestration.md` §14), so the embedded host is the expected path;
+  the pinned-binary fallback remains documented. The SDK alone costs ~388 MB
+  unpacked, and the host must run with an isolated config home or the user's
+  personal OpenCode skills leak into Vina.
+- Two credential stores is a standing hazard. LLM keys stay in Vina's vault and
+  reach OpenCode through a provider transform with an injected base URL, not a
+  second `auth.json`.
+- The installer grows (runtime plus per-platform browser payload). Release
+  size becomes a tracked budget, not an afterthought.
+- Debugging moves from structured logs to session transcripts. Every tool call
+  must still write `application_events`, so the DB remains the audit record.
+- Tests split: tool executors keep unit coverage; agent skills get recorded
+  transcript evals plus one live smoke; fixture sites still serve the walker.
+- `docs/langgraph-orchestrator.md` becomes historical. New tool definitions are
+  documented in `docs/opencode-orchestration.md`.

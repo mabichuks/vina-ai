@@ -270,5 +270,15 @@ All queues survive the process — pending tasks are stored in a `task_queue` ta
 
 - New browser-kind job site = new adapter implementing `SiteAdapter`. No other code changes needed
 - New API-kind source (like SerpAPI for Google Jobs) = new service module under `server/services/`, register it as a `kind='api'` row in `sites`, wire it into the search task dispatcher
-- New LLM provider = new entry in the provider registry; LangChain handles the rest
-- New tool the agent can call = add to the orchestrator's tool registry; document in `langgraph-orchestrator.md`
+- New LLM provider = register it against the OpenCode provider surface and expose it in Settings; the vault remains the key source (ADR-024)
+- New tool the agent can call = add it to the `vina` namespace in `packages/opencode-plugin`; document it in `opencode-orchestration.md` §4
+- New agent capability = a new agent definition with an explicit allowlist; new procedure = a skill, not a tool (see `skill-system.md`)
+
+## 11. Orchestration Migration (ADR-024)
+
+Sections 1–10 describe the system as built. The orchestration layer is being
+replaced: OpenCode sessions and a `vina_*` tool namespace take over reasoning,
+Playwright MCP takes over external-ATS form filling, and the deterministic
+LinkedIn Easy Apply walker is retained behind a single tool. The target process
+model and the staged plan are in `opencode-orchestration.md`; `langgraph-orchestrator.md`
+is historical.
