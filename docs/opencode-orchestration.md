@@ -15,7 +15,7 @@ through a typed Vina tool.
 | Sessions, compaction, tool dispatch, provider auth    | OpenCode        | Bought, not built                      |
 | Job text, scores, application state, rate limits      | Vina            | SQLite is the audit record             |
 | Form fill on LinkedIn Easy Apply                      | Vina            | Zero-token, tested, gate-enforced      |
-| Form fill on external ATS                             | Playwright MCP  | Snapshot/act beats selectors (ADR-022) |
+| Form fill on external ATS                             | Playwright MCP  | Three modes: manual / assisted / autonomous (ADR-024) |
 | Rendered PDFs, file hashes                            | Vina            | Deterministic output                   |
 | Deciding whether to apply, tailoring prose, reviewing | OpenCode agents | Needs judgement                        |
 
@@ -125,7 +125,8 @@ Plugin.define({
 | `vina_materials_save`     | `applicationId, cvMarkdown, coverLetterMarkdown?, formAnswers?` | renders PDF/DOCX, sets `ready` | Rendering stays deterministic; the agent writes prose only            |
 | `vina_review_record`      | `applicationId, round, verdict, findings[]`                     | writes event + review row      | Review agent's only write                                             |
 | `vina_application_status` | `applicationId, status, reason?`                                | validated transition           | Rejects illegal transitions; the agent cannot invent states           |
-| `vina_easy_apply`         | `applicationId`                                                 | submits                        | Runs `runApply` + `checkEasyApplyGate`; the only submit path          |
+| `vina_easy_apply`         | `applicationId`                                                 | submits                        | Runs `runApply` + `checkEasyApplyGate`; the only Easy Apply submit path |
+| `vina_external_submit`    | `applicationId`                                                 | submits                        | External ATS only; gated, `autonomous` mode; records every field + confirmation |
 | `vina_ask_user`           | `questions[]`                                                   | alert + park                   | Returns `pending`; the queue resumes the session when answered        |
 
 Rules:
@@ -136,8 +137,9 @@ Rules:
   DB stays the audit record even though the transcript is the narrative.
 - Tools are idempotent on `(applicationId, contentHash)` where replay is
   possible, so a retried session cannot double-submit or duplicate materials.
-- `vina_easy_apply` is the only tool permitted to click submit anywhere in the
-  system, and it does not use the agent's browser.
+- `vina_easy_apply` and `vina_external_submit` are the only tools permitted to
+  click submit anywhere in the system, each bound to its own site kind, and
+  neither uses the agent's browser.
 
 ## 5. Agents
 
@@ -147,7 +149,7 @@ Rules:
 | `vina-materials` | profile_read, job_get, materials_save, ask_user, workspace write | playwright, easy_apply      | strong     |
 | `vina-review`    | job_get, materials read, review_record                           | any write outside review    | strong     |
 | `vina-apply`     | easy_apply, job_get, ask_user                                    | playwright, materials write | cheap      |
-| `vina-manual`    | playwright, job_get, materials read, status                      | easy_apply                  | cheap      |
+| `vina-manual`    | playwright, job_get, materials read, status, external_submit     | easy_apply                  | cheap      |
 | `vina-chat`      | profile_read, jobs, status, search, ask_user                     | easy_apply, playwright      | strong     |
 
 Agent definitions live in the workspace as markdown, generated from a typed
@@ -185,9 +187,18 @@ ADR-023's single gate is untouched and stays in `checkEasyApplyGate`.
 - **Agent-initiated apply**: the tool calls `ctx.permission.assert({ action:
 "vina.easy_apply", resources: [applicationId] })` first. In `manual` mode the
   agent's rules deny it outright; in `autonomous` mode the gate still applies.
-- **External ATS**: no submit tool exists. The flow ends at
-  `ready_for_manual_apply`, and the user applies in their own browser. The agent
-  cannot reach a confirmation page by design.
+- **External ATS**: three modes under `external_apply_mode`.
+  - `manual` (default): materials only; the user applies on the external site
+    (ADR-016).
+  - `assisted`: the agent fills the form in Vina's managed Chromium and stops
+    before submit; the user reviews and clicks.
+  - `autonomous`: the agent fills and submits through `vina_external_submit`,
+    which runs the gate and `ctx.permission.assert`; a raw browser click never
+    submits. Every step is written to `application_events`.
+- **Activity log**: every agent step and tool call streams to the UI, which
+  renders a live per-application timeline — mandatory for `autonomous` Easy
+  Apply and external apply. The per-field source audit from ADR-023 is part of
+  it.
 - Non-technical users see no permission dialogs in autonomous mode. Pending
   requests only appear for actions a human must decide (a missing fact, an
   unfamiliar legal attestation), surfaced through the existing alerts UI.

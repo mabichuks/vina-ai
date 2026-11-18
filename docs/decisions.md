@@ -363,7 +363,7 @@ We considered:
 
 ## ADR-016: Manual-apply pipeline for non-Easy Apply and Google Jobs listings
 
-**Status:** Accepted.
+**Status:** Superseded by ADR-024.
 
 **Context.** Many jobs cannot be auto-applied:
 
@@ -753,7 +753,7 @@ Apply and what safety primitives must be in place to make it acceptable.
 
 ## ADR-024: Hybrid orchestration — OpenCode SDK for reasoning, Vina-owned deterministic tools
 
-**Status:** Accepted. Supersedes ADR-005. Retains ADR-022 and ADR-023.
+**Status:** Accepted. Supersedes ADR-005 and ADR-016. Retains ADR-022 and ADR-023.
 
 **Context.** The orchestrator package (2,979 lines) is a bespoke agent harness:
 tool calling, prompt loading, skill registry, provider abstraction, and chat
@@ -786,10 +786,20 @@ one path where determinism is cheap, fast, and testable, and 863 tests cover it.
   `vina_easy_apply(applicationId)`. The existing `runApply` walker, field
   resolver, EEO short-circuit, and gate run inside that tool. No agent step
   types into an Easy Apply form.
-- Playwright MCP drives external ATS systems (the manual-apply pipeline) and
-  LinkedIn non-Easy-Apply listings, attached over CDP to Vina's managed
-  Chromium. Those flows end at `ready_for_manual_apply`, so no agent ever
-  submits an external form.
+- External ATS and LinkedIn non-Easy-Apply listings run under Playwright MCP,
+  attached over CDP to Vina's managed Chromium, with three modes selected by an
+  `external_apply_mode` setting. `manual` (default) is ADR-016 unchanged:
+  tailored materials only, the user applies on the external site. `assisted`
+  has the agent pre-fill the form in the managed browser and stop before
+  submit; the user reviews and clicks. `autonomous` has the agent fill and
+  submit through a gated `vina_external_submit` tool, subject to the same
+  cap/velocity/freshness/idempotency/circuit-breaker gate as Easy Apply. The
+  final click in `manual` and `assisted` always belongs to the user.
+- Every agent step and tool call is written to `application_events` and
+  streamed to the UI, which renders a live per-application activity log. The
+  log is mandatory for `autonomous` external apply and Easy Apply alike: the
+  user can always see what the agent did and why, including the per-field
+  source audit from ADR-023.
 - ADR-023 is unchanged: `vina_easy_apply` calls `checkEasyApplyGate` and the
   mode/cap/velocity/freshness/idempotency/circuit-breaker rules still apply.
   Agent-initiated calls additionally pass `ctx.permission.assert`; UI-initiated
