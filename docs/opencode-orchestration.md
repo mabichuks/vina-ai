@@ -55,16 +55,18 @@ Either way Vina calls the same generated client shape: `session.create`,
 <dataDir>/workspace/
 ├── opencode.jsonc            generated at boot; not user-edited
 ├── AGENTS.md                 candidate facts + harness conventions
+├── agents/                   six agent definitions (markdown, from the plugin's typed table)
 ├── skills/                   vendored harness skills (pinned)
 │   ├── job-sweep/ job-materials/ job-review/ job-apply/ ...
-│   └── browser-rules.md
+│   └── harness-version.json  source commit + vendoring date
+├── config/                   isolated config home (host never reads the user's global config)
 └── runs/<taskId>/            per-task scratch: notes, intermediate HTML
 ```
 
 `opencode.jsonc` is written from settings on every boot so the model, provider,
 MCP entry, and plugin path cannot drift from what the UI shows. Users never edit
 it. Skills are vendored, not linked: a Vina release states which harness version
-it carries.
+it carries via `skills/harness-version.json`.
 
 Two details the stage-0 probe forced:
 
@@ -249,8 +251,9 @@ One source of truth: the Vina vault.
   tool returns.
 - The CDP port stays loopback-only (ADR-022).
 - Page text, popups, and job descriptions are data, never instructions. The
-  harness § Browser Rules are carried into `browser-rules.md` and referenced by
-  every browser-using skill.
+  harness's § Browser Rules are vendored inside `job-apply` (`SKILL.md` §
+  Browser Rules and `references/ats-form-traps.md`), referenced by every
+  browser-using skill.
 - A skill may instruct; a tool may refuse. Anything irreversible is a tool with
   a gate, not a sentence in a prompt.
 

@@ -46,3 +46,22 @@ export {
 } from './contract.js';
 export { buildVinaTools } from './tools.js';
 export { vinaPlugin, budgetFor, type VinaPluginOptions } from './plugin.js';
+export {
+  VINA_AGENTS,
+  VINA_ALL_TOOL_IDS,
+  PLAYWRIGHT_TOOL_ID,
+  type VinaAgent,
+  type VinaAgentId,
+} from './agents.js';
+export {
+  workspacePaths,
+  generateWorkspace,
+  hostCreateOptions,
+  defaultSkillsSourceDir,
+  renderOpencodeConfig,
+  renderAgentsDoc,
+  renderAgent,
+  VENDORED_SKILL_IDS,
+  type WorkspacePaths,
+  type GenerateWorkspaceOptions,
+} from './workspace.js';

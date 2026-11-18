@@ -1,0 +1,228 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`workspace snapshot > generates a stable workspace > AGENTS.md 1`] = `
+"# AGENTS.md
+
+Generated at boot; never edit by hand. Vina regenerates this workspace from
+the vendored skill tree and the typed agent table in \`@vina/opencode-plugin\`.
+
+## Workspace
+
+- \`opencode.jsonc\` — the host config (explicit \`skills[]\`, the Vina plugin,
+  and the Playwright MCP entry, present but disabled).
+- \`agents/\` — the six agent definitions (allowlists from
+  docs/opencode-orchestration.md §5).
+- \`skills/\` — the vendored harness skills (see \`skills/harness-version.json\`).
+- \`runs/<taskId>/\` — per-task scratch.
+
+## Conventions
+
+- Skills are workspace-agnostic: personal facts resolve at runtime from Vina's
+  SQLite via the \`vina_*\` tools, never from prose. Stop rather than guess a
+  missing fact.
+- OpenCode decides, Vina acts. Every read and every effect goes through a typed
+  \`vina_*\` tool; the agent never reads the database or drives a browser outside
+  the granted tools.
+- SQLite owns state. Markdown-note and pipeline-ledger mechanics described by
+  the vendored skills are reference-only; the \`vina_*\` tools are the write path.
+- The allowlist is the security boundary: a role denied \`vina_easy_apply\` must
+  not see it, and \`vina-review\` runs in a fresh session that never saw the
+  writer's transcript.
+- Never commit personal data. Examples use fictional people and companies.
+"
+`;
+
+exports[`workspace snapshot > generates a stable workspace > agents 1`] = `
+{
+  "vina-apply": "---
+description: Submits a ready Easy Apply application; never tailors materials.
+mode: subagent
+model: cheap
+---
+You are Apply (vina-apply). Submits a ready Easy Apply application; never tailors materials.
+
+## Allowed tools
+
+- \`vina_easy_apply\`
+- \`vina_job_get\`
+- \`vina_ask_user\`
+
+## Denied tools
+
+- \`playwright\`
+- \`vina_materials_save\`
+
+",
+  "vina-chat": "---
+description: Conversational assistant over the pipeline; never submits or drives the browser.
+mode: subagent
+model: strong
+---
+You are Chat (vina-chat). Conversational assistant over the pipeline; never submits or drives the browser.
+
+## Allowed tools
+
+- \`vina_profile_read\`
+- \`vina_jobs_list\`
+- \`vina_application_status\`
+- \`vina_search_jobs\`
+- \`vina_ask_user\`
+
+## Denied tools
+
+- \`vina_easy_apply\`
+- \`playwright\`
+
+",
+  "vina-manual": "---
+description: Assists external ATS applications; the user submits.
+mode: subagent
+model: cheap
+---
+You are Manual Apply (vina-manual). Assists external ATS applications; the user submits.
+
+## Allowed tools
+
+- \`playwright\`
+- \`vina_job_get\`
+- \`vina_profile_read\`
+- \`vina_application_status\`
+- \`vina_external_submit\`
+
+## Denied tools
+
+- \`vina_easy_apply\`
+
+",
+  "vina-materials": "---
+description: Tailor the CV and cover letter for one role; never submits.
+mode: subagent
+model: strong
+---
+You are Materials (vina-materials). Tailor the CV and cover letter for one role; never submits.
+
+## Allowed tools
+
+- \`vina_profile_read\`
+- \`vina_job_get\`
+- \`vina_materials_save\`
+- \`vina_ask_user\`
+
+## Denied tools
+
+- \`playwright\`
+- \`vina_easy_apply\`
+
+- May write workspace files (notes, intermediate HTML) under <dataDir>/workspace/runs/.
+",
+  "vina-review": "---
+description: Independently audit tailored materials; records findings only.
+mode: subagent
+model: strong
+---
+You are Review (vina-review). Independently audit tailored materials; records findings only.
+
+## Allowed tools
+
+- \`vina_job_get\`
+- \`vina_profile_read\`
+- \`vina_review_record\`
+
+## Denied tools
+
+- \`vina_materials_save\`
+- \`vina_easy_apply\`
+- \`vina_application_status\`
+- \`vina_score_job\`
+- \`vina_external_submit\`
+- \`vina_search_jobs\`
+
+- Denies every write outside vina_review_record (fresh session, never sees the writer transcript).
+",
+  "vina-sweep": "---
+description: Find and score job leads; never prepares materials or applies.
+mode: subagent
+model: cheap
+---
+You are Sweep (vina-sweep). Find and score job leads; never prepares materials or applies.
+
+## Allowed tools
+
+- \`vina_search_jobs\`
+- \`vina_jobs_list\`
+- \`vina_job_get\`
+- \`vina_score_job\`
+- \`playwright\`
+
+## Denied tools
+
+- \`vina_materials_save\`
+- \`vina_easy_apply\`
+
+",
+}
+`;
+
+exports[`workspace snapshot > generates a stable workspace > opencode.jsonc 1`] = `
+"{
+  "$schema": "https://opencode.ai/config.json",
+  "skills": [
+    "skills/job-sweep",
+    "skills/job-materials",
+    "skills/job-review",
+    "skills/job-apply",
+    "skills/job-inbox",
+    "skills/job-interview",
+    "skills/job-pipeline",
+    "skills/job-setup"
+  ],
+  "plugins": [
+    "@vina/opencode-plugin"
+  ],
+  "mcp": {
+    "servers": {
+      "playwright": {
+        "type": "local",
+        "command": [
+          "npx",
+          "-y",
+          "@playwright/mcp@0.0.85",
+          "--browser",
+          "chrome",
+          "--headless"
+        ],
+        "disabled": true
+      }
+    }
+  }
+}
+"
+`;
+
+exports[`workspace snapshot > generates a stable workspace > skills 1`] = `
+{
+  "README.md": "879a0a713993",
+  "harness-version.json": "ead1a5c6a45e",
+  "job-apply/SKILL.md": "65b0bf01eca2",
+  "job-apply/references/ats-form-traps.md": "b70357e5c706",
+  "job-apply/references/batch-ledger.md": "694198803750",
+  "job-inbox/SKILL.md": "d187e0e66347",
+  "job-inbox/references/mail-queries.md": "65392e5261c8",
+  "job-inbox/references/recruiter-note.md": "666474422fcd",
+  "job-interview/SKILL.md": "07f14022ff0e",
+  "job-interview/references/company-research.md": "5a9891c5bb37",
+  "job-interview/references/prep-note.md": "2e0e523105e0",
+  "job-interview/references/studio-data.md": "aa7117cdee93",
+  "job-materials/SKILL.md": "bcce0c6c4106",
+  "job-materials/references/application-note.md": "4d378f535650",
+  "job-materials/references/resume-html.md": "4883201f46f2",
+  "job-materials/references/tech-release-dates.md": "78c17a69744d",
+  "job-pipeline/SKILL.md": "8b882c94c92c",
+  "job-review/SKILL.md": "694c72a38c2e",
+  "job-review/references/checklist.md": "ec8cd086aa63",
+  "job-setup/SKILL.md": "0baa3bbc9e58",
+  "job-sweep/SKILL.md": "e9c34c649e35",
+  "job-sweep/references/ats-apis.md": "593253607624",
+  "job-sweep/references/leads-note.md": "1463c74372a5",
+}
+`;

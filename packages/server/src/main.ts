@@ -34,6 +34,7 @@ import { createLinkedInConnectService } from './services/linkedin-connect-servic
 import { getActiveChatModel } from './services/llm-service.js';
 import { createPromptsService } from './services/prompts-service.js';
 import { createSkillsService } from './services/skills-service.js';
+import { generateWorkspace } from '@vina/opencode-plugin';
 
 const log = createLogger('main');
 
@@ -87,6 +88,12 @@ export async function bootServer(overrides: Partial<ServerConfig> = {}): Promise
   const db = getDb({ filename: path.join(config.dataDir, 'vina.db') });
   migrate(db, { migrationsDir: MIGRATIONS_DIR });
   await initVault(config.dataDir);
+
+  // Generate the agent workspace (opencode.jsonc, AGENTS.md, the six agent
+  // definitions, and the vendored skill tree) under <dataDir>/workspace.
+  // Idempotent: re-running writes identical bytes. The host is booted against
+  // this workspace with an isolated config home (see @vina/opencode-plugin).
+  generateWorkspace({ dataDir: config.dataDir });
 
   // Recover from a hard crash mid-task — anything left `running` returns to
   // `pending`. Idempotent on a clean shutdown (no rows in `running`).
