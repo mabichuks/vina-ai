@@ -50,6 +50,9 @@ export {
   VINA_AGENTS,
   VINA_ALL_TOOL_IDS,
   PLAYWRIGHT_TOOL_ID,
+  SUBMIT_BROWSER_TOOL_IDS,
+  isToolDenied,
+  trimToolsForAgent,
   type VinaAgent,
   type VinaAgentId,
 } from './agents.js';
@@ -61,6 +64,8 @@ export {
   renderOpencodeConfig,
   renderAgentsDoc,
   renderAgent,
+  agentSystemPrompt,
+  renderAgentsConfig,
   VENDORED_SKILL_IDS,
   type WorkspacePaths,
   type GenerateWorkspaceOptions,

@@ -160,10 +160,6 @@ export function Applications(): JSX.Element {
   return <Page title="Applications" hint="Submitted and in-flight applications." />;
 }
 
-export function Chat(): JSX.Element {
-  return <Page title="Chat" hint="Conversational interface to Vina." />;
-}
-
 export function Profile(): JSX.Element {
   return <Page title="Profile" hint="Identity, CVs, cover letters, saved answers." />;
 }

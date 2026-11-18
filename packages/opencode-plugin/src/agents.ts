@@ -30,6 +30,20 @@ export const VINA_ALL_TOOL_IDS = [
 /** The Playwright MCP browser capability id used in allow/deny lists. */
 export const PLAYWRIGHT_TOOL_ID = 'playwright' as const;
 
+/**
+ * The submit and browser surfaces. These are the hard boundary: an agent may
+ * only reach them through its positive `allowed` list. The two submit paths
+ * (`vina_easy_apply`, `vina_external_submit`) and the browser MCP (`playwright*`)
+ * are default-denied for any agent — including an unknown/mis-resolved agent id
+ * — so a prompt injection or a session that resolves to no agent can never
+ * reach submit (docs/opencode-orchestration.md §5, §8).
+ */
+export const SUBMIT_BROWSER_TOOL_IDS = [
+  'vina_easy_apply',
+  'vina_external_submit',
+  PLAYWRIGHT_TOOL_ID,
+] as const;
+
 export type VinaAgentId =
   | 'vina-sweep'
   | 'vina-materials'
@@ -129,3 +143,62 @@ export const VINA_AGENTS: readonly VinaAgent[] = [
     denied: ['vina_easy_apply', PLAYWRIGHT_TOOL_ID],
   },
 ];
+
+// ---------------------------------------------------------------------------
+// Hard boundary (deny enforcement)
+// ---------------------------------------------------------------------------
+
+/**
+ * Match a concrete tool id against an allow/deny entry. `playwright` is a
+ * namespace prefix (MCP tools flatten to `playwright_<name>`); every other
+ * entry is an exact flattened tool id such as `vina_easy_apply`.
+ */
+function matchesToolId(toolId: string, entry: string): boolean {
+  return toolId === entry || toolId.startsWith(entry);
+}
+
+/**
+ * Decide whether a concrete tool id must be denied for an agent. Two layers:
+ *
+ * 1. The agent's explicit `denied` list (§5's Denied column, exact/prefix).
+ * 2. The submit/browser default-deny: `vina_easy_apply`, `vina_external_submit`,
+ *    and `playwright*` are only reachable through the agent's `allowed` list.
+ *    An unknown/mis-resolved agent id gets the full submit/browser deny.
+ *
+ * This is the authoritative gate — it runs in the session context hook and does
+ * not rely on the generated markdown being discovered.
+ */
+export function isToolDenied(agentId: string, toolId: string): boolean {
+  const agent = VINA_AGENTS.find((a) => a.id === agentId);
+
+  if (!agent) {
+    // Mis-resolved agent: default-deny the submit and browser surfaces.
+    return SUBMIT_BROWSER_TOOL_IDS.some((entry) => matchesToolId(toolId, entry));
+  }
+
+  if (agent.denied.some((entry) => matchesToolId(toolId, entry))) return true;
+
+  if (SUBMIT_BROWSER_TOOL_IDS.some((entry) => matchesToolId(toolId, entry))) {
+    return !agent.allowed.some((entry) => matchesToolId(toolId, entry));
+  }
+
+  return false;
+}
+
+/**
+ * Trim the tool set in place for an agent, mutating the SDK's `event.tools`
+ * object (keyed by effective tool name). Returns the removed tool ids.
+ */
+export function trimToolsForAgent(
+  agentId: string,
+  tools: Record<string, unknown>,
+): string[] {
+  const removed: string[] = [];
+  for (const toolId of Object.keys(tools)) {
+    if (isToolDenied(agentId, toolId)) {
+      delete tools[toolId];
+      removed.push(toolId);
+    }
+  }
+  return removed;
+}

@@ -15,6 +15,8 @@ function rowToMessage(row: ChatMessageRow): ChatMessage {
 }
 
 export interface AppendMessageInput {
+  /** Optional caller-supplied id — keeps the row id stable across `chat:token` and the finalized `chat:message`. */
+  id?: string;
   role: ChatRole;
   content: string;
   tool_call_id?: string | null;
@@ -22,7 +24,7 @@ export interface AppendMessageInput {
 }
 
 export function appendMessage(db: DatabaseType, input: AppendMessageInput): ChatMessage {
-  const id = newId();
+  const id = input.id ?? newId();
   const now = new Date().toISOString();
   const metadata =
     input.metadata === undefined || input.metadata === null

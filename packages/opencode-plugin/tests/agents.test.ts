@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { VINA_AGENTS } from '../src/index.js';
+import { isToolDenied, trimToolsForAgent, VINA_AGENTS } from '../src/index.js';
 
 /**
  * The allowlist is the security boundary, not documentation
@@ -99,6 +99,113 @@ describe('VINA_AGENTS allowlists match opencode-orchestration.md §5', () => {
       const overlap = agent.allowed.filter((t) => agent.denied.includes(t));
       expect(overlap, agent.id).toEqual([]);
     }
+  });
+});
+
+describe('isToolDenied / trimToolsForAgent (hard boundary)', () => {
+  const chatToolSet: Record<string, unknown> = {
+    vina_profile_read: {},
+    vina_jobs_list: {},
+    vina_application_status: {},
+    vina_search_jobs: {},
+    vina_ask_user: {},
+    vina_easy_apply: {},
+    vina_external_submit: {},
+    vina_materials_save: {},
+    playwright_navigate: {},
+    playwright_click: {},
+  };
+
+  it('vina-chat loses the submit tools and every playwright* tool', () => {
+    const tools = { ...chatToolSet };
+    const removed = trimToolsForAgent('vina-chat', tools);
+    expect(removed).toEqual(
+      expect.arrayContaining(['vina_easy_apply', 'vina_external_submit', 'playwright_navigate', 'playwright_click']),
+    );
+    expect(tools).not.toHaveProperty('vina_easy_apply');
+    expect(tools).not.toHaveProperty('vina_external_submit');
+    expect(Object.keys(tools)).not.toContain('playwright_navigate');
+    expect(Object.keys(tools)).not.toContain('playwright_click');
+    // Its allowed read/status tools survive.
+    expect(tools).toHaveProperty('vina_profile_read');
+    expect(tools).toHaveProperty('vina_jobs_list');
+    expect(tools).toHaveProperty('vina_application_status');
+    expect(tools).toHaveProperty('vina_search_jobs');
+    expect(tools).toHaveProperty('vina_ask_user');
+  });
+
+  it('vina-review removes every write tool except vina_review_record', () => {
+    const tools: Record<string, unknown> = {
+      vina_job_get: {},
+      vina_profile_read: {},
+      vina_review_record: {},
+      vina_materials_save: {},
+      vina_application_status: {},
+      vina_score_job: {},
+      vina_easy_apply: {},
+      vina_external_submit: {},
+      playwright_navigate: {},
+    };
+    trimToolsForAgent('vina-review', tools);
+    expect(tools).toHaveProperty('vina_review_record');
+    expect(tools).not.toHaveProperty('vina_materials_save');
+    expect(tools).not.toHaveProperty('vina_application_status');
+    expect(tools).not.toHaveProperty('vina_score_job');
+    expect(tools).not.toHaveProperty('vina_easy_apply');
+    expect(tools).not.toHaveProperty('vina_external_submit');
+    expect(tools).not.toHaveProperty('playwright_navigate');
+  });
+
+  it('vina-apply keeps vina_easy_apply but loses external_submit and playwright', () => {
+    const tools: Record<string, unknown> = {
+      vina_easy_apply: {},
+      vina_job_get: {},
+      vina_ask_user: {},
+      vina_external_submit: {},
+      playwright_navigate: {},
+    };
+    trimToolsForAgent('vina-apply', tools);
+    expect(tools).toHaveProperty('vina_easy_apply');
+    expect(tools).not.toHaveProperty('vina_external_submit');
+    expect(tools).not.toHaveProperty('playwright_navigate');
+  });
+
+  it('vina-manual keeps external_submit and playwright but loses easy_apply', () => {
+    const tools: Record<string, unknown> = {
+      vina_external_submit: {},
+      playwright_navigate: {},
+      vina_job_get: {},
+      vina_profile_read: {},
+      vina_application_status: {},
+      vina_easy_apply: {},
+    };
+    trimToolsForAgent('vina-manual', tools);
+    expect(tools).toHaveProperty('vina_external_submit');
+    expect(tools).toHaveProperty('playwright_navigate');
+    expect(tools).not.toHaveProperty('vina_easy_apply');
+  });
+
+  it('an unknown/mis-resolved agent id default-denies submit and browser', () => {
+    const tools: Record<string, unknown> = {
+      vina_easy_apply: {},
+      vina_external_submit: {},
+      playwright_navigate: {},
+      vina_profile_read: {},
+    };
+    trimToolsForAgent('does-not-exist-xyz', tools);
+    expect(tools).not.toHaveProperty('vina_easy_apply');
+    expect(tools).not.toHaveProperty('vina_external_submit');
+    expect(tools).not.toHaveProperty('playwright_navigate');
+    // Non-submit tools are left alone for an unknown agent.
+    expect(tools).toHaveProperty('vina_profile_read');
+  });
+
+  it('playwright matches by namespace prefix, not only exact', () => {
+    expect(isToolDenied('vina-chat', 'playwright')).toBe(true);
+    expect(isToolDenied('vina-chat', 'playwright_navigate')).toBe(true);
+    expect(isToolDenied('vina-chat', 'playwright_click')).toBe(true);
+    expect(isToolDenied('vina-chat', 'vina_easy_apply')).toBe(true);
+    expect(isToolDenied('vina-chat', 'vina_profile_read')).toBe(false);
   });
 });
 

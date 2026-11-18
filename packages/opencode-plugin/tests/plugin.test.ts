@@ -9,7 +9,11 @@ interface Captured {
   mcps: Array<{ name: string; config: Record<string, unknown> }>;
   hooks: Array<{
     name: string;
-    callback: (event: { agent: string; options: Record<string, unknown> }) => void;
+    callback: (event: {
+      agent: string;
+      options: Record<string, unknown>;
+      tools: Record<string, unknown>;
+    }) => void;
   }>;
 }
 
@@ -54,7 +58,11 @@ function makeContext(): { ctx: unknown; captured: Captured } {
     session: {
       hook: async (
         name: string,
-        callback: (event: { agent: string; options: Record<string, unknown> }) => void,
+        callback: (event: {
+          agent: string;
+          options: Record<string, unknown>;
+          tools: Record<string, unknown>;
+        }) => void,
       ) => {
         captured.hooks.push({ name, callback });
       },
@@ -144,12 +152,48 @@ describe('vinaPlugin boot-and-registers', () => {
     const contextHook = captured.hooks.find((h) => h.name === 'context');
     expect(contextHook).toBeDefined();
 
-    const event: { agent: string; options: Record<string, unknown> } = {
+    const event: { agent: string; options: Record<string, unknown>; tools: Record<string, unknown> } = {
       agent: 'vina-review',
       options: {},
+      tools: {},
     };
     contextHook!.callback(event);
     expect(event.options.maxTokens).toBeGreaterThan(0);
+  });
+
+  it('the context hook trims submit + browser tools for a vina-chat session', async () => {
+    const { ctx, captured } = makeContext();
+    const plugin = vinaPlugin({
+      services: stubServices(),
+      cdpEndpoint: () => 'http://127.0.0.1:9333',
+    });
+    await (plugin.setup as (c: typeof ctx) => Promise<void>)(ctx);
+
+    const contextHook = captured.hooks.find((h) => h.name === 'context');
+    expect(contextHook).toBeDefined();
+
+    const event: { agent: string; options: Record<string, unknown>; tools: Record<string, unknown> } = {
+      agent: 'vina-chat',
+      options: {},
+      tools: {
+        vina_profile_read: {},
+        vina_jobs_list: {},
+        vina_easy_apply: {},
+        vina_external_submit: {},
+        playwright_navigate: {},
+        playwright_click: {},
+      },
+    };
+    contextHook!.callback(event);
+
+    // The chat surface must not be able to reach submit or the browser.
+    expect(event.tools).not.toHaveProperty('vina_easy_apply');
+    expect(event.tools).not.toHaveProperty('vina_external_submit');
+    expect(Object.keys(event.tools)).not.toContain('playwright_navigate');
+    expect(Object.keys(event.tools)).not.toContain('playwright_click');
+    // Its granted read tools survive.
+    expect(event.tools).toHaveProperty('vina_profile_read');
+    expect(event.tools).toHaveProperty('vina_jobs_list');
   });
 });
 

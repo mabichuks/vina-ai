@@ -31,10 +31,13 @@ import { createWorker, type TaskHandler, type TaskHandlers } from './queue/worke
 import { runResolveSelector, type StructuredScorer } from '@vina/orchestrator';
 import { createScheduler } from './scheduler/scheduler.js';
 import { createLinkedInConnectService } from './services/linkedin-connect-service.js';
-import { getActiveChatModel } from './services/llm-service.js';
+import { getActiveChatModel, resolveChatProvider } from './services/llm-service.js';
 import { createPromptsService } from './services/prompts-service.js';
 import { createSkillsService } from './services/skills-service.js';
 import { generateWorkspace } from '@vina/opencode-plugin';
+import { createOpenCodeHost, type OpenCodeHost } from './opencode/host.js';
+import { createVinaServices } from './opencode/services.js';
+import { createChatService, type ChatService } from './services/chat-service.js';
 
 const log = createLogger('main');
 
@@ -75,7 +78,6 @@ export interface BootedServer {
   browserManager: BrowserManagerHandle;
   shutdown: () => Promise<void>;
 }
-
 /**
  * Build and start the server. Returns a handle so callers (tests, the CLI
  * daemon) can shut it down cleanly. Pass `port: 0` to bind an ephemeral
@@ -94,6 +96,46 @@ export async function bootServer(overrides: Partial<ServerConfig> = {}): Promise
   // Idempotent: re-running writes identical bytes. The host is booted against
   // this workspace with an isolated config home (see @vina/opencode-plugin).
   generateWorkspace({ dataDir: config.dataDir });
+
+  const bus = createEventBus();
+
+  // The `vina_*` tool service container (issue #16) — the plugin receives the
+  // live repositories/services by injection at host boot. The host driver needs
+  // `bus` before the worker/scheduler are built, so it is created first here.
+  const services = createVinaServices({
+    db,
+    bus,
+    buildModel: () => getActiveChatModel(db),
+    dataDir: config.dataDir,
+  });
+
+  // Boot the single embedded OpenCode host (ADR-024 §2/§14). A boot failure
+  // degrades to "chat unavailable" + a general alert (§10) — never crashes the
+  // daemon. `resolveProvider` reads the active provider from settings and
+  // decrypts its key from the vault; the key never reaches disk or logs.
+  let host: OpenCodeHost | null = null;
+  try {
+    host = await createOpenCodeHost({
+      dataDir: config.dataDir,
+      resolveProvider: () => resolveChatProvider(db),
+      services,
+      // The Playwright MCP attaches to the browser manager's loopback CDP
+      // endpoint (ADR-022). The manager launches per-site on first use and its
+      // port is dynamic; stage 1 chat denies `playwright` entirely, so the MCP
+      // is registered but never dialled — the placeholder is resolved when the
+      // browser manager surfaces its endpoint (#16 follow-up).
+      cdpEndpoint: () => 'http://127.0.0.1:9222',
+    });
+  } catch (err) {
+    log.error({ err }, 'OpenCode host failed to boot; chat unavailable');
+    insertAlert(db, {
+      kind: 'general',
+      severity: 'error',
+      title: 'Chat unavailable',
+      description:
+        'The AI chat host failed to start. Check that an LLM provider is configured in Settings and try restarting.',
+    });
+  }
 
   // Recover from a hard crash mid-task — anything left `running` returns to
   // `pending`. Idempotent on a clean shutdown (no rows in `running`).
@@ -120,7 +162,11 @@ export async function bootServer(overrides: Partial<ServerConfig> = {}): Promise
     );
   }
 
-  const bus = createEventBus();
+  // Chat service drives the single `vina-chat` conversation over the host.
+  // `null` when the host failed to boot — the route is then not registered.
+  const chat: ChatService | null = host
+    ? createChatService({ host, db, bus })
+    : null;
 
   const browserManager = createBrowserManager({
     dataDir: config.dataDir,
@@ -250,6 +296,7 @@ export async function bootServer(overrides: Partial<ServerConfig> = {}): Promise
     linkedInConnectService,
     prompts,
     skills,
+    chat,
     poke: () => worker.poke(),
   });
 
@@ -266,6 +313,7 @@ export async function bootServer(overrides: Partial<ServerConfig> = {}): Promise
     scheduler.stop();
     await worker.stop();
     await browserManager.closeAll();
+    if (host) await host.close();
     await app.close();
     closeDb();
     deleteStatusFile(config);

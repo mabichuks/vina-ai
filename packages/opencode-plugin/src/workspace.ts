@@ -190,14 +190,25 @@ the vendored skill tree and the typed agent table in \`@vina/opencode-plugin\`.
 // ---------------------------------------------------------------------------
 
 export function renderAgent(agent: VinaAgent): string {
-  const allowed = agent.allowed.map((t) => `- \`${t}\``).join('\n');
-  const denied = agent.denied.map((t) => `- \`${t}\``).join('\n');
-  const notes = agent.notes ? `\n${agent.notes.map((n) => `- ${n}`).join('\n')}` : '';
   return `---
 description: ${agent.description}
 mode: subagent
 ---
-You are ${agent.title} (${agent.id}). ${agent.description}
+${agentSystemPrompt(agent)}
+`;
+}
+
+/**
+ * The agent body shared by the markdown definition and the config `agents`
+ * entry: title + role, then the allowed and denied tool lists (§5). It is the
+ * prose the model actually sees, generated from the same typed table that the
+ * context hook enforces.
+ */
+export function agentSystemPrompt(agent: VinaAgent): string {
+  const allowed = agent.allowed.map((t) => `- \`${t}\``).join('\n');
+  const denied = agent.denied.map((t) => `- \`${t}\``).join('\n');
+  const notes = agent.notes ? `\n${agent.notes.map((n) => `- ${n}`).join('\n')}` : '';
+  return `You are ${agent.title} (${agent.id}). ${agent.description}
 
 ## Allowed tools
 
@@ -206,8 +217,28 @@ ${allowed}
 ## Denied tools
 
 ${denied}
-${notes}
-`;
+${notes}`;
+}
+
+/**
+ * The six agents registered inline in the host config `content` (the `agents`
+ * key). `@opencode/sdk@2.3.1` discovers agents from the config home
+ * (`<config>/agent/`) or the location (`<location>/.opencode/agent/`) — never
+ * from `<workspace>/agents/` markdown — so the markdown alone never makes
+ * `agent.list()` surface them and `session.create({ agent })` never loads the
+ * definition. Registering them here is what makes the `vina-*` agents
+ * discoverable; the authoritative deny boundary is still the context hook.
+ */
+export function renderAgentsConfig(): { agents: Record<string, unknown> } {
+  const agents: Record<string, unknown> = {};
+  for (const agent of VINA_AGENTS) {
+    agents[agent.id] = {
+      description: agent.description,
+      mode: 'subagent',
+      system: agentSystemPrompt(agent),
+    };
+  }
+  return { agents };
 }
 
 // ---------------------------------------------------------------------------
