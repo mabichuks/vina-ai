@@ -16,6 +16,8 @@ packages/server/public/
 
 # Git worktrees (per superpowers:using-git-worktrees)
 .worktrees/
+# Multi-line issue/PR body staging (MetaSkills harness convention)
+.tmp-*
 
 # Test / coverage
 coverage/
