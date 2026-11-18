@@ -18,6 +18,7 @@ function makeFakeHost(): {
   sessions: Map<string, FakeSession>;
 } {
   const calls = { create: 0, get: 0, prompt: 0, remove: 0, interrupt: 0 };
+  const createdAgents: string[] = [];
   const sessions = new Map<string, FakeSession>();
   const host = {
     client: {
@@ -30,11 +31,11 @@ function makeFakeHost(): {
         },
         create: async ({ agent }: { agent: string }) => {
           calls.create += 1;
+          createdAgents.push(agent);
           const id = `ses_${calls.create}`;
           sessions.set(id, { id });
           return { id, agent };
-        },
-        prompt: async ({ sessionID, text }: { sessionID: string; text: string }) => {
+        },        prompt: async ({ sessionID, text }: { sessionID: string; text: string }) => {
           calls.prompt += 1;
           return { id: 'msg', sessionID, text, type: 'user' };
         },
@@ -50,7 +51,7 @@ function makeFakeHost(): {
     },
     close: async () => {},
   } as unknown as OpenCodeHost;
-  return { host, calls, sessions };
+  return { host, calls, createdAgents, sessions };
 }
 
 function idleBridge(): ChatBridge {
@@ -61,7 +62,7 @@ describe('chat service', () => {
   it('creates a session on first turn and persists chat_session_id', async () => {
     const db = freshTestDb();
     const bus = createEventBus();
-    const { host, calls } = makeFakeHost();
+    const { host, calls, createdAgents } = makeFakeHost();
     const messages: ChatMessage[] = [];
     bus.on('chat:message', (m) => messages.push(m));
 
@@ -70,6 +71,9 @@ describe('chat service', () => {
 
     expect(calls.create).toBe(1);
     expect(calls.prompt).toBe(1);
+    // The chat path must run under the `vina-chat` agent so its deny boundary
+    // (no submit, no browser) applies — the chat surface can never reach submit.
+    expect(createdAgents).toEqual(['vina-chat']);
     const settings = getOrInitSettings(db);
     expect(settings.chat_session_id).toBe('ses_1');
     expect(listRecent(db, 10)).toHaveLength(1);

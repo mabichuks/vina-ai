@@ -7,6 +7,7 @@ import {
   generateWorkspace,
   hostCreateOptions,
   vinaPlugin,
+  VINA_AGENTS,
   VINA_TOOL_NAMES,
   workspacePaths,
   type VinaServices,
@@ -95,6 +96,10 @@ describe('host driver', () => {
     expect(parsed.skills).toBeDefined();
     expect(parsed.plugins).toBeUndefined();
     expect(parsed.model).toBe('vina/gpt-4o');
+    // The six agents are registered inline so agent.list() can discover them.
+    const agents = parsed.agents as Record<string, unknown>;
+    expect(agents).toBeDefined();
+    expect(Object.keys(agents)).toEqual(expect.arrayContaining(VINA_AGENTS.map((a) => a.id)));
     fs.rmSync(dataDir, { recursive: true, force: true });
   });
 
@@ -187,6 +192,56 @@ describe('host driver', () => {
       // Every vina tool registers under its short name (the SDK's namespace
       // transform flattens it to `vina_<name>` as the effective id).
       expect(registeredToolIds).toEqual(expect.arrayContaining([...VINA_TOOL_NAMES]));
+    } finally {
+      await host.close();
+      fs.rmSync(dataDir, { recursive: true, force: true });
+    }
+  }, 30_000);
+
+  it('boots a real host and discovers the six vina-* agents via the config agents key', async () => {
+    const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'vina-host-'));
+    generateWorkspace({ dataDir });
+    const host = await createOpenCodeHost({
+      dataDir,
+      resolveProvider: async () => ({
+        model: 'probe-model',
+        baseURL: 'http://127.0.0.1:9/v1',
+        apiKey: null,
+      }),
+      services: stubServices(),
+      cdpEndpoint: () => 'http://127.0.0.1:9333',
+    });
+    try {
+      const waitReady = async <T>(fn: () => Promise<T>): Promise<T> => {
+        for (let attempt = 0; ; attempt++) {
+          try {
+            return await fn();
+          } catch (err) {
+            if (attempt >= 10) throw err;
+            await new Promise((r) => setTimeout(r, 200));
+          }
+        }
+      };
+
+      // Touch the provider/model to trigger location activation; agent
+      // discovery resolves once the location has activated.
+      await waitReady(() => host.client.provider.list());
+      await waitReady(() => host.client.model.list());
+
+      // Agent discovery can lag location activation, so poll until the six
+      // generated agents surface rather than asserting on the first empty list.
+      let ids: string[] = [];
+      for (let attempt = 0; attempt < 20; attempt++) {
+        const agents = await host.client.agent.list();
+        ids = agents.data.map((a) => a.id);
+        if (VINA_AGENTS.every((a) => ids.includes(a.id))) break;
+        await new Promise((r) => setTimeout(r, 200));
+      }
+
+      // The six generated agents must be discoverable (not just the built-ins).
+      for (const agent of VINA_AGENTS) {
+        expect(ids, agent.id).toContain(agent.id);
+      }
     } finally {
       await host.close();
       fs.rmSync(dataDir, { recursive: true, force: true });

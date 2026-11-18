@@ -1,6 +1,7 @@
 import { Plugin } from '@opencode/plugin';
 import { buildVinaTools } from './tools.js';
 import { VINA_NAMESPACE, type VinaServices } from './contract.js';
+import { trimToolsForAgent } from './agents.js';
 
 /**
  * Pinned Playwright MCP version (stage-0 probe: `@playwright/mcp@0.0.85`).
@@ -75,6 +76,11 @@ export function vinaPlugin(options: VinaPluginOptions): Plugin.Plugin {
       });
 
       await ctx.session.hook('context', (event) => {
+        // The authoritative §5 allow/deny gate: trim the tool set per agent so
+        // a mis-resolved agent or a prompt injection can never reach submit or
+        // the browser (see agents.ts `trimToolsForAgent`). Defence in depth on
+        // top of the token budget.
+        trimToolsForAgent(event.agent, event.tools);
         event.options.maxTokens = budgetFor(event.agent);
       });
     },

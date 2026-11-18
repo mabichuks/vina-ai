@@ -1,6 +1,12 @@
 import fs from 'node:fs';
 import { OpenCode } from '@opencode/sdk';
-import { hostCreateOptions, vinaPlugin, workspacePaths, type VinaServices } from '@vina/opencode-plugin';
+import {
+  hostCreateOptions,
+  renderAgentsConfig,
+  vinaPlugin,
+  workspacePaths,
+  type VinaServices,
+} from '@vina/opencode-plugin';
 import { createLogger } from '@vina/shared';
 
 const log = createLogger('opencode-host');
@@ -85,7 +91,10 @@ export function renderProviderFragment(provider: ResolvedProvider): Record<strin
  * `plugins` entry is a package-name string (`@vina/opencode-plugin`) — the
  * embedded SDK does not resolve plugin packages by name, so it is dropped here
  * and the plugin is injected as an instance via `OpenCode.create({ plugins })`
- * instead (see `createOpenCodeHost`).
+ * instead (see `createOpenCodeHost`). The six `vina-*` agents are registered
+ * inline under the `agents` key so `agent.list()` surfaces them and
+ * `session.create({ agent })` loads their definition (the SDK does not
+ * discover agents from the workspace markdown).
  */
 export function renderHostConfig(dataDir: string, provider: ResolvedProvider): string {
   const paths = workspacePaths(dataDir);
@@ -97,7 +106,11 @@ export function renderHostConfig(dataDir: string, provider: ResolvedProvider): s
     log.warn({ file: paths.opencodeConfigFile }, 'generated opencode.jsonc missing; booting with provider only');
   }
   const { plugins: _plugins, ...rest } = base;
-  return JSON.stringify({ ...rest, ...renderProviderFragment(provider) }, null, 2);
+  return JSON.stringify(
+    { ...rest, ...renderAgentsConfig(), ...renderProviderFragment(provider) },
+    null,
+    2,
+  );
 }
 
 /**
