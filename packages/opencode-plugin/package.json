@@ -1,0 +1,28 @@
+{
+  "name": "@vina/opencode-plugin",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc -p tsconfig.build.json --noEmit",
+    "clean": "rm -rf dist *.tsbuildinfo"
+  },
+  "dependencies": {
+    "@opencode/plugin": "2.3.1",
+    "@opencode/sdk": "2.3.1",
+    "@vina/shared": "workspace:*",
+    "zod": "^4.3.6"
+  }
+}

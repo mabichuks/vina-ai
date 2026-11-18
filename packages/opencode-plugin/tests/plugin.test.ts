@@ -1,0 +1,189 @@
+import { describe, expect, it, vi } from 'vitest';
+import type { Tool } from '@opencode/sdk';
+import { vinaPlugin, buildVinaTools, VINA_TOOL_NAMES, type VinaServices } from '../src/index.js';
+
+/** Minimal recording stand-in for the plugin host `setup` context. */
+interface Captured {
+  namespace: { name: string; description: string } | null;
+  toolNames: string[];
+  mcps: Array<{ name: string; config: Record<string, unknown> }>;
+  hooks: Array<{
+    name: string;
+    callback: (event: { agent: string; options: Record<string, unknown> }) => void;
+  }>;
+}
+
+function makeContext(): { ctx: unknown; captured: Captured } {
+  const captured: Captured = {
+    namespace: null,
+    toolNames: [],
+    mcps: [],
+    hooks: [],
+  };
+
+  const toolEditor = {
+    namespace: (ns: { name: string; description: string }) => {
+      captured.namespace = ns;
+    },
+    add: (tool: Tool.Info) => {
+      captured.toolNames.push(tool.name);
+    },
+    list: () => [],
+    get: () => undefined,
+    update: () => {},
+    remove: () => {},
+  };
+
+  const mcpEditor = {
+    set: (name: string, config: Record<string, unknown>) => {
+      captured.mcps.push({ name, config });
+    },
+    list: () => [],
+    get: () => undefined,
+    update: () => {},
+    remove: () => {},
+  };
+
+  const ctx = {
+    tool: {
+      transform: async (callback: (editor: typeof toolEditor) => void) => callback(toolEditor),
+    },
+    mcp: {
+      transform: async (callback: (editor: typeof mcpEditor) => void) => callback(mcpEditor),
+    },
+    session: {
+      hook: async (
+        name: string,
+        callback: (event: { agent: string; options: Record<string, unknown> }) => void,
+      ) => {
+        captured.hooks.push({ name, callback });
+      },
+    },
+  };
+
+  return { ctx, captured };
+}
+
+function stubServices(): VinaServices {
+  const fail = async (): Promise<never> => {
+    throw new Error('stub');
+  };
+  return {
+    profileRead: fail,
+    searchJobs: fail,
+    jobsList: fail,
+    jobGet: fail,
+    scoreJob: fail,
+    materialsSave: fail,
+    reviewRecord: fail,
+    applicationStatus: fail,
+    easyApply: fail,
+    askUser: fail,
+  } as VinaServices;
+}
+
+describe('vinaPlugin boot-and-registers', () => {
+  it('defines a plugin with id "vina" and a setup function', () => {
+    const plugin = vinaPlugin({
+      services: stubServices(),
+      cdpEndpoint: () => 'http://127.0.0.1:9333',
+    });
+    expect(plugin.id).toBe('vina');
+    expect(typeof plugin.setup).toBe('function');
+  });
+
+  it('registers the vina namespace with all ten tools (flattened vina_<name>)', async () => {
+    const { ctx, captured } = makeContext();
+    const plugin = vinaPlugin({
+      services: stubServices(),
+      cdpEndpoint: () => 'http://127.0.0.1:9333',
+    });
+    await (plugin.setup as (c: typeof ctx) => Promise<void>)(ctx);
+
+    expect(captured.namespace).toEqual({
+      name: 'vina',
+      description: 'Vina job-search facts and actions',
+    });
+    const flattened = captured.toolNames.map((n) => `vina_${n}`);
+    expect(flattened).toEqual(VINA_TOOL_NAMES.map((n) => `vina_${n}`));
+  });
+
+  it('registers the Playwright MCP entry over the loopback CDP endpoint', async () => {
+    const { ctx, captured } = makeContext();
+    const plugin = vinaPlugin({
+      services: stubServices(),
+      cdpEndpoint: () => 'http://127.0.0.1:9333',
+    });
+    await (plugin.setup as (c: typeof ctx) => Promise<void>)(ctx);
+
+    expect(captured.mcps).toHaveLength(1);
+    const mcp = captured.mcps[0]!;
+    expect(mcp.name).toBe('playwright');
+    expect(mcp.config.type).toBe('local');
+    expect(mcp.config.command).toEqual([
+      'npx',
+      '-y',
+      '@playwright/mcp@0.0.85',
+      '--cdp-endpoint',
+      'http://127.0.0.1:9333',
+      '--browser',
+      'chrome',
+      '--headless',
+    ]);
+    expect(mcp.config.codemode).toBe(false);
+  });
+
+  it('registers the session context budget hook that sets a token ceiling', async () => {
+    const { ctx, captured } = makeContext();
+    const plugin = vinaPlugin({
+      services: stubServices(),
+      cdpEndpoint: () => 'http://127.0.0.1:9333',
+    });
+    await (plugin.setup as (c: typeof ctx) => Promise<void>)(ctx);
+
+    const contextHook = captured.hooks.find((h) => h.name === 'context');
+    expect(contextHook).toBeDefined();
+
+    const event: { agent: string; options: Record<string, unknown> } = {
+      agent: 'vina-review',
+      options: {},
+    };
+    contextHook!.callback(event);
+    expect(event.options.maxTokens).toBeGreaterThan(0);
+  });
+});
+
+describe('buildVinaTools', () => {
+  it('returns exactly the ten fixed tools in order', () => {
+    const tools = buildVinaTools(stubServices());
+    expect(tools.map((t) => t.name)).toEqual(VINA_TOOL_NAMES);
+  });
+
+  it('executes a tool by zod-validating input then delegating to the service', async () => {
+    const services = stubServices();
+    const profileRead = vi.fn(async () => ({ profile: null, cvs: [], answers: [] }));
+    const tools = buildVinaTools({ ...services, profileRead } as VinaServices);
+    const tool = tools.find((t) => t.name === 'profile_read')!;
+
+    const result = await (
+      tool as unknown as {
+        execute: (i: unknown, ctx: unknown) => Promise<{ output: unknown }>;
+      }
+    ).execute({}, {});
+    expect(result.output).toEqual({ profile: null, cvs: [], answers: [] });
+    expect(profileRead).toHaveBeenCalledOnce();
+  });
+
+  it('rejects malformed input with a zod error', async () => {
+    const services = stubServices();
+    const tools = buildVinaTools(services);
+    const tool = tools.find((t) => t.name === 'job_get')!;
+
+    await expect(
+      (tool as unknown as { execute: (i: unknown, ctx: unknown) => Promise<unknown> }).execute(
+        {},
+        {},
+      ),
+    ).rejects.toThrow();
+  });
+});
