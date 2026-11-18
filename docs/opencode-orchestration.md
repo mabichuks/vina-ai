@@ -305,11 +305,45 @@ Run against `@opencode/sdk@2.3.1` on Node 24.21.0, no Bun, macOS arm64.
 | Implicit `.opencode/skills` discovery                 | Did **not** register in the embedded host                |
 | Global user skills excluded                           | No — host inherited them without an isolated config home |
 | Installed size                                        | 388 MB `node_modules` for the SDK and its deps           |
+| `session.prompt` against a real provider             | Works — `ollama-cloud` provider via `openai-compatible`; reply `spike-ok`; streaming fields + `outcome: succeeded` |
+| `permission.assert` → request → `permission.reply`    | Works — `ask` rule raises a pending request; `reply` `once` completes the tool; `reply` `reject` refuses it        |
+| Playwright MCP over `--cdp-endpoint`                  | Works — `@playwright/mcp@0.0.85` attached to loopback CDP; `browser_snapshot` returned the fixture marker         |
 
-Not yet exercised: `session.prompt` against a real provider, `permission.assert`
-round trip, Playwright MCP over `--cdp-endpoint`. Those are the remaining stage-0
-exit criteria. The hosting question is settled in favour of the embedded SDK; the
-service-plus-binary fallback stays documented but is no longer the expected path.
+All four stage-0 exit criteria are now exercised and pass. The hosting question is
+settled in favour of the embedded SDK; the service-plus-binary fallback stays
+documented but is no longer the expected path.
+
+**Check 2 — permission round trip** (2026-11-18, no model; the tool executor was
+driven directly with a synthetic `ToolContext` against a live session). A plugin
+registered one tool whose `execute` called
+`ctx.permission.assert({ sessionID, action: 'spike.submit', resources: ['job-1'] })`,
+and the session was created with
+`permissions: [{ action: 'spike.submit', resource: 'job-1', effect: 'ask' }]`.
+The assert raised a pending request, observed via
+`oc.permission.list({ sessionID })` as `{ id, sessionID, action, resources }`.
+`oc.permission.reply({ sessionID, requestID, decision: 'once' })` resolved it and the
+tool completed with `{ content: 'spike-perm-ok' }`; a second round with
+`decision: 'reject'` + `message` refused the tool with a `Tool.Error` carrying the
+message. Exact shapes: `ctx.permission.assert` → `Promise<void>` (resolves on allow,
+rejects `Tool.Error` on a rejection with feedback); `oc.permission.reply` takes
+`decision ∈ "once" | "always" | "reject"` (`Permission.Reply`); session rules are
+`Permission.Ruleset` (`{ action, resource, effect: "allow" | "deny" | "ask" }[]`,
+last matching rule wins, no match → `ask`); events are `permission.asked` /
+`permission.replied`.
+
+**Check 3 — Playwright MCP over CDP** (2026-11-18). A throwaway Chromium was launched
+loopback-only — `chrome-headless-shell --remote-debugging-port=9333
+--remote-debugging-address=127.0.0.1 --user-data-dir=<profile> --no-first-run
+about:blank` (HeadlessChrome/147.0.7727.15) — then
+`npx -y @playwright/mcp@0.0.85 --cdp-endpoint http://127.0.0.1:9333 --browser chrome
+--headless`. The MCP listed 25 tools; `browser_navigate` to a marker page and
+`browser_snapshot` round-tripped the marker (`heading "spike-cdp-ok"`). Two caveats:
+`--cdp-endpoint` takes the `http://` loopback endpoint (Playwright resolves
+`/json/version` to the browser ws URL) — a bare `ws://127.0.0.1:9333` 404s on `/`;
+and in this environment the full `Google Chrome for Testing` 147 binary did **not**
+open the debug port (crashpad `mach_port_request_notification` FATAL, empty log, no
+`DevToolsActivePort`), while the Playwright headless shell did — a launch detail to
+verify against the real `packages/automation` manager in stage 1.
 
 ## 15. Related documents
 
