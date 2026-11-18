@@ -145,6 +145,7 @@ describe('enum constants', () => {
           "anthropic",
           "openai",
           "ollama",
+          "ollama-cloud",
         ],
         "SITE_KINDS": [
           "browser",

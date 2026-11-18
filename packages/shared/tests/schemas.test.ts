@@ -343,6 +343,24 @@ describe('site / llm-provider schemas', () => {
       }),
     ).toBeTruthy();
   });
+
+  it('ollama-cloud requires an api_key (hosted), unlike local ollama', () => {
+    expect(() =>
+      LlmProviderInputSchema.parse({
+        kind: 'ollama-cloud',
+        label: 'Hosted',
+        model: 'deepseek-v4.1-flash:cloud',
+      }),
+    ).toThrow();
+    expect(
+      LlmProviderInputSchema.parse({
+        kind: 'ollama-cloud',
+        label: 'Hosted',
+        model: 'deepseek-v4.1-flash:cloud',
+        api_key: 'ollama-key',
+      }),
+    ).toBeTruthy();
+  });
 });
 
 describe('SettingsSchema (autonomous easy apply)', () => {

@@ -20,7 +20,7 @@ export type LlmProvider = z.infer<typeof LlmProviderSchema>;
 
 /**
  * Input shape: the raw plaintext `api_key` is required for `anthropic`/`openai`
- * and optional/absent for `ollama` (local).
+ * and `ollama-cloud` (hosted), and optional/absent for `ollama` (local).
  */
 export const LlmProviderInputSchema = z
   .object({

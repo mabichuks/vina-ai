@@ -14,6 +14,7 @@ const DEFAULT_MODELS: Record<LlmProviderKind, string> = {
   anthropic: 'claude-opus-4-7',
   openai: 'gpt-5',
   ollama: 'llama3.1:70b',
+  'ollama-cloud': 'deepseek-v4.1-flash:cloud',
 };
 
 const KINDS: { id: LlmProviderKind; label: string; blurb: string }[] = [
@@ -27,6 +28,11 @@ const KINDS: { id: LlmProviderKind; label: string; blurb: string }[] = [
     id: 'ollama',
     label: 'Ollama',
     blurb: 'Run a local model. No API key needed.',
+  },
+  {
+    id: 'ollama-cloud',
+    label: 'Ollama Cloud',
+    blurb: 'A hosted Ollama model. Requires an API key.',
   },
 ];
 
@@ -57,6 +63,7 @@ function LlmProviderForm({
 
   const onKindChange = (k: LlmProviderKind): void => {
     if (model === DEFAULT_MODELS[kind]) setModel(DEFAULT_MODELS[k]);
+    if (k === 'ollama' && !initial) setBaseUrl('http://localhost:11434');
     setKind(k);
   };
 
