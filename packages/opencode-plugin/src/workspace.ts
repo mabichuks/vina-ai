@@ -110,14 +110,17 @@ export const VENDORED_SKILL_IDS = [
   'job-interview',
   'job-pipeline',
   'job-setup',
+  'job-manual',
 ] as const;
 
 /**
  * The generated config. `skills[]` lists each vendored skill directory
  * explicitly (relative to the workspace location); the stage-0 probe showed
  * implicit `.opencode/skills` discovery does not register in the embedded
- * host. The Playwright MCP entry is present but disabled until the MCP issue
- * lands; the live entry is registered by the plugin at activation.
+ * host. The Playwright MCP entry is a placeholder in the static config — the
+ * plugin's `ctx.mcp.transform` replaces it at host boot with the live entry
+ * (real `--cdp-endpoint`, loopback-only) so the endpoint is resolved from the
+ * browser manager rather than hard-coded here.
  */
 export function renderOpencodeConfig(): string {
   const skillIds = VENDORED_SKILL_IDS;
@@ -139,8 +142,6 @@ export function renderOpencodeConfig(): string {
             'chrome',
             '--headless',
           ],
-          // Present but disabled until the Playwright MCP issue lands.
-          disabled: true,
         },
       },
     },
@@ -162,7 +163,7 @@ the vendored skill tree and the typed agent table in \`@vina/opencode-plugin\`.
 ## Workspace
 
 - \`opencode.jsonc\` — the host config (explicit \`skills[]\`, the Vina plugin,
-  and the Playwright MCP entry, present but disabled).
+  and the Playwright MCP entry).
 - \`agents/\` — the six agent definitions (allowlists from
   docs/opencode-orchestration.md §5).
 - \`skills/\` — the vendored harness skills (see \`skills/harness-version.json\`).

@@ -97,6 +97,10 @@ describe('enum constants', () => {
           "resumed",
           "ready_for_manual_apply",
           "applied_manually",
+          "external_form_opened",
+          "external_field_filled",
+          "external_ready_for_review",
+          "external_submitted",
         ],
         "APPLICATION_STATUSES": [
           "queued",
@@ -154,6 +158,7 @@ describe('enum constants', () => {
           "prepare_manual_apply",
           "review",
           "resume",
+          "external_form_fill",
         ],
         "TASK_STATUSES": [
           "pending",

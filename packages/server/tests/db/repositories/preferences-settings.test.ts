@@ -68,4 +68,16 @@ describe('settings repository', () => {
     expect(getOrInitSettings(db).encrypted_serpapi_key).toBeNull();
     db.close();
   });
+
+  it('external_apply_mode defaults to manual and round-trips a partial update', () => {
+    const db = freshTestDb();
+    expect(getOrInitSettings(db).external_apply_mode).toBe('manual');
+
+    const updated = updateSettings(db, { external_apply_mode: 'assisted' });
+    expect(updated.external_apply_mode).toBe('assisted');
+    // Untouched fields preserved.
+    expect(updated.easy_apply_mode).toBe('manual');
+    expect(getOrInitSettings(db).external_apply_mode).toBe('assisted');
+    db.close();
+  });
 });

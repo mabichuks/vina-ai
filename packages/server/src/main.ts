@@ -1,11 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import {
-  createBrowserManager,
-  linkedInAdapter,
-  type BrowserManagerHandle,
-} from '@vina/automation';
+import { createBrowserManager, linkedInAdapter, type BrowserManagerHandle } from '@vina/automation';
 import { createLogger } from '@vina/shared';
 import type { FastifyInstance } from 'fastify';
 import { buildApp } from './app.js';
@@ -15,6 +11,7 @@ import { migrate } from './db/migrate.js';
 import { initVault } from './secrets/vault.js';
 import { insertAlert } from './db/repositories/alerts.js';
 import { listJobs } from './db/repositories/jobs.js';
+import { getOrInitSettings } from './db/repositories/settings.js';
 import {
   enqueue,
   getInFlightScoreJobIds,
@@ -26,6 +23,7 @@ import { createScoreHandler } from './queue/handlers/score.js';
 import { createApplyHandler } from './queue/handlers/apply.js';
 import { createPrepareManualApplyHandler } from './queue/handlers/prepare-manual-apply.js';
 import { createReviewHandler } from './queue/handlers/review.js';
+import { createExternalFormFillHandler } from './queue/handlers/external-form-fill.js';
 import { createManualApplyToolKit } from './orchestrator/tools/index.js';
 import { updateApplicationStatus } from './db/repositories/applications.js';
 import { createWorker, type TaskHandler, type TaskHandlers } from './queue/worker.js';
@@ -111,6 +109,31 @@ export async function bootServer(overrides: Partial<ServerConfig> = {}): Promise
     dataDir: config.dataDir,
   });
 
+  // The browser manager must exist before the host: the Playwright MCP attaches
+  // to the external session's loopback CDP endpoint, which is fixed once at
+  // `ctx.mcp.transform` during `OpenCode.create`. In assisted/autonomous mode we
+  // eagerly launch the dedicated `external` session so `cdpEndpoint()` resolves
+  // to the real port (assisted runs headful, autonomous follows browser_headful).
+  const browserManager = createBrowserManager({
+    dataDir: config.dataDir,
+    headless: !config.headfulBrowser,
+  });
+
+  const settings = getOrInitSettings(db);
+  const externalApplyMode = () => getOrInitSettings(db).external_apply_mode;
+  if (settings.external_apply_mode !== 'manual') {
+    const headless =
+      settings.external_apply_mode === 'assisted' ? false : !settings.browser_headful;
+    try {
+      await browserManager.ensureExternalSession({ headless });
+    } catch (err) {
+      log.warn(
+        { err },
+        'external browser session failed to launch; external form fill unavailable',
+      );
+    }
+  }
+
   // Boot the single embedded OpenCode host (ADR-024 §2/§14). A boot failure
   // degrades to "chat unavailable" + a general alert (§10) — never crashes the
   // daemon. `resolveProvider` reads the active provider from settings and
@@ -121,12 +144,12 @@ export async function bootServer(overrides: Partial<ServerConfig> = {}): Promise
       dataDir: config.dataDir,
       resolveProvider: () => resolveChatProvider(db),
       services,
-      // The Playwright MCP attaches to the browser manager's loopback CDP
-      // endpoint (ADR-022). The manager launches per-site on first use and its
-      // port is dynamic; stage 1 chat denies `playwright` entirely, so the MCP
-      // is registered but never dialled — the placeholder is resolved when the
-      // browser manager surfaces its endpoint (#16 follow-up).
-      cdpEndpoint: () => 'http://127.0.0.1:9222',
+      // The Playwright MCP attaches to the external session's loopback CDP
+      // endpoint. `cdpEndpoint()` is null in manual mode (no browser), which the
+      // plugin registers as a disabled MCP entry — playwright* is mode-denied
+      // to every agent in manual mode anyway.
+      cdpEndpoint: () => browserManager.cdpEndpoint(),
+      externalApplyMode,
     });
   } catch (err) {
     log.error({ err }, 'OpenCode host failed to boot; chat unavailable');
@@ -166,14 +189,7 @@ export async function bootServer(overrides: Partial<ServerConfig> = {}): Promise
 
   // Chat service drives the single `vina-chat` conversation over the host.
   // `null` when the host failed to boot — the route is then not registered.
-  const chat: ChatService | null = host
-    ? createChatService({ host, db, bus })
-    : null;
-
-  const browserManager = createBrowserManager({
-    dataDir: config.dataDir,
-    headless: !config.headfulBrowser,
-  });
+  const chat: ChatService | null = host ? createChatService({ host, db, bus }) : null;
 
   const linkedInConnectService = createLinkedInConnectService({
     db,
@@ -203,7 +219,10 @@ export async function bootServer(overrides: Partial<ServerConfig> = {}): Promise
   // handlers. The factory return types are widened via `adapt` because each
   // handler accepts its own narrow payload but `TaskHandler` accepts
   // `unknown` (function-parameter contravariance).
-  const adapt = <P>(h: (p: P) => Promise<void>): TaskHandler => (p) => h(p as P);
+  const adapt =
+    <P>(h: (p: P) => Promise<void>): TaskHandler =>
+    (p) =>
+      h(p as P);
   const handlers: TaskHandlers = {
     search: adapt(
       createSearchHandler({
@@ -237,6 +256,13 @@ export async function bootServer(overrides: Partial<ServerConfig> = {}): Promise
     ),
     review: adapt(
       createReviewHandler({
+        db,
+        bus,
+        sessionDriver,
+      }),
+    ),
+    external_form_fill: adapt(
+      createExternalFormFillHandler({
         db,
         bus,
         sessionDriver,
@@ -311,6 +337,22 @@ export async function bootServer(overrides: Partial<ServerConfig> = {}): Promise
           description: reason,
           application_id: payload.application_id ?? null,
           payload: { task_id: task.id, kind: 'review' },
+        });
+      } else if (task.kind === 'external_form_fill') {
+        const payload = (() => {
+          try {
+            return JSON.parse(task.payload) as { application_id?: string };
+          } catch {
+            return {};
+          }
+        })();
+        insertAlert(db, {
+          kind: 'apply_failed',
+          severity: 'error',
+          title: 'External form fill failed',
+          description: reason,
+          application_id: payload.application_id ?? null,
+          payload: { task_id: task.id, kind: 'external_form_fill' },
         });
       }
     },

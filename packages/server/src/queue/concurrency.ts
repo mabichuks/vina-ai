@@ -18,4 +18,5 @@ export const DEFAULT_CONCURRENCY: Record<TaskKind, number> = {
   prepare_manual_apply: 2,
   review: 2,
   resume: 1,
+  external_form_fill: 1,
 };

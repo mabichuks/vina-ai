@@ -10,6 +10,7 @@
     "job-inbox",
     "job-interview",
     "job-pipeline",
-    "job-setup"
+    "job-setup",
+    "job-manual"
   ]
 }

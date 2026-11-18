@@ -27,11 +27,23 @@ export interface SessionRunInput {
   prompt: string;
   /** Bound on tool rounds before the run is cut short. Default 8. */
   maxToolRounds?: number;
+  /** When true, record the tool calls (name + input) in `SessionRunResult.toolEvents`. */
+  collectToolEvents?: boolean;
+}
+
+/** One tool call observed during a run, for the external event bridge (#21). */
+export interface SessionToolEvent {
+  /** Effective tool name (e.g. `playwright_type`, `vina_external_submit`). */
+  tool: string;
+  /** Raw tool input, if the event carries it. */
+  input?: unknown;
 }
 
 export interface SessionRunResult {
   sessionId: string;
   outcome: SessionRunOutcome;
+  /** Tool calls observed during the run, in order. Empty unless the caller opts in. */
+  toolEvents?: SessionToolEvent[];
 }
 
 export interface SessionDriver {
@@ -49,30 +61,38 @@ async function collectOutcome(
   host: OpenCodeHost,
   sessionId: string,
   maxToolRounds: number,
-): Promise<SessionRunOutcome> {
+  collectToolEvents: boolean,
+): Promise<{ outcome: SessionRunOutcome; toolEvents: SessionToolEvent[] }> {
   let toolRounds = 0;
+  const toolEvents: SessionToolEvent[] = [];
   for await (const event of host.client.event.subscribe()) {
     const data = (event as { data?: { sessionID?: string } }).data;
     if (!data || data.sessionID !== sessionId) continue;
 
     switch (event.type) {
       case 'session.tool.success':
-      case 'session.tool.failed':
+      case 'session.tool.failed': {
         toolRounds += 1;
-        if (toolRounds >= maxToolRounds) return { reason: 'cap_exceeded', toolRounds };
+        if (collectToolEvents) {
+          const tool = (event as unknown as { data: { tool?: string; input?: unknown } }).data;
+          toolEvents.push({ tool: tool.tool ?? 'unknown', input: tool.input });
+        }
+        if (toolRounds >= maxToolRounds)
+          return { outcome: { reason: 'cap_exceeded', toolRounds }, toolEvents };
         break;
+      }
 
       case 'session.execution.failed': {
         const d = (event as unknown as { data: { error: { message: string } } }).data;
-        return { reason: 'failed', error: d.error.message };
+        return { outcome: { reason: 'failed', error: d.error.message }, toolEvents };
       }
 
       case 'session.idle':
-        return { reason: 'idle' };
+        return { outcome: { reason: 'idle' }, toolEvents };
     }
   }
 
-  return { reason: 'idle' };
+  return { outcome: { reason: 'idle' }, toolEvents };
 }
 
 export function createSessionDriver(host: OpenCodeHost): SessionDriver {
@@ -80,15 +100,20 @@ export function createSessionDriver(host: OpenCodeHost): SessionDriver {
     async run(input: SessionRunInput): Promise<SessionRunResult> {
       const session = await host.client.session.create({ agent: input.agent });
       const sessionId = session.id;
-      const done = collectOutcome(host, sessionId, input.maxToolRounds ?? DEFAULT_MAX_TOOL_ROUNDS);
+      const done = collectOutcome(
+        host,
+        sessionId,
+        input.maxToolRounds ?? DEFAULT_MAX_TOOL_ROUNDS,
+        input.collectToolEvents ?? false,
+      );
       await host.client.session.prompt({ sessionID: sessionId, text: input.prompt });
-      const outcome = await done;
+      const { outcome, toolEvents } = await done;
 
       if (outcome.reason === 'failed') {
         log.warn({ agent: input.agent, sessionId, error: outcome.error }, 'agent session failed');
       }
 
-      return { sessionId, outcome };
+      return { sessionId, outcome, ...(input.collectToolEvents ? { toolEvents } : {}) };
     },
   };
 }

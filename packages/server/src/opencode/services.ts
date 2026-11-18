@@ -36,6 +36,8 @@ import type {
   ApplicationStatusOutput,
   EasyApplyInput,
   EasyApplyOutput,
+  ExternalSubmitInput,
+  ExternalSubmitOutput,
   AskUserInput,
   AskUserOutput,
 } from '@vina/opencode-plugin';
@@ -78,6 +80,10 @@ import {
 } from '../services/materials-renderer.js';
 import { createManualApplyToolKit } from '../orchestrator/tools/index.js';
 import { runEasyApply, type EasyApplySeam } from '../services/easy-apply-runner.js';
+import { checkExternalSubmitGate } from '../services/external-submit-gate.js';
+import { dayBucketFromIso } from '../services/easy-apply-gate.js';
+import { recordAttempt, recordSuccess } from '../db/repositories/apply-rate-limit.js';
+import { getOrInitSettings } from '../db/repositories/settings.js';
 import type { EventBus } from '../events/bus.js';
 
 export interface VinaServicesDeps {
@@ -605,6 +611,66 @@ export function createVinaServices(deps: VinaServicesDeps): VinaServices {
     };
   }
 
+  async function externalSubmit(input: ExternalSubmitInput): Promise<ExternalSubmitOutput> {
+    const app = findApplicationById(db, input.applicationId);
+    if (!app) throw new NotFoundError(`Application ${input.applicationId} not found`);
+    const job = findJobById(db, app.job_id);
+    if (!job) throw new NotFoundError(`Job ${app.job_id} not found`);
+    if (job.apply_method !== 'manual') {
+      throw new ConflictError(`Job ${job.id} is apply_method=auto — cannot external submit`);
+    }
+
+    // Mode guard (defence in depth on top of the mode-aware trim): only
+    // autonomous may external-submit. manual/assisted refuse outright.
+    const settings = getOrInitSettings(db);
+    if (settings.external_apply_mode !== 'autonomous') {
+      throw new ConflictError(
+        `external_apply_mode=${settings.external_apply_mode} — external submit requires autonomous mode`,
+      );
+    }
+
+    const nowIso = new Date().toISOString();
+    const today = dayBucketFromIso(nowIso);
+    const gate = checkExternalSubmitGate(db, {
+      jobId: job.id,
+      nowIso,
+      today,
+      excludeApplicationId: app.id,
+    });
+
+    if (gate.decision === 'block') {
+      throw new ConflictError(`External submit blocked by gate: ${gate.reason}`);
+    }
+
+    // Record the attempt regardless of dry_run vs allow (consumes a velocity slot).
+    recordAttempt(db, nowIso, today);
+
+    if (gate.decision === 'dry_run') {
+      updateApplicationStatus(db, app.id, 'awaiting_user', { failure_reason: 'dry_run' });
+      deps.bus.emit('application:updated', { id: app.id, status: 'awaiting_user' });
+      deps.bus.emit('jobs:updated', { ids: [job.id] });
+      return { application_id: app.id, outcome: 'awaiting_user', reason: 'dry_run' };
+    }
+
+    // Submit: transition + per-field audit event in the same transaction.
+    const completedAt = new Date().toISOString();
+    db.transaction(() => {
+      updateApplicationStatus(db, app.id, 'submitted', { submitted_at: completedAt });
+      updateJobStatus(db, job.id, 'submitted');
+      appendEvent(db, {
+        application_id: app.id,
+        kind: 'external_submitted',
+        payload: { submitted_at: completedAt, job_id: job.id },
+      });
+    })();
+    recordSuccess(db, completedAt, dayBucketFromIso(completedAt));
+
+    deps.bus.emit('application:updated', { id: app.id, status: 'submitted' });
+    deps.bus.emit('jobs:updated', { ids: [job.id] });
+
+    return { application_id: app.id, outcome: 'submitted' };
+  }
+
   async function askUser(input: AskUserInput): Promise<AskUserOutput> {
     const questions = input.questions;
     if (questions.length === 0) {
@@ -632,6 +698,7 @@ export function createVinaServices(deps: VinaServicesDeps): VinaServices {
     reviewRecord,
     applicationStatus,
     easyApply,
+    externalSubmit,
     askUser,
   };
 }

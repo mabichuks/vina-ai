@@ -55,6 +55,7 @@ describe('workspace snapshot', () => {
       'skills/job-interview',
       'skills/job-pipeline',
       'skills/job-setup',
+      'skills/job-manual',
     ]);
   });
 
@@ -72,9 +73,9 @@ function read(file: string): string {
 /** A stable description of a tree: sorted relative paths + content hashes. */
 function snapshotTree(dir: string): Record<string, string> {
   const out: Record<string, string> = {};
-  const entries = fs.readdirSync(dir, { withFileTypes: true }).sort((a, b) =>
-    a.name.localeCompare(b.name),
-  );
+  const entries = fs
+    .readdirSync(dir, { withFileTypes: true })
+    .sort((a, b) => a.name.localeCompare(b.name));
   for (const entry of entries) {
     const rel = entry.name;
     const abs = path.join(dir, entry.name);

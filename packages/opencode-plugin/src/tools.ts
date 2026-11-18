@@ -7,6 +7,8 @@ import {
   AskUserOutputSchema,
   EasyApplyInputSchema,
   EasyApplyOutputSchema,
+  ExternalSubmitInputSchema,
+  ExternalSubmitOutputSchema,
   JobGetInputSchema,
   JobGetOutputSchema,
   JobsListInputSchema,
@@ -41,13 +43,13 @@ export interface EasyApplyPermission {
 }
 
 /**
- * Assembles the eleven `vina` tool descriptors. Each `execute` zod-validates its
+ * Assembles the twelve `vina` tool descriptors. Each `execute` zod-validates its
  * input (defence in depth — the SDK also decodes against `input`) and then
  * delegates to the injected `VinaServices`. Descriptors carry a short name;
  * the plugin's namespace transform flattens them to `vina_<name>`.
  *
- * `easy_apply` is the only tool that asserts permission before delegating; all
- * other tools ignore the SDK context.
+ * `easy_apply` and `external_submit` are the only tools that assert permission
+ * before delegating; all other tools ignore the SDK context.
  */
 interface ToolSpec<I extends z.ZodType, O extends z.ZodType> {
   name: string;
@@ -160,6 +162,21 @@ export function buildVinaTools(
         await permission.assert({
           sessionID: ctx.sessionID,
           action: 'vina.easy_apply',
+          resources: [input.applicationId],
+        });
+      },
+    }),
+    defineTool({
+      name: 'external_submit',
+      description:
+        'Submit an external-ATS application: the single external submit path, gated by mode + checkExternalSubmitGate.',
+      input: ExternalSubmitInputSchema,
+      output: ExternalSubmitOutputSchema,
+      run: async (input) => services.externalSubmit(input),
+      assert: async (input, ctx) => {
+        await permission.assert({
+          sessionID: ctx.sessionID,
+          action: 'vina.external_submit',
           resources: [input.applicationId],
         });
       },

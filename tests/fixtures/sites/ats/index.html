@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Acme Corp — Senior Software Engineer</title>
+  </head>
+  <body>
+    <!--
+      Fixture ATS form for issue #21 (external form fill).
+
+      The `vina-manual` agent fills this through the Playwright MCP snapshot/act
+      loop — accessibility snapshot + ref-based browser_type/click — never a CSS
+      selector. It is served by tests/fixtures/sites/ats/server.ts and referenced
+      by the recorded-replay test that asserts the fill uses refs, not selectors.
+    -->
+    <h1 data-vina-fixture="ats-title">Senior Software Engineer</h1>
+    <form data-vina-fixture="ats-form">
+      <label
+        >First name <input type="text" name="first_name" aria-label="First name" required
+      /></label>
+      <label
+        >Last name <input type="text" name="last_name" aria-label="Last name" required
+      /></label>
+      <label>Email <input type="email" name="email" aria-label="Email" required /></label>
+      <label>Phone <input type="tel" name="phone" aria-label="Phone" /></label>
+      <label
+        >Resume <input type="file" name="resume" aria-label="Resume" data-vina-field="cv"
+      /></label>
+      <label
+        >Visa required
+        <select name="visa" aria-label="Visa required">
+          <option value="">Select…</option>
+          <option value="no">No</option>
+          <option value="yes">Yes</option>
+        </select>
+      </label>
+      <button type="submit">Submit application</button>
+    </form>
+    <script>
+      document.querySelector('form').addEventListener('submit', (e) => {
+        e.preventDefault();
+        document.body.innerHTML = '<h2 data-vina-fixture="ats-success">Application submitted</h2>';
+      });
+    </script>
+  </body>
+</html>

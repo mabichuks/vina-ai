@@ -5,9 +5,10 @@ import { defaultSkillsSourceDir, VENDORED_SKILL_IDS } from '../src/index.js';
 
 /**
  * The vendored skills are a read-only in-repo snapshot of the odytrice/jobs
- * harness, pinned by `skills/harness-version.json`. This test guards the
- * vendoring contract: exactly the eight skill dirs, each with `SKILL.md` and
- * (where the harness has one) `references/`, and none of the harness's
+ * harness, pinned by `skills/harness-version.json`, plus one Vina-authored
+ * skill (`job-manual`, the external form-fill procedure). This test guards the
+ * vendoring contract: exactly the registered skill dirs, each with `SKILL.md`
+ * and (where the harness has one) `references/`, and none of the harness's
  * `scripts/` or `assets/` — Vina's tools, renderer, DB, and web UI replace
  * them, so only procedure prose ships.
  */
@@ -19,7 +20,7 @@ describe('vendored skills', () => {
     expect(fs.existsSync(path.join(skillsDir, 'harness-version.json'))).toBe(true);
   });
 
-  it('has exactly the eight skill directories', () => {
+  it('has exactly the registered skill directories', () => {
     const dirs = fs
       .readdirSync(skillsDir, { withFileTypes: true })
       .filter((e) => e.isDirectory())
@@ -47,7 +48,7 @@ describe('vendored skills', () => {
     }
   });
 
-  it('the manifest records commit 5fdb1d1, the date, and all eight skills', () => {
+  it('the manifest records commit 5fdb1d1, the date, and all registered skills', () => {
     const manifest = JSON.parse(
       fs.readFileSync(path.join(skillsDir, 'harness-version.json'), 'utf8'),
     ) as { source: string; commit: string; date: string; skills: string[] };

@@ -9,7 +9,7 @@ the vendored skill tree and the typed agent table in \`@vina/opencode-plugin\`.
 ## Workspace
 
 - \`opencode.jsonc\` — the host config (explicit \`skills[]\`, the Vina plugin,
-  and the Playwright MCP entry, present but disabled).
+  and the Playwright MCP entry).
 - \`agents/\` — the six agent definitions (allowlists from
   docs/opencode-orchestration.md §5).
 - \`skills/\` — the vendored harness skills (see \`skills/harness-version.json\`).
@@ -169,7 +169,8 @@ exports[`workspace snapshot > generates a stable workspace > opencode.jsonc 1`] 
     "skills/job-inbox",
     "skills/job-interview",
     "skills/job-pipeline",
-    "skills/job-setup"
+    "skills/job-setup",
+    "skills/job-manual"
   ],
   "plugins": [
     "@vina/opencode-plugin"
@@ -185,8 +186,7 @@ exports[`workspace snapshot > generates a stable workspace > opencode.jsonc 1`] 
           "--browser",
           "chrome",
           "--headless"
-        ],
-        "disabled": true
+        ]
       }
     }
   }
@@ -197,7 +197,7 @@ exports[`workspace snapshot > generates a stable workspace > opencode.jsonc 1`] 
 exports[`workspace snapshot > generates a stable workspace > skills 1`] = `
 {
   "README.md": "879a0a713993",
-  "harness-version.json": "ead1a5c6a45e",
+  "harness-version.json": "7e74ffb714aa",
   "job-apply/SKILL.md": "65b0bf01eca2",
   "job-apply/references/ats-form-traps.md": "b70357e5c706",
   "job-apply/references/batch-ledger.md": "694198803750",
@@ -208,6 +208,7 @@ exports[`workspace snapshot > generates a stable workspace > skills 1`] = `
   "job-interview/references/company-research.md": "5a9891c5bb37",
   "job-interview/references/prep-note.md": "2e0e523105e0",
   "job-interview/references/studio-data.md": "aa7117cdee93",
+  "job-manual/SKILL.md": "3cd2cee644f3",
   "job-materials/SKILL.md": "a28f6d564059",
   "job-materials/references/application-note.md": "4d378f535650",
   "job-materials/references/cover-letter-rules.md": "6f002402dec1",

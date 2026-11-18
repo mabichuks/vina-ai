@@ -78,10 +78,7 @@ describe('BrowserManager', () => {
 
   it('evicts a failed launch from the cache so the next call retries', async () => {
     // First call: force a launch failure via mock.
-    const launchMock = vi.spyOn(
-      await import('../../src/browser/cdp.js'),
-      'launchCdpSession',
-    );
+    const launchMock = vi.spyOn(await import('../../src/browser/cdp.js'), 'launchCdpSession');
     launchMock.mockRejectedValueOnce(new Error('chromium missing'));
 
     const mgr = createBrowserManager({ dataDir });
@@ -94,6 +91,39 @@ describe('BrowserManager', () => {
       const ctx = await mgr.getContext('site-a');
       expect(ctx).toBeDefined();
     } finally {
+      await mgr.closeAll();
+    }
+  }, 30_000);
+
+  it('ensureExternalSession launches a loopback endpoint and cdpEndpoint mirrors it', async () => {
+    const mgr = createBrowserManager({ dataDir });
+    try {
+      expect(mgr.cdpEndpoint()).toBeNull();
+      const endpoint = await mgr.ensureExternalSession();
+      expect(endpoint).toMatch(/^http:\/\/127\.0\.0\.1:\d+$/);
+      expect(mgr.cdpEndpoint()).toBe(endpoint);
+      // Idempotent: repeat returns the same cached endpoint.
+      expect(await mgr.ensureExternalSession()).toBe(endpoint);
+    } finally {
+      await mgr.closeAll();
+    }
+    // After closeAll the endpoint clears.
+    expect(mgr.cdpEndpoint()).toBeNull();
+  }, 30_000);
+
+  it('ensureExternalSession passes the headless override to the launch (assisted = headful)', async () => {
+    const launchMock = vi.spyOn(await import('../../src/browser/cdp.js'), 'launchCdpSession');
+    const mgr = createBrowserManager({ dataDir });
+    try {
+      await mgr.ensureExternalSession({ headless: false });
+      const call = launchMock.mock.calls.find((c) => c[0]?.siteId === 'external');
+      expect(call).toBeDefined();
+      expect(call![0]!.headless).toBe(false);
+      // Loopback-only binding is asserted in cdp.test.ts; the endpoint shape here
+      // confirms the manager resolves the real port (never a hard-coded port).
+      expect(mgr.cdpEndpoint()).toMatch(/^http:\/\/127\.0\.0\.1:\d+$/);
+    } finally {
+      launchMock.mockRestore();
       await mgr.closeAll();
     }
   }, 30_000);

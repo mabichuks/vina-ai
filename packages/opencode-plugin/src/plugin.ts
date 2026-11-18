@@ -1,4 +1,5 @@
 import { Plugin } from '@opencode/plugin';
+import type { ExternalApplyMode } from '@vina/shared';
 import { buildVinaTools } from './tools.js';
 import { VINA_NAMESPACE, type VinaServices } from './contract.js';
 import { trimToolsForAgent } from './agents.js';
@@ -34,7 +35,9 @@ export interface VinaPluginOptions {
   /** Server-injected service container. The plugin opens no database handle. */
   services: VinaServices;
   /** Resolves the loopback CDP endpoint the Playwright MCP attaches to (ADR-022). */
-  cdpEndpoint: () => string;
+  cdpEndpoint: () => string | null;
+  /** Resolves the current `external_apply_mode` (ADR-024 §7) for the mode-aware trim. */
+  externalApplyMode: () => ExternalApplyMode;
   /** Pinned `@playwright/mcp` version; defaults to the stage-0-probe pin. */
   playwrightMcpVersion?: string;
 }
@@ -59,28 +62,32 @@ export function vinaPlugin(options: VinaPluginOptions): Plugin.Plugin {
       });
 
       await ctx.mcp.transform((editor) => {
+        const endpoint = options.cdpEndpoint();
         editor.set('playwright', {
           type: 'local',
           command: [
             'npx',
             '-y',
             `@playwright/mcp@${mcpVersion}`,
-            '--cdp-endpoint',
-            options.cdpEndpoint(),
+            ...(endpoint ? ['--cdp-endpoint', endpoint] : []),
             '--browser',
             'chrome',
             '--headless',
           ],
           codemode: false,
+          // No endpoint (manual mode) — the browser MCP is registered but
+          // disabled; playwright* is mode-denied to every agent anyway.
+          ...(endpoint ? {} : { disabled: true }),
         });
       });
 
       await ctx.session.hook('context', (event) => {
         // The authoritative §5 allow/deny gate: trim the tool set per agent so
         // a mis-resolved agent or a prompt injection can never reach submit or
-        // the browser (see agents.ts `trimToolsForAgent`). Defence in depth on
-        // top of the token budget.
-        trimToolsForAgent(event.agent, event.tools);
+        // the browser (see agents.ts `trimToolsForAgent`). The mode-aware trim
+        // (external_apply_mode) adds the external-apply overlay on top of the
+        // static table. Defence in depth on top of the token budget.
+        trimToolsForAgent(event.agent, event.tools, options.externalApplyMode());
         event.options.maxTokens = budgetFor(event.agent);
       });
     },

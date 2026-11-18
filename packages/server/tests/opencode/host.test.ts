@@ -35,6 +35,7 @@ function stubServices(): VinaServices {
     reviewRecord: fail,
     applicationStatus: fail,
     easyApply: fail,
+    externalSubmit: fail,
     askUser: fail,
   } as VinaServices;
 }
@@ -116,7 +117,9 @@ describe('host driver', () => {
       }),
       services: stubServices(),
       cdpEndpoint: () => 'http://127.0.0.1:9333',
+      externalApplyMode: () => 'manual',
     });
+    // noop
     try {
       // The location's plugins/MCP activate asynchronously; under a loaded CI
       // the first query can race activation ("did not finish activating").
@@ -154,7 +157,9 @@ describe('host driver', () => {
     const plugin = vinaPlugin({
       services: stubServices(),
       cdpEndpoint: () => 'http://127.0.0.1:9333',
+      externalApplyMode: () => 'manual',
     });
+    // noop
     let registeredToolIds: string[] = [];
     const observed = {
       ...plugin,
@@ -211,7 +216,9 @@ describe('host driver', () => {
       }),
       services: stubServices(),
       cdpEndpoint: () => 'http://127.0.0.1:9333',
+      externalApplyMode: () => 'manual',
     });
+    // noop
     try {
       const waitReady = async <T>(fn: () => Promise<T>): Promise<T> => {
         for (let attempt = 0; ; attempt++) {

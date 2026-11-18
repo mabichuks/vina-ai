@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { EASY_APPLY_MODES } from '../enums.js';
+import { EASY_APPLY_MODES, EXTERNAL_APPLY_MODES } from '../enums.js';
 
 const isoDate = z.iso.datetime();
 
@@ -10,6 +10,7 @@ const isoDate = z.iso.datetime();
 export const SettingsSchema = z.object({
   id: z.literal('app'),
   easy_apply_mode: z.enum(EASY_APPLY_MODES),
+  external_apply_mode: z.enum(EXTERNAL_APPLY_MODES),
   autonomous_apply_dry_run: z.boolean(),
   apply_daily_cap: z.number().int().min(1).max(100),
   apply_min_interval_seconds: z.number().int().min(0).max(3600),
@@ -30,6 +31,7 @@ export type Settings = z.infer<typeof SettingsSchema>;
  */
 export const SettingsUpdateSchema = z.object({
   easy_apply_mode: z.enum(EASY_APPLY_MODES).optional(),
+  external_apply_mode: z.enum(EXTERNAL_APPLY_MODES).optional(),
   autonomous_apply_dry_run: z.boolean().optional(),
   apply_daily_cap: z.number().int().min(1).max(100).optional(),
   apply_min_interval_seconds: z.number().int().min(0).max(3600).optional(),

@@ -1,5 +1,5 @@
 import type { Database as DatabaseType } from 'better-sqlite3';
-import type { EasyApplyMode } from '@vina/shared';
+import type { EasyApplyMode, ExternalApplyMode } from '@vina/shared';
 
 /**
  * The DB-row shape for settings. The repo trades in *ciphertext* for the
@@ -9,6 +9,7 @@ import type { EasyApplyMode } from '@vina/shared';
 export interface SettingsRow {
   id: 'app';
   easy_apply_mode: EasyApplyMode;
+  external_apply_mode: ExternalApplyMode;
   autonomous_apply_dry_run: boolean;
   apply_daily_cap: number;
   apply_min_interval_seconds: number;
@@ -27,6 +28,7 @@ export interface SettingsRow {
 interface RawSettingsRow {
   id: 'app';
   easy_apply_mode: EasyApplyMode;
+  external_apply_mode: ExternalApplyMode;
   autonomous_apply_dry_run: number;
   apply_daily_cap: number;
   apply_min_interval_seconds: number;
@@ -45,6 +47,7 @@ function rowToSettings(row: RawSettingsRow): SettingsRow {
   return {
     id: 'app',
     easy_apply_mode: row.easy_apply_mode,
+    external_apply_mode: row.external_apply_mode,
     autonomous_apply_dry_run: row.autonomous_apply_dry_run === 1,
     apply_daily_cap: row.apply_daily_cap,
     apply_min_interval_seconds: row.apply_min_interval_seconds,
@@ -67,6 +70,7 @@ function rowToSettings(row: RawSettingsRow): SettingsRow {
 const DEFAULTS: Omit<SettingsRow, 'updated_at'> = {
   id: 'app',
   easy_apply_mode: 'manual',
+  external_apply_mode: 'manual',
   autonomous_apply_dry_run: false,
   apply_daily_cap: 10,
   apply_min_interval_seconds: 300,
@@ -90,18 +94,19 @@ export function getOrInitSettings(db: DatabaseType): SettingsRow {
   const now = new Date().toISOString();
   db.prepare(
     `INSERT INTO settings
-       (id, easy_apply_mode, autonomous_apply_dry_run, apply_daily_cap,
+       (id, easy_apply_mode, external_apply_mode, autonomous_apply_dry_run, apply_daily_cap,
         apply_min_interval_seconds, apply_listing_max_age_days,
         apply_consecutive_failure_limit,
         browser_headful, browser_stealth, paused,
         active_llm_provider_id, chat_session_id, encrypted_serpapi_key, updated_at)
-     VALUES ('app', @easy_apply_mode, @autonomous_apply_dry_run, @apply_daily_cap,
+     VALUES ('app', @easy_apply_mode, @external_apply_mode, @autonomous_apply_dry_run, @apply_daily_cap,
              @apply_min_interval_seconds, @apply_listing_max_age_days,
              @apply_consecutive_failure_limit,
              @browser_headful, @browser_stealth, @paused,
              @active_llm_provider_id, @chat_session_id, @encrypted_serpapi_key, @updated_at)`,
   ).run({
     easy_apply_mode: DEFAULTS.easy_apply_mode,
+    external_apply_mode: DEFAULTS.external_apply_mode,
     autonomous_apply_dry_run: DEFAULTS.autonomous_apply_dry_run ? 1 : 0,
     apply_daily_cap: DEFAULTS.apply_daily_cap,
     apply_min_interval_seconds: DEFAULTS.apply_min_interval_seconds,
@@ -126,6 +131,7 @@ export function getOrInitSettings(db: DatabaseType): SettingsRow {
  */
 export interface SettingsUpdatePatch {
   easy_apply_mode?: EasyApplyMode;
+  external_apply_mode?: ExternalApplyMode;
   autonomous_apply_dry_run?: boolean;
   apply_daily_cap?: number;
   apply_min_interval_seconds?: number;
@@ -145,6 +151,9 @@ export function updateSettings(db: DatabaseType, patch: SettingsUpdatePatch): Se
   const next: SettingsRow = {
     ...current,
     ...(patch.easy_apply_mode !== undefined && { easy_apply_mode: patch.easy_apply_mode }),
+    ...(patch.external_apply_mode !== undefined && {
+      external_apply_mode: patch.external_apply_mode,
+    }),
     ...(patch.autonomous_apply_dry_run !== undefined && {
       autonomous_apply_dry_run: patch.autonomous_apply_dry_run,
     }),
@@ -180,6 +189,7 @@ export function updateSettings(db: DatabaseType, patch: SettingsUpdatePatch): Se
   db.prepare(
     `UPDATE settings SET
        easy_apply_mode=@easy_apply_mode,
+       external_apply_mode=@external_apply_mode,
        autonomous_apply_dry_run=@autonomous_apply_dry_run,
        apply_daily_cap=@apply_daily_cap,
        apply_min_interval_seconds=@apply_min_interval_seconds,
@@ -194,6 +204,7 @@ export function updateSettings(db: DatabaseType, patch: SettingsUpdatePatch): Se
      WHERE id='app'`,
   ).run({
     easy_apply_mode: next.easy_apply_mode,
+    external_apply_mode: next.external_apply_mode,
     autonomous_apply_dry_run: next.autonomous_apply_dry_run ? 1 : 0,
     apply_daily_cap: next.apply_daily_cap,
     apply_min_interval_seconds: next.apply_min_interval_seconds,
