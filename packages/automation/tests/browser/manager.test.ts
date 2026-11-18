@@ -3,6 +3,7 @@ import path from 'node:path';
 import fs from 'node:fs/promises';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createBrowserManager } from '../../src/browser/manager.js';
+import type { CdpSessionHandle } from '../../src/browser/cdp.js';
 
 // Mock the cdp module so individual tests can override the function's
 // return value. By default we passthrough to the real implementation.
@@ -113,6 +114,17 @@ describe('BrowserManager', () => {
 
   it('ensureExternalSession passes the headless override to the launch (assisted = headful)', async () => {
     const launchMock = vi.spyOn(await import('../../src/browser/cdp.js'), 'launchCdpSession');
+    // Stub the launch so this test asserts the `headless: false` argument is
+    // forwarded without spawning a real Chromium (headful launch cannot run on
+    // the headless CI runner and would deterministically fail build-test-lint).
+    const sessionStub: CdpSessionHandle = {
+      port: 9333,
+      context: {} as CdpSessionHandle['context'],
+      browser: {} as CdpSessionHandle['browser'],
+      pid: undefined,
+      close: async () => {},
+    };
+    launchMock.mockResolvedValue(sessionStub);
     const mgr = createBrowserManager({ dataDir });
     try {
       await mgr.ensureExternalSession({ headless: false });
