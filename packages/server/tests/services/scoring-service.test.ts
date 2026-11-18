@@ -1,11 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { ProviderError } from '@vina/shared';
-import {
-  runScoreJob,
-  type ScoreMessages,
-  type StructuredScorer,
-} from '../../src/graphs/score-job.js';
-import type { ScoreInput } from '../../src/prompts/score.js';
+import type { ScoreMessages, StructuredScorer } from '@vina/orchestrator';
+import { runScoreJob, type ScoreInput } from '../../src/services/scoring-service.js';
 
 const FIXTURE: ScoreInput = {
   job: {
@@ -50,7 +46,7 @@ function fakeScorer(
   };
 }
 
-describe('runScoreJob', () => {
+describe('runScoreJob (scoring service)', () => {
   it('returns a high-match score on the first try', async () => {
     const model = fakeScorer([{ score: 92, justification: 'Strong title + skills.' }]);
     const out = await runScoreJob(FIXTURE, model);
@@ -91,5 +87,14 @@ describe('runScoreJob', () => {
 
     const fractional = fakeScorer([{ score: 73.6, justification: 'Fractional.' }]);
     expect((await runScoreJob(FIXTURE, fractional)).score).toBe(74);
+  });
+
+  it('sends the rubric system prompt and the user prompt', async () => {
+    const model = fakeScorer([{ score: 80, justification: 'ok' }]);
+    await runScoreJob(FIXTURE, model);
+    const [system, user] = model.calls[0]!;
+    expect(system.content).toMatch(/calibrated job-fit scorer/);
+    expect(user.content).toContain('## Job listing');
+    expect(user.content).toContain('Senior Backend Engineer');
   });
 });

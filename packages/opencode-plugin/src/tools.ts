@@ -13,6 +13,8 @@ import {
   JobsListOutputSchema,
   MaterialsSaveInputSchema,
   MaterialsSaveOutputSchema,
+  MaterialsReadInputSchema,
+  MaterialsReadOutputSchema,
   ProfileReadInputSchema,
   ProfileReadOutputSchema,
   ReviewRecordInputSchema,
@@ -25,7 +27,7 @@ import {
 } from './contract.js';
 
 /**
- * Assembles the ten `vina` tool descriptors. Each `execute` zod-validates its
+ * Assembles the eleven `vina` tool descriptors. Each `execute` zod-validates its
  * input (defence in depth — the SDK also decodes against `input`) and then
  * delegates to the injected `VinaServices`. Descriptors carry a short name;
  * the plugin's namespace transform flattens them to `vina_<name>`.
@@ -100,6 +102,14 @@ export function buildVinaTools(services: VinaServices): Tool.Info[] {
       input: MaterialsSaveInputSchema,
       output: MaterialsSaveOutputSchema,
       run: async (input) => services.materialsSave(input),
+    }),
+    defineTool({
+      name: 'materials_read',
+      description:
+        'Read the tailored CV/cover-letter markdown, rendered file paths, and saved form answers for an application.',
+      input: MaterialsReadInputSchema,
+      output: MaterialsReadOutputSchema,
+      run: async (input) => services.materialsRead(input),
     }),
     defineTool({
       name: 'review_record',

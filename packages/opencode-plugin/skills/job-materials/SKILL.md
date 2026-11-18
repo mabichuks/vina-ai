@@ -15,10 +15,12 @@ nearest ancestor; else `AGENTS.md` § Job Search): **§ Harness Conventions**,
 **§ Candidate**, **§ Search Criteria**, **§ Workspace**, **§ Master Record**,
 **§ Standing Answers**. Missing or placeholder section: name it and stop.
 
-Read before editing: the tailoring rules file, the checks file, the master
-resume HTML, `references/resume-html.md` (the structure every variant
-keeps), and `references/tech-release-dates.md`. Asked for a resume or cover
-letter alone, run § Tailor and § Render And Verify only.
+Read before editing: `references/tailoring-rules.md` (the CV hard rules,
+verbatim from the retired tailoring prompt) and `references/cover-letter-rules.md`
+(the cover-letter hard rules), the checks file, the master resume HTML,
+`references/resume-html.md` (the structure every variant keeps), and
+`references/tech-release-dates.md`. Asked for a resume or cover letter alone,
+run § Tailor and § Render And Verify only.
 
 ## Package
 

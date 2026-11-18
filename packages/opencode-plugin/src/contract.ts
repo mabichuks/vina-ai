@@ -56,6 +56,11 @@ export const MaterialsSaveInputSchema = z.object({
 });
 export type MaterialsSaveInput = z.infer<typeof MaterialsSaveInputSchema>;
 
+export const MaterialsReadInputSchema = z.object({
+  applicationId: z.string().min(1),
+});
+export type MaterialsReadInput = z.infer<typeof MaterialsReadInputSchema>;
+
 export const ReviewRecordInputSchema = z.object({
   applicationId: z.string().min(1),
   round: z.number().int().min(1),
@@ -183,6 +188,16 @@ export const MaterialsSaveOutputSchema = z.object({
 });
 export type MaterialsSaveOutput = z.infer<typeof MaterialsSaveOutputSchema>;
 
+export const MaterialsReadOutputSchema = z.object({
+  application_id: z.string(),
+  cvMarkdown: z.string().nullable(),
+  coverLetterMarkdown: z.string().nullable(),
+  tailored_cv_path: z.string().nullable(),
+  tailored_cover_letter_path: z.string().nullable(),
+  formAnswers: z.record(z.string(), z.string()).nullable(),
+});
+export type MaterialsReadOutput = z.infer<typeof MaterialsReadOutputSchema>;
+
 export const ReviewRecordOutputSchema = z.object({
   application_id: z.string(),
   event_id: z.string(),
@@ -227,13 +242,14 @@ export interface VinaServices {
   jobGet(input: JobGetInput): Promise<JobGetOutput>;
   scoreJob(input: ScoreJobInput): Promise<ScoreJobOutput>;
   materialsSave(input: MaterialsSaveInput): Promise<MaterialsSaveOutput>;
+  materialsRead(input: MaterialsReadInput): Promise<MaterialsReadOutput>;
   reviewRecord(input: ReviewRecordInput): Promise<ReviewRecordOutput>;
   applicationStatus(input: ApplicationStatusInput): Promise<ApplicationStatusOutput>;
   easyApply(input: EasyApplyInput): Promise<EasyApplyOutput>;
   askUser(input: AskUserInput): Promise<AskUserOutput>;
 }
 
-/** The namespace the ten tools register under (flattened to `vina_<name>`). */
+/** The namespace the eleven tools register under (flattened to `vina_<name>`). */
 export const VINA_NAMESPACE = 'vina' as const;
 
 /** Short tool names, in registration order. The UI lists them as `vina_<name>`. */
@@ -244,6 +260,7 @@ export const VINA_TOOL_NAMES = [
   'job_get',
   'score_job',
   'materials_save',
+  'materials_read',
   'review_record',
   'application_status',
   'easy_apply',

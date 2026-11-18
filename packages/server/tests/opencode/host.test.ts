@@ -31,6 +31,7 @@ function stubServices(): VinaServices {
     jobGet: fail,
     scoreJob: fail,
     materialsSave: fail,
+    materialsRead: fail,
     reviewRecord: fail,
     applicationStatus: fail,
     easyApply: fail,

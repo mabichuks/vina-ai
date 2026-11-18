@@ -1,5 +1,11 @@
 # Skill System
 
+> **Note (2026-11-18, #19).** The LangGraph-era score/tailor/prepare graphs and
+> the prompt registry are retired; the capability allowlist entries
+> (`tailorCv`, `tailorCoverLetter`, `scoreJob`) no longer map to graphs — those
+> behaviours moved into the server services and the vendored harness skills. The
+> skill registry itself is retained (Easy Apply moves in #20).
+
 A loadable, on-demand skill system (modelled on OpenClaw's capability-vs-procedure
 split). Behavioural procedures live in editable markdown skills rather than in
 code; the relevant skill is injected only when needed (to respect token budgets);

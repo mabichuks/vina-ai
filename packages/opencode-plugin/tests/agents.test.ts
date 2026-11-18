@@ -46,7 +46,12 @@ describe('VINA_AGENTS allowlists match opencode-orchestration.md §5', () => {
 
   it('vina-review: job_get, materials read, review_record; denies every write outside review_record', () => {
     const agent = byId('vina-review');
-    expect(agent.allowed).toEqual(['vina_job_get', 'vina_profile_read', 'vina_review_record']);
+    expect(agent.allowed).toEqual([
+      'vina_job_get',
+      'vina_profile_read',
+      'vina_materials_read',
+      'vina_review_record',
+    ]);
     // Every mutating tool except review_record must be denied.
     expect(agent.denied).toEqual(
       expect.arrayContaining([
@@ -138,6 +143,7 @@ describe('isToolDenied / trimToolsForAgent (hard boundary)', () => {
     const tools: Record<string, unknown> = {
       vina_job_get: {},
       vina_profile_read: {},
+      vina_materials_read: {},
       vina_review_record: {},
       vina_materials_save: {},
       vina_application_status: {},
@@ -148,6 +154,7 @@ describe('isToolDenied / trimToolsForAgent (hard boundary)', () => {
     };
     trimToolsForAgent('vina-review', tools);
     expect(tools).toHaveProperty('vina_review_record');
+    expect(tools).toHaveProperty('vina_materials_read');
     expect(tools).not.toHaveProperty('vina_materials_save');
     expect(tools).not.toHaveProperty('vina_application_status');
     expect(tools).not.toHaveProperty('vina_score_job');

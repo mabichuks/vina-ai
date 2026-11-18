@@ -20,6 +20,7 @@ export const VINA_ALL_TOOL_IDS = [
   'vina_job_get',
   'vina_score_job',
   'vina_materials_save',
+  'vina_materials_read',
   'vina_review_record',
   'vina_application_status',
   'vina_easy_apply',
@@ -101,7 +102,7 @@ export const VINA_AGENTS: readonly VinaAgent[] = [
     title: 'Review',
     model: 'strong',
     description: 'Independently audit tailored materials; records findings only.',
-    allowed: ['vina_job_get', 'vina_profile_read', 'vina_review_record'],
+    allowed: ['vina_job_get', 'vina_profile_read', 'vina_materials_read', 'vina_review_record'],
     denied: [
       'vina_materials_save',
       'vina_easy_apply',

@@ -125,6 +125,7 @@ Plugin.define({
 | `vina_job_get`            | `jobId`                                                         | none                           | Description, score, eligibility, application state                    |
 | `vina_score_job`          | `jobId`                                                         | writes `applications.score`    | Runs the existing scoring prompt; keeps scores comparable across runs |
 | `vina_materials_save`     | `applicationId, cvMarkdown, coverLetterMarkdown?, formAnswers?` | renders PDF/DOCX, sets `ready` | Rendering stays deterministic; the agent writes prose only            |
+| `vina_materials_read`     | `applicationId`                                                 | none                           | Returns the tailored CV/cover-letter markdown, paths, and form answers |
 | `vina_review_record`      | `applicationId, round, verdict, findings[]`                     | writes event + review row      | Review agent's only write                                             |
 | `vina_application_status` | `applicationId, status, reason?`                                | validated transition           | Rejects illegal transitions; the agent cannot invent states           |
 | `vina_easy_apply`         | `applicationId`                                                 | submits                        | Runs `runApply` + `checkEasyApplyGate`; the only Easy Apply submit path |
@@ -288,12 +289,23 @@ called, with which arguments, and what state the DB reached.
 | ------------ | -------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------- |
 | 0. Spike     | Host on Node 24; one session; one custom tool; Playwright MCP over `--cdp-endpoint` against a fixture site; measure install size | All four work, or the service+binary fallback is proven    |
 | 1. Skeleton  | Plugin, tool contract, generated workspace, agents, skills vendored; chat moves to sessions                                      | Chat parity; `chat-service` and `chat.ts` deleted          |
-| 2. Reasoning | Sweep, score, materials, review move to sessions                                                                                 | Tailor + score + prepare graphs and prompt modules deleted |
+| 2. Reasoning | Sweep, score, materials, review move to sessions                                                                                 | Tailor + score + prepare graphs and prompt modules deleted          |
 | 3. Hands     | `vina_easy_apply` wraps `runApply`; manual-apply uses Playwright MCP                                                             | LangGraph dependency removed; apply suite green            |
 | 4. Ship      | Installer, doctor, size budget, docs, onboarding copy                                                                            | Fresh install on a clean machine completes one application |
 
 LangGraph is frozen from now until stage 3: no new graph, no new node. Work that
 would have added one arrives as a tool plus a skill.
+
+### Stage 2 complete — 2026-11-18 (#19)
+
+Scoring stays deterministic in the server (`services/scoring-service.ts`), and
+tailoring + review move onto sessions: `prepare_manual_apply` spawns a
+`vina-materials` session and a new `review` task kind spawns a **fresh**
+`vina-review` session. The score/tailor/prepare graphs and the prompt registry
+are deleted; the orchestrator no longer exports them (Easy Apply's
+`runTailorCv`/renderers relocate to `services/tailor-service.ts` until #20).
+`vina_materials_save` renders agent markdown deterministically, and the new
+`vina_materials_read` tool hands the reviewer the tailored prose.
 
 ### Stage 0 probe — 2026-11-18
 

@@ -1,5 +1,4 @@
 import { createLogger } from '@vina/shared';
-import type { PromptLoader } from '../prompts/loader.js';
 import type { SkillRegistry } from '../skills/registry.js';
 import {
   decideUnresolvedField,
@@ -54,7 +53,6 @@ export interface ApplyResult {
 }
 
 export interface RunApplyOptions {
-  promptLoader?: PromptLoader;
   skillRegistry?: SkillRegistry;
   /** Step cap from the browser-apply skill. Default 5. */
   maxSteps?: number;

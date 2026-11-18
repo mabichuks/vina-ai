@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { ProviderError } from '@vina/shared';
-import type { StructuredScorer, ScoreMessages } from './score-job.js';
+import type { StructuredScorer, ScoreMessages } from '../structured-output.js';
 
 /**
  * LLM-driven CSS selector resolver. Used as a *fallback* by site adapters

@@ -83,6 +83,7 @@ function stubServices(): VinaServices {
     jobGet: fail,
     scoreJob: fail,
     materialsSave: fail,
+    materialsRead: fail,
     reviewRecord: fail,
     applicationStatus: fail,
     easyApply: fail,
@@ -100,7 +101,7 @@ describe('vinaPlugin boot-and-registers', () => {
     expect(typeof plugin.setup).toBe('function');
   });
 
-  it('registers the vina namespace with all ten tools (flattened vina_<name>)', async () => {
+  it('registers the vina namespace with all eleven tools (flattened vina_<name>)', async () => {
     const { ctx, captured } = makeContext();
     const plugin = vinaPlugin({
       services: stubServices(),
@@ -198,7 +199,7 @@ describe('vinaPlugin boot-and-registers', () => {
 });
 
 describe('buildVinaTools', () => {
-  it('returns exactly the ten fixed tools in order', () => {
+  it('returns exactly the eleven fixed tools in order', () => {
     const tools = buildVinaTools(stubServices());
     expect(tools.map((t) => t.name)).toEqual(VINA_TOOL_NAMES);
   });

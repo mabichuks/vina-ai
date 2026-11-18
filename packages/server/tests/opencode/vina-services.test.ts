@@ -305,6 +305,51 @@ describe('vina_materials_save', () => {
 });
 
 // ---------------------------------------------------------------------------
+// materials_read
+// ---------------------------------------------------------------------------
+describe('vina_materials_read', () => {
+  function seedManualApp() {
+    seedProfile();
+    const cv = seedCv('main', 'Original CV text');
+    const job = seedJob('j1', 'manual');
+    const app = seedApp(job.id, cv.id, 'manual');
+    return { appId: app.id };
+  }
+
+  it('returns the markdown, paths, and form answers after a save', async () => {
+    const { appId } = seedManualApp();
+    const services = makeServices();
+    await services.materialsSave({
+      applicationId: appId,
+      cvMarkdown: '## Summary\nTailored summary\n\n## Experience\n### Acme\n- Built APIs.\n\n## Skills\n- TypeScript',
+      coverLetterMarkdown: 'Dear team,\n\nI am a fit.\n\nSincerely, Ada',
+      formAnswers: { years: '7' },
+    });
+
+    const out = await services.materialsRead({ applicationId: appId });
+    expect(out.cvMarkdown).toContain('Tailored summary');
+    expect(out.coverLetterMarkdown).toContain('Dear team,');
+    expect(out.tailored_cv_path).toMatch(/\.docx$/);
+    expect(out.tailored_cover_letter_path).toMatch(/\.docx$/);
+    expect(out.formAnswers).toEqual({ years: '7' });
+  });
+
+  it('returns null markdown for an application that was never tailored', async () => {
+    const { appId } = seedManualApp();
+    const out = await makeServices().materialsRead({ applicationId: appId });
+    expect(out.cvMarkdown).toBeNull();
+    expect(out.coverLetterMarkdown).toBeNull();
+    expect(out.formAnswers).toBeNull();
+  });
+
+  it('rejects an unknown application with NotFoundError', async () => {
+    await expect(makeServices().materialsRead({ applicationId: 'missing' })).rejects.toThrow(
+      NotFoundError,
+    );
+  });
+});
+
+// ---------------------------------------------------------------------------
 // review_record
 // ---------------------------------------------------------------------------
 describe('vina_review_record', () => {

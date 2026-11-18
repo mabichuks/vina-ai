@@ -12,7 +12,8 @@ import {
 import { findApplicationById } from '../../src/db/repositories/applications.js';
 import { listAlerts } from '../../src/db/repositories/alerts.js';
 import { createPrepareManualApplyHandler } from '../../src/queue/handlers/prepare-manual-apply.js';
-import { createManualApplyToolKit } from '../../src/orchestrator/tools/index.js';
+import { createVinaServices } from '../../src/opencode/services.js';
+import type { SessionDriver } from '../../src/opencode/session-driver.js';
 import { buildTestApp, type TestAppHandle } from '../http/helpers.js';
 
 let h: TestAppHandle;
@@ -71,13 +72,25 @@ describe('manual-apply pipeline (end-to-end)', () => {
 
     // Drive the queue handler directly (the worker would do this in prod).
     // Use the same dataDir as the buildTestApp's config so the routes serving
-    // the DOCX can find the file later.
-    const handler = createPrepareManualApplyHandler({
-      db: h.db,
-      bus: createEventBus(),
-      buildModel: async () => deterministicModel(),
-      toolKit: createManualApplyToolKit({ dataDir: h.config.dataDir }),
-    });
+    // the DOCX can find the file later. The session driver simulates the
+    // vina-materials agent by rendering the markdown via vina_materials_save.
+    const bus = createEventBus();
+    const driver: SessionDriver = {
+      async run(_input) {
+        const services = createVinaServices({
+          db: h.db,
+          bus,
+          buildModel: async () => deterministicModel(),
+          dataDir: h.config.dataDir,
+        });
+        await services.materialsSave({
+          applicationId: application_id,
+          cvMarkdown: '## Summary\nTailored summary\n\n## Experience\n### FooCo\n- b1\n\n## Skills\n- ts',
+        });
+        return { sessionId: 'sess-e2e', outcome: { reason: 'idle' } };
+      },
+    };
+    const handler = createPrepareManualApplyHandler({ db: h.db, bus, sessionDriver: driver });
     await handler({ application_id });
 
     const app = findApplicationById(h.db, application_id)!;

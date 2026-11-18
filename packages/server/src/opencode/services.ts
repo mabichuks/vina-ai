@@ -10,8 +10,6 @@ import {
 } from '@vina/shared';
 import {
   runApply,
-  runPrepareManualApply,
-  runScoreJob,
   type StructuredScorer,
   type StructuredApplyDecider,
   type RunApplyOptions,
@@ -19,7 +17,6 @@ import {
   type ApplyEvent,
   type ManualApplyToolKit,
   type SkillRegistry,
-  type PromptLoader,
 } from '@vina/orchestrator';
 import type { BrowserManagerHandle, SiteAdapter } from '@vina/automation';
 import type {
@@ -36,6 +33,8 @@ import type {
   ScoreJobOutput,
   MaterialsSaveInput,
   MaterialsSaveOutput,
+  MaterialsReadInput,
+  MaterialsReadOutput,
   ReviewRecordInput,
   ReviewRecordOutput,
   ApplicationStatusInput,
@@ -81,6 +80,13 @@ import {
   type GoogleJobsSearchInput,
 } from '../services/serpapi-service.js';
 import { getDecryptedSerpApiKey } from '../services/settings-service.js';
+import { runScoreJob } from '../services/scoring-service.js';
+import {
+  renderCoverLetterMarkdownDocx,
+  renderCoverLetterMarkdownPdf,
+  renderCvMarkdownDocx,
+  renderCvMarkdownPdf,
+} from '../services/materials-renderer.js';
 import { createManualApplyToolKit } from '../orchestrator/tools/index.js';
 import type { EventBus } from '../events/bus.js';
 
@@ -115,7 +121,6 @@ export interface VinaServicesDeps {
   browserManager?: BrowserManagerHandle;
   adapters?: Record<string, SiteAdapter>;
   manualApplyToolKit?: ManualApplyToolKit;
-  promptLoader?: PromptLoader;
   skillRegistry?: SkillRegistry;
 }
 
@@ -147,7 +152,6 @@ function defaultRunApplySeam(deps: VinaServicesDeps): RunApplySeam {
       model as unknown as StructuredApplyDecider,
       toolKit,
       {
-        ...(deps.promptLoader ? { promptLoader: deps.promptLoader } : {}),
         ...(deps.skillRegistry ? { skillRegistry: deps.skillRegistry } : {}),
       } satisfies RunApplyOptions,
     );
@@ -431,43 +435,69 @@ export function createVinaServices(deps: VinaServicesDeps): VinaServices {
       };
     }
 
-    const model = await deps.buildModel();
-    const toolKit = createManualApplyToolKit({ dataDir: deps.dataDir });
-    const result = await runPrepareManualApply(
-      {
-        application_id: app.id,
-        job: { title: job.title, company: job.company, description: job.description },
-        cv: { text: input.cvMarkdown },
-        cover_letter_template: input.coverLetterMarkdown
-          ? { text: input.coverLetterMarkdown }
-          : null,
-        user_profile: {
-          full_name: profile.full_name,
-          email: profile.email,
-          bio: profile.bio,
-        },
-      },
-      model as unknown as StructuredScorer,
-      toolKit,
-      deps.promptLoader ? { promptLoader: deps.promptLoader } : {},
-    );
+    // Deterministic render: the agent's markdown prose maps onto the existing
+    // DOCX/PDF layout. No re-tailoring LLM call (ADR-024 §1: rendering is a
+    // Vina fact, not a judgment).
+    const toolKit = deps.manualApplyToolKit ?? createManualApplyToolKit({ dataDir: deps.dataDir });
+    const header = { full_name: profile.full_name, email: profile.email };
+
+    const [cvDocx, cvPdf] = await Promise.all([
+      renderCvMarkdownDocx(input.cvMarkdown, header),
+      renderCvMarkdownPdf(input.cvMarkdown, header),
+    ]);
+
+    let clDocx: Buffer | null = null;
+    let clPdf: Buffer | null = null;
+    if (input.coverLetterMarkdown && input.coverLetterMarkdown.trim().length > 0) {
+      [clDocx, clPdf] = await Promise.all([
+        renderCoverLetterMarkdownDocx(input.coverLetterMarkdown, header),
+        renderCoverLetterMarkdownPdf(input.coverLetterMarkdown, header),
+      ]);
+    }
+
+    const [cvDocxResult, cvPdfResult] = await Promise.all([
+      toolKit.saveTailoredCv({ application_id: app.id, docx: cvDocx }),
+      toolKit.saveTailoredCvPdf({ application_id: app.id, docx: cvPdf }),
+    ]);
+
+    let clDocxResult: { path: string } | null = null;
+    let clPdfResult: { path: string } | null = null;
+    if (clDocx && clPdf) {
+      [clDocxResult, clPdfResult] = await Promise.all([
+        toolKit.saveTailoredCoverLetter({ application_id: app.id, docx: clDocx }),
+        toolKit.saveTailoredCoverLetterPdf({ application_id: app.id, docx: clPdf }),
+      ]);
+    }
+
+    const tailored_cv_path = cvDocxResult.path;
+    const tailored_cv_pdf_path = cvPdfResult.path;
+    const tailored_cover_letter_path = clDocxResult?.path ?? null;
+    const tailored_cover_letter_pdf_path = clPdfResult?.path ?? null;
 
     db.transaction(() => {
       setApplicationTailored(db, app.id, {
-        tailored_cv_path: result.tailored_cv_path,
-        tailored_cover_letter_path: result.tailored_cover_letter_path,
-        tailored_cv_pdf_path: result.tailored_cv_pdf_path,
-        tailored_cover_letter_pdf_path: result.tailored_cover_letter_pdf_path,
+        tailored_cv_path,
+        tailored_cover_letter_path,
+        tailored_cv_pdf_path,
+        tailored_cover_letter_pdf_path,
         tailored_at: new Date().toISOString(),
         new_status: 'ready_for_manual_apply',
       });
       if (input.formAnswers) {
         updateApplicationFormState(db, app.id, JSON.stringify(input.formAnswers));
       }
+      // The markdown prose is stored on the event so `vina_materials_read` can
+      // hand it back to the reviewer; the DB stays the audit record.
       appendEvent(db, {
         application_id: app.id,
         kind: 'cv_tailored',
-        payload: { contentHash, source: 'agent', job_id: job.id },
+        payload: {
+          contentHash,
+          source: 'agent',
+          job_id: job.id,
+          cvMarkdown: input.cvMarkdown,
+          coverLetterMarkdown: input.coverLetterMarkdown ?? null,
+        },
       });
     })();
 
@@ -475,16 +505,65 @@ export function createVinaServices(deps: VinaServicesDeps): VinaServices {
       application_id: app.id,
       job_id: job.id,
       external_apply_url: job.external_apply_url ?? job.url,
-      tailored_cv_path: result.tailored_cv_path,
-      tailored_cover_letter_path: result.tailored_cover_letter_path,
+      tailored_cv_path,
+      tailored_cover_letter_path,
     });
     deps.bus.emit('jobs:updated', { ids: [job.id] });
 
     return {
       application_id: app.id,
       status: 'ready_for_manual_apply',
-      tailored_cv_path: result.tailored_cv_path,
-      tailored_cover_letter_path: result.tailored_cover_letter_path,
+      tailored_cv_path,
+      tailored_cover_letter_path,
+    };
+  }
+
+  async function materialsRead(input: MaterialsReadInput): Promise<MaterialsReadOutput> {
+    const app = findApplicationById(db, input.applicationId);
+    if (!app) throw new NotFoundError(`Application ${input.applicationId} not found`);
+
+    // The most recent `cv_tailored` event carries the agent's markdown prose.
+    const tailoredEvent = listEvents(db, app.id)
+      .filter((e) => e.kind === 'cv_tailored' && e.payload)
+      .at(-1);
+
+    let cvMarkdown: string | null = null;
+    let coverLetterMarkdown: string | null = null;
+    if (tailoredEvent?.payload) {
+      try {
+        const parsed = JSON.parse(tailoredEvent.payload) as {
+          cvMarkdown?: unknown;
+          coverLetterMarkdown?: unknown;
+        };
+        cvMarkdown = typeof parsed.cvMarkdown === 'string' ? parsed.cvMarkdown : null;
+        coverLetterMarkdown =
+          typeof parsed.coverLetterMarkdown === 'string' ? parsed.coverLetterMarkdown : null;
+      } catch {
+        // Payload is a contentHash-only string (pre-#19 event) — no markdown to return.
+      }
+    }
+
+    let formAnswers: Record<string, string> | null = null;
+    if (app.form_state) {
+      try {
+        const parsed = JSON.parse(app.form_state) as Record<string, unknown>;
+        if (parsed && typeof parsed === 'object') {
+          formAnswers = Object.fromEntries(
+            Object.entries(parsed).filter(([, v]) => typeof v === 'string'),
+          ) as Record<string, string>;
+        }
+      } catch {
+        formAnswers = null;
+      }
+    }
+
+    return {
+      application_id: app.id,
+      cvMarkdown,
+      coverLetterMarkdown,
+      tailored_cv_path: app.tailored_cv_path,
+      tailored_cover_letter_path: app.tailored_cover_letter_path,
+      formAnswers,
     };
   }
 
@@ -694,6 +773,7 @@ export function createVinaServices(deps: VinaServicesDeps): VinaServices {
     jobGet,
     scoreJob,
     materialsSave,
+    materialsRead,
     reviewRecord,
     applicationStatus,
     easyApply,
