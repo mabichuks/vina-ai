@@ -5,8 +5,17 @@
 --
 -- SQLite cannot alter a CHECK constraint, so llm_providers is rebuilt with the
 -- new kind added to the allowlist (same copy-forward pattern as 002/003/010).
--- No new column and no data backfill: existing rows are copied as-is, and
--- `settings.active_llm_provider_id`'s FK follows the table rename unchanged.
+-- No new column and no data backfill: existing rows are copied as-is.
+--
+-- `llm_providers` is the parent of `settings.active_llm_provider_id`'s FK
+-- (`ON DELETE RESTRICT`), so the DROP would raise `FOREIGN KEY constraint
+-- failed` for any install that has a selected provider. We follow the SQLite
+-- table-rebuild procedure: disable FK enforcement for the rebuild, then
+-- re-enable it and run `foreign_key_check`. The FK reference survives the
+-- rename (the child table's `REFERENCES llm_providers(id)` still resolves to
+-- the renamed table), so the referenced provider row is preserved.
+
+PRAGMA foreign_keys = OFF;
 
 CREATE TABLE llm_providers_new (
   id                TEXT PRIMARY KEY,
@@ -25,3 +34,7 @@ FROM llm_providers;
 
 DROP TABLE llm_providers;
 ALTER TABLE llm_providers_new RENAME TO llm_providers;
+
+PRAGMA foreign_keys = ON;
+
+PRAGMA foreign_key_check;

@@ -64,18 +64,32 @@ export function migrate(db: DatabaseType, options: MigrateOptions = {}): Migrati
     `INSERT INTO ${MIGRATIONS_TABLE} (id, applied_at) VALUES (?, ?)`,
   );
 
-  for (const file of files) {
-    if (alreadyApplied.has(file)) {
-      skipped.push(file);
-      continue;
+  // Disable FK enforcement while migrations run. Table-rebuild migrations
+  // (e.g. 011) DROP and RENAME a parent table, which raises `FOREIGN KEY
+  // constraint failed` under `ON DELETE RESTRICT` when a child row (e.g.
+  // settings.active_llm_provider_id) references it. `PRAGMA foreign_keys` is a
+  // no-op inside a transaction, so it must be toggled here, outside the
+  // per-migration transaction, for the migrations' own `PRAGMA foreign_keys`
+  // to take effect. Enforcement is restored below and re-verified.
+  const fkWasOn = db.pragma('foreign_keys', { simple: true }) !== 0;
+  if (fkWasOn) db.pragma('foreign_keys = OFF');
+
+  try {
+    for (const file of files) {
+      if (alreadyApplied.has(file)) {
+        skipped.push(file);
+        continue;
+      }
+      const sql = fs.readFileSync(path.join(dir, file), 'utf8');
+      const apply = db.transaction(() => {
+        db.exec(sql);
+        insertMigration.run(file, new Date().toISOString());
+      });
+      apply();
+      applied.push(file);
     }
-    const sql = fs.readFileSync(path.join(dir, file), 'utf8');
-    const apply = db.transaction(() => {
-      db.exec(sql);
-      insertMigration.run(file, new Date().toISOString());
-    });
-    apply();
-    applied.push(file);
+  } finally {
+    if (fkWasOn) db.pragma('foreign_keys = ON');
   }
 
   return { applied, skipped };
