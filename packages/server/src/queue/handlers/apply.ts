@@ -5,7 +5,6 @@ import {
   runApply,
   type ApplyResult,
   type ManualApplyToolKit,
-  type PromptLoader,
   type SkillRegistry,
   type StructuredApplyDecider,
 } from '@vina/orchestrator';
@@ -42,7 +41,6 @@ export interface ApplyHandlerDeps {
   adapters: Record<string, SiteAdapter>;
   manualApplyToolKit: ManualApplyToolKit;
   buildModel: () => Promise<BaseChatModel>;
-  promptLoader?: PromptLoader;
   skillRegistry?: SkillRegistry;
 }
 
@@ -204,7 +202,6 @@ export function createApplyHandler(
         model as unknown as StructuredApplyDecider,
         toolKit,
         {
-          ...(deps.promptLoader ? { promptLoader: deps.promptLoader } : {}),
           ...(deps.skillRegistry ? { skillRegistry: deps.skillRegistry } : {}),
         },
       );

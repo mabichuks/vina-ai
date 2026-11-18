@@ -121,6 +121,7 @@ You are Review (vina-review). Independently audit tailored materials; records fi
 
 - \`vina_job_get\`
 - \`vina_profile_read\`
+- \`vina_materials_read\`
 - \`vina_review_record\`
 
 ## Denied tools
@@ -207,9 +208,11 @@ exports[`workspace snapshot > generates a stable workspace > skills 1`] = `
   "job-interview/references/company-research.md": "5a9891c5bb37",
   "job-interview/references/prep-note.md": "2e0e523105e0",
   "job-interview/references/studio-data.md": "aa7117cdee93",
-  "job-materials/SKILL.md": "bcce0c6c4106",
+  "job-materials/SKILL.md": "a28f6d564059",
   "job-materials/references/application-note.md": "4d378f535650",
+  "job-materials/references/cover-letter-rules.md": "6f002402dec1",
   "job-materials/references/resume-html.md": "4883201f46f2",
+  "job-materials/references/tailoring-rules.md": "5e0fa2289542",
   "job-materials/references/tech-release-dates.md": "78c17a69744d",
   "job-pipeline/SKILL.md": "8b882c94c92c",
   "job-review/SKILL.md": "694c72a38c2e",
@@ -218,5 +221,6 @@ exports[`workspace snapshot > generates a stable workspace > skills 1`] = `
   "job-sweep/SKILL.md": "e9c34c649e35",
   "job-sweep/references/ats-apis.md": "593253607624",
   "job-sweep/references/leads-note.md": "1463c74372a5",
+  "job-sweep/references/scoring-rubric.md": "63d422ee4a2f",
 }
 `;

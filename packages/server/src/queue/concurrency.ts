@@ -16,5 +16,6 @@ export const DEFAULT_CONCURRENCY: Record<TaskKind, number> = {
   tailor: 2,
   apply: 1,
   prepare_manual_apply: 2,
+  review: 2,
   resume: 1,
 };

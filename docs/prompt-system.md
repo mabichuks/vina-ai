@@ -1,5 +1,10 @@
 # Prompt System
 
+> **Historical note (2026-11-18, #19).** The prompt registry is removed with the
+> LangGraph stage-2 migration. Score/tailor wording now lives in the server
+> scoring/tailoring services and the vendored skills; the `/api/prompts` CRUD is
+> a no-op. This document is retained for history only.
+
 How Vina stores, loads, edits, and overrides the natural-language prompts that
 drive its graphs. Every system/user prompt lives in a versioned `.md` file on
 disk, is loaded at runtime, can be hot-edited, and can be updated by the chatbot

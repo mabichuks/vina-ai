@@ -25,6 +25,7 @@ import { createSearchHandler } from './queue/handlers/search.js';
 import { createScoreHandler } from './queue/handlers/score.js';
 import { createApplyHandler } from './queue/handlers/apply.js';
 import { createPrepareManualApplyHandler } from './queue/handlers/prepare-manual-apply.js';
+import { createReviewHandler } from './queue/handlers/review.js';
 import { createManualApplyToolKit } from './orchestrator/tools/index.js';
 import { updateApplicationStatus } from './db/repositories/applications.js';
 import { createWorker, type TaskHandler, type TaskHandlers } from './queue/worker.js';
@@ -36,6 +37,7 @@ import { createPromptsService } from './services/prompts-service.js';
 import { createSkillsService } from './services/skills-service.js';
 import { generateWorkspace } from '@vina/opencode-plugin';
 import { createOpenCodeHost, type OpenCodeHost } from './opencode/host.js';
+import { createSessionDriver, type SessionDriver } from './opencode/session-driver.js';
 import { createVinaServices } from './opencode/services.js';
 import { createChatService, type ChatService } from './services/chat-service.js';
 
@@ -184,6 +186,17 @@ export async function bootServer(overrides: Partial<ServerConfig> = {}): Promise
   const prompts = await createPromptsService({ dataDir: config.dataDir });
   const skills = await createSkillsService({ dataDir: config.dataDir });
 
+  // Session driver for the task-session handlers (prepare_manual_apply,
+  // review). `null` host (boot failed) → a driver that always fails so those
+  // kinds surface as task failures rather than silently no-op'ing.
+  const sessionDriver = host
+    ? createSessionDriver(host)
+    : ({
+        run: async () => {
+          throw new Error('OpenCode host unavailable — cannot run agent sessions');
+        },
+      } as SessionDriver);
+
   // M10 ships `search` and `score`. Other TaskKinds (tailor, apply,
   // prepare_manual_apply, resume) intentionally have no entry — the worker
   // marks them `failed: unhandled_kind` (no retry) until M14+ provides
@@ -213,16 +226,20 @@ export async function bootServer(overrides: Partial<ServerConfig> = {}): Promise
         db,
         bus,
         buildModel: () => getActiveChatModel(db),
-        promptLoader: prompts.loader,
       }),
     ),
     prepare_manual_apply: adapt(
       createPrepareManualApplyHandler({
         db,
         bus,
-        buildModel: () => getActiveChatModel(db),
-        toolKit: createManualApplyToolKit({ dataDir: config.dataDir }),
-        promptLoader: prompts.loader,
+        sessionDriver,
+      }),
+    ),
+    review: adapt(
+      createReviewHandler({
+        db,
+        bus,
+        sessionDriver,
       }),
     ),
     apply: adapt(
@@ -233,7 +250,6 @@ export async function bootServer(overrides: Partial<ServerConfig> = {}): Promise
         adapters: { linkedin: linkedInAdapter },
         manualApplyToolKit: createManualApplyToolKit({ dataDir: config.dataDir }),
         buildModel: () => getActiveChatModel(db),
-        promptLoader: prompts.loader,
         skillRegistry: skills.registry,
       }),
     ),
@@ -279,6 +295,22 @@ export async function bootServer(overrides: Partial<ServerConfig> = {}): Promise
           description: reason,
           application_id: payload.application_id ?? null,
           payload: { task_id: task.id, kind: 'prepare_manual_apply' },
+        });
+      } else if (task.kind === 'review') {
+        const payload = (() => {
+          try {
+            return JSON.parse(task.payload) as { application_id?: string };
+          } catch {
+            return {};
+          }
+        })();
+        insertAlert(db, {
+          kind: 'apply_failed',
+          severity: 'error',
+          title: 'Review failed',
+          description: reason,
+          application_id: payload.application_id ?? null,
+          payload: { task_id: task.id, kind: 'review' },
         });
       }
     },

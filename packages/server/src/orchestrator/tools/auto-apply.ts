@@ -21,12 +21,12 @@ import type {
 // Orchestrator's FormField is structurally identical to automation's; pin a
 // local alias so the rest of this file reads naturally.
 type FormField = AutomationFormField;
+import { type StructuredScorer } from '@vina/orchestrator';
 import {
   renderTailoredDocx,
   renderTailoredPdf,
   runTailorCv,
-  type StructuredScorer,
-} from '@vina/orchestrator';
+} from '../../services/tailor-service.js';
 import { ConflictError, NotFoundError, createLogger } from '@vina/shared';
 import { findApplicationById, setApplicationTailored } from '../../db/repositories/applications.js';
 import { findJobById } from '../../db/repositories/jobs.js';

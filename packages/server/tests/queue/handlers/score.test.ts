@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import type { Database as DatabaseType } from 'better-sqlite3';
 import type { ScoreMessages, StructuredScorer } from '@vina/orchestrator';
-import { ScoreSchema } from '@vina/orchestrator';
+import { ScoreSchema } from '../../../src/services/scoring-service.js';
 import { NotFoundError } from '@vina/shared';
 import { findJobById, insertJob } from '../../../src/db/repositories/jobs.js';
 import { insertCv } from '../../../src/db/repositories/cvs.js';

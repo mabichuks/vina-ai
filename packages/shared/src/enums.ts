@@ -70,6 +70,7 @@ export const TASK_KINDS = [
   'tailor',
   'apply',
   'prepare_manual_apply',
+  'review',
   'resume',
 ] as const;
 export type TaskKind = (typeof TASK_KINDS)[number];

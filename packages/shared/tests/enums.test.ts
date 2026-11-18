@@ -152,6 +152,7 @@ describe('enum constants', () => {
           "tailor",
           "apply",
           "prepare_manual_apply",
+          "review",
           "resume",
         ],
         "TASK_STATUSES": [

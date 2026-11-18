@@ -16,6 +16,7 @@ export const DEFAULT_TIMEOUTS_MS: Record<TaskKind, number> = {
   score: 60 * 1000, // single structured-output LLM call
   tailor: 2 * 60 * 1000, // LLM call + DOCX render
   apply: 10 * 60 * 1000, // multi-step form filling, possible CAPTCHA pause
-  prepare_manual_apply: 2 * 60 * 1000, // tailor-cv + cover-letter, no browser
+  prepare_manual_apply: 2 * 60 * 1000, // vina-materials session (read + write + render)
+  review: 2 * 60 * 1000, // vina-review session (read + verdict)
   resume: 60 * 1000, // re-enqueue + reload state
 };
