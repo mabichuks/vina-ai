@@ -16,7 +16,7 @@ Format: short ADRs. Each has a status, a context, the decision, and consequences
 
 **Consequences.**
 
-- Users need Node.js 20+ installed
+- Users need Node.js 24+ installed
 - We don't bundle a browser runtime — Playwright handles its own
 - Cross-platform support comes for free as long as Node and Playwright support the platform
 - We commit to good CLI ergonomics (status, doctor, logs)
@@ -517,7 +517,7 @@ curl -fsSL https://vina.ai/install.sh | bash       # macOS / Linux / WSL
 powershell -c "irm https://vina.ai/install.ps1 | iex"   # Windows
 ```
 
-The installer bootstraps Node ≥ 20 (via brew/apt/dnf/pacman/apk on Unix; winget/choco/scoop on Windows), activates pnpm via Corepack, downloads the tarball, runs `pnpm install --prod --frozen-lockfile`, installs Playwright Chromium, drops a `vina` wrapper into PATH, and atomically flips a `current` symlink for upgrades and rollback. The full design is in `docs/installer.md`.
+The installer bootstraps Node ≥ 24 (via brew/apt/dnf/pacman/apk on Unix; winget/choco/scoop on Windows), activates pnpm via Corepack, downloads the tarball, runs `pnpm install --prod --frozen-lockfile`, installs Playwright Chromium, drops a `vina` wrapper into PATH, and atomically flips a `current` symlink for upgrades and rollback. The full design is in `docs/installer.md`.
 
 **Reasons.**
 
@@ -844,3 +844,6 @@ one path where determinism is cheap, fast, and testable, and 863 tests cover it.
   transcript evals plus one live smoke; fixture sites still serve the walker.
 - `docs/langgraph-orchestrator.md` becomes historical. New tool definitions are
   documented in `docs/opencode-orchestration.md`.
+- The embedded `@opencode/sdk` raises the runtime floor to Node ≥ 24 (the SDK
+  ships JS only Node 24's V8 can parse; it declares no `engines`), so CI and the
+  installer bootstrap Node 24 LTS.

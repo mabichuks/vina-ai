@@ -107,7 +107,7 @@ Behaviour:
 No flags.
 
 Diagnostics — runs and prints the status of:
-- Node version (>= 20)
+- Node version (>= 24)
 - Playwright browser binaries installed
 - Data directory writable
 - Disk space available

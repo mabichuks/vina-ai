@@ -16,7 +16,7 @@ Everything runs locally. No Vina-hosted server. No telemetry. Your CV, cover let
 npm install -g vina
 ```
 
-Requires Node.js 20 or later.
+Requires Node.js 24 or later.
 
 ## Use
 

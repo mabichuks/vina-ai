@@ -78,7 +78,7 @@ sized to land cleanly with tests.
 ### Stack (locked)
 
 - **Language**: TypeScript everywhere (backend, frontend, CLI, shared types)
-- **Runtime**: Node.js >= 20 LTS
+- **Runtime**: Node.js >= 24 LTS
 - **Package manager**: pnpm (monorepo with workspaces)
 - **Backend HTTP**: Fastify + `@fastify/websocket`
 - **Frontend**: React 18 + Vite + TailwindCSS + shadcn/ui
@@ -212,7 +212,7 @@ Never invent an environment URL. If a task needs one, stop and ask.
 | ----------------------- | ---------------------------------------------------------------------------- |
 | Base branch             | `main` (never assume anything else; see the current history)                 |
 | Work branches           | `issue-<number>-<short-slug>`, created by `issue-implement` in `.worktrees/` |
-| CI workflow             | `.github/workflows/ci.yml`: on pushes to `main` and on every pull request, Node 20     |
+| CI workflow             | `.github/workflows/ci.yml`: on pushes to `main` and on every pull request, Node 24     |
 | Integration auto-deploy | No. Nothing deploys; releases are tagged manually                            |
 
 ## Agent Login

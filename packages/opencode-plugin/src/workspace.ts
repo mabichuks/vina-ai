@@ -196,7 +196,6 @@ export function renderAgent(agent: VinaAgent): string {
   return `---
 description: ${agent.description}
 mode: subagent
-model: ${agent.model}
 ---
 You are ${agent.title} (${agent.id}). ${agent.description}
 

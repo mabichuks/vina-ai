@@ -40,6 +40,23 @@ describe('boot isolation', () => {
     const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'vina-boot-'));
     const paths = generateWorkspace({ dataDir });
 
+    // Seed a fake user-global OpenCode config home with a well-formed marker
+    // skill, then point XDG_CONFIG_HOME at it. This makes the leak check
+    // non-vacuous on a machine with no ~/.config/opencode: without isolation
+    // the host would discover this marker from the global home, so its absence
+    // proves the host reads only Vina's isolated config.
+    const fakeGlobal = fs.mkdtempSync(path.join(os.tmpdir(), 'vina-global-'));
+    const globalOpenCode = path.join(fakeGlobal, 'opencode');
+    const markerSkillId = 'vina-marker-should-not-leak';
+    const markerDir = path.join(globalOpenCode, 'skill', markerSkillId);
+    fs.mkdirSync(markerDir, { recursive: true });
+    fs.writeFileSync(
+      path.join(markerDir, 'SKILL.md'),
+      `---\nname: ${markerSkillId}\ndescription: isolation marker that must never leak\n---\n\n# Marker\n`,
+    );
+    const prevXdg = process.env['XDG_CONFIG_HOME'];
+    process.env['XDG_CONFIG_HOME'] = fakeGlobal;
+
     // Boot with the generated config content + the isolated config home, the
     // same shape hostCreateOptions produces.
     const configContent = fs.readFileSync(paths.opencodeConfigFile, 'utf8');
@@ -49,18 +66,19 @@ describe('boot isolation', () => {
     try {
       const entries = (await oc.config.get()) as ConfigEntry[];
 
-      const userGlobal = path.join(
-        process.env['XDG_CONFIG_HOME'] ?? path.join(os.homedir(), '.config'),
-        'opencode',
-      );
-
-      // Isolation: nothing the host reads may come from the user's global home.
+      // Isolation: nothing the host reads may come from the seeded global home,
+      // and the marker skill must not be registered anywhere.
       for (const entry of entries) {
-        if (!entry.path) continue;
-        const resolved = path.resolve(entry.path);
+        if (entry.path) {
+          const resolved = path.resolve(entry.path);
+          expect(
+            resolved.startsWith(globalOpenCode + path.sep) || resolved === globalOpenCode,
+            `leaked user global config: ${resolved}`,
+          ).toBe(false);
+        }
         expect(
-          resolved.startsWith(userGlobal + path.sep) || resolved === userGlobal,
-          `leaked user global config: ${resolved}`,
+          (entry.info?.skills ?? []).some((s) => s.includes(markerSkillId)),
+          `marker skill leaked via ${entry.path ?? '<unnamed entry>'}`,
         ).toBe(false);
       }
 
@@ -82,6 +100,8 @@ describe('boot isolation', () => {
       expect(dirEntry).toBeDefined();
       expect(path.resolve(dirEntry!.path ?? '')).toBe(paths.configHomeDir);
     } finally {
+      if (prevXdg === undefined) delete process.env['XDG_CONFIG_HOME'];
+      else process.env['XDG_CONFIG_HOME'] = prevXdg;
       await oc.close();
     }
   }, 30_000);

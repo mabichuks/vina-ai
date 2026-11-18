@@ -41,6 +41,9 @@ export type VinaAgentId =
 export interface VinaAgent {
   id: VinaAgentId;
   title: string;
+  /** §5 model tier (`cheap`/`strong`). Metadata only — never emitted to the
+   *  generated markdown; the host resolves the model from settings at session
+   *  start (a tier label is not a resolvable model id). */
   model: 'cheap' | 'strong';
   description: string;
   /** Tool ids the agent may call (positive allowlist). */

@@ -1,6 +1,6 @@
 ---
 name: vina-installer
-description: Use this skill when the user wants to write, edit, debug, or extend Vina's one-line install scripts — the `install.sh` users curl-pipe-bash on macOS/Linux/WSL, and the `install.ps1` users iwr-iex on Windows. Covers the distribution model (GitHub Releases tarballs, not the npm registry), bootstrapping Node ≥ 20, pnpm, and Playwright Chromium, dropping a `vina` wrapper into PATH, version pinning, dry-run support, and upgrade detection. Also use it whenever someone asks how to ship Vina without `npm publish`, wants a Windows install script, or says "one-liner install for Vina".
+description: Use this skill when the user wants to write, edit, debug, or extend Vina's one-line install scripts — the `install.sh` users curl-pipe-bash on macOS/Linux/WSL, and the `install.ps1` users iwr-iex on Windows. Covers the distribution model (GitHub Releases tarballs, not the npm registry), bootstrapping Node ≥ 24, pnpm, and Playwright Chromium, dropping a `vina` wrapper into PATH, version pinning, dry-run support, and upgrade detection. Also use it whenever someone asks how to ship Vina without `npm publish`, wants a Windows install script, or says "one-liner install for Vina".
 ---
 
 # Vina Installer
@@ -24,7 +24,7 @@ The tarball contains the prebuilt monorepo: every workspace's `dist/`, every `pa
 
 The installer's job on the user's machine is, in order:
 
-1. Make sure Node ≥ 20 is on PATH (install if missing).
+1. Make sure Node ≥ 24 is on PATH (install if missing).
 2. Make sure pnpm is on PATH (activate via Corepack).
 3. Download `vina-<X.Y.Z>.tar.gz` to a temp dir and extract to the install root.
 4. `pnpm install --prod --frozen-lockfile` inside the install root — fetches runtime deps only, no build step.
@@ -70,7 +70,7 @@ set -euo pipefail
 VINA_REPO="${VINA_REPO:-your-org/vina}"
 VINA_INSTALL_ROOT="${VINA_INSTALL_ROOT:-$HOME/.vina/app}"
 VINA_BIN_DIR="${VINA_BIN_DIR:-$HOME/.local/bin}"
-NODE_MIN_MAJOR=20
+NODE_MIN_MAJOR=24
 PNPM_VERSION="9.15.0"           # must match packageManager in tarball's root package.json
 INSTALLER_VERSION="2026.05.15"  # bump on every script change; printed by vina doctor
 
@@ -494,7 +494,7 @@ $ErrorActionPreference = "Stop"
 
 # ─── Config ─────────────────────────────────────────────────────────────────
 $Repo = if ($env:VINA_REPO) { $env:VINA_REPO } else { "your-org/vina" }
-$NodeMinMajor = 20
+$NodeMinMajor = 24
 $PnpmVersion = "9.15.0"
 $InstallerVersion = "2026.05.15"
 
@@ -774,7 +774,7 @@ Main
 
 **Sudo.** The installer only needs sudo when installing Node or build tools via the system package manager. The Vina install itself lands entirely in `$HOME` — `~/.vina/app`, `~/.local/bin/vina`, and `~/.bashrc`/`~/.zshrc` additions. The script refuses to run as root (override with `ALLOW_ROOT=1`) because if the user pipes through `sudo bash`, the wrapper ends up owned by root and Corepack/pnpm break in confusing ways downstream.
 
-**Corepack signature bugs.** On Node 20.x the `corepack prepare pnpm@<v> --activate` call may fail with "Cannot find matching keyid" due to a stale signature cache shipped with that Node version. The fallback is `corepack install -g pnpm@<v>` (the older positional form), which the skeletons above already attempt. If both fail, the script gives up cleanly with a manual-install hint.
+**Corepack signature bugs.** On Node 20.x (below the supported floor) the `corepack prepare pnpm@<v> --activate` call may fail with "Cannot find matching keyid" due to a stale signature cache shipped with that Node version. The fallback is `corepack install -g pnpm@<v>` (the older positional form), which the skeletons above already attempt. If both fail, the script gives up cleanly with a manual-install hint.
 
 **Windows ExecutionPolicy.** Piping through `iex` bypasses execution policy and is the documented happy path. If users save `install.ps1` to disk and try to run it directly, they may hit "running scripts is disabled on this system". Document that in the project README:
 
@@ -824,7 +824,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '24'
       - run: corepack enable
       - run: pnpm install --frozen-lockfile
       - run: pnpm -r build
@@ -942,5 +942,5 @@ For Windows: a fresh Windows Sandbox session, or a throwaway VM. There is no goo
 
 - Bump `INSTALLER_VERSION` (bash) / `$InstallerVersion` (PowerShell) on every script change. `vina doctor` prints it in diagnostic output, which makes "which installer did this user run" obvious in bug reports.
 - The pinned `PNPM_VERSION` / `$PnpmVersion` must match the `packageManager` field in the release tarball's root `package.json`. The release workflow should fail if they disagree — add that check before adding new releases.
-- When you bump the Node minimum (e.g. to 22 LTS), update both scripts' `NODE_MIN_MAJOR` / `$NodeMinMajor` at the same time, and update `vina doctor` to match.
+- When you bump the Node minimum (e.g. to 24 LTS), update both scripts' `NODE_MIN_MAJOR` / `$NodeMinMajor` at the same time, and update `vina doctor` to match.
 - The scripts deliberately have no test framework. They are tested by running them in the containers listed in §8 before each release. If you find yourself wanting unit tests for the scripts, that is usually a sign that a particular helper should move into the `vina doctor` command instead — `doctor` is testable TypeScript, the installer is bash/PowerShell glue.
