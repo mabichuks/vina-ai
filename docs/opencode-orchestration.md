@@ -33,7 +33,8 @@ Vina server (Node)
 │   ├── plugin: @vina/opencode-plugin  → vina_* tools
 │   ├── MCP: playwright → --cdp-endpoint <loopback>
 │   └── agents: vina-sweep, vina-materials,
-│               vina-review, vina-apply, vina-chat
+│               vina-review, vina-apply, vina-manual,
+│               vina-chat
 └── deterministic walker (runApply)                (unchanged)
 ```
 
@@ -60,7 +61,7 @@ Either way Vina calls the same generated client shape: `session.create`,
 └── runs/<taskId>/            per-task scratch: notes, intermediate HTML
 ```
 
-`openCode.jsonc` is written from settings on every boot so the model, provider,
+`opencode.jsonc` is written from settings on every boot so the model, provider,
 MCP entry, and plugin path cannot drift from what the UI shows. Users never edit
 it. Skills are vendored, not linked: a Vina release states which harness version
 it carries.
@@ -197,7 +198,7 @@ ADR-023's single gate is untouched and stays in `checkEasyApplyGate`.
   only escalates an unclassifiable field to the existing single-step decider,
   which stays in Vina code inside the tool.
 - No agent runs for a search where SerpAPI already returns structured listings.
-- `vina-score-job` uses the cheap model; tailoring and review use the strong one.
+- `vina_score_job` uses the cheap model; tailoring and review use the strong one.
 - The context hook trims the tool list per agent and sets a token ceiling.
 - A session step cap plus the queue timeout bound the worst case; the existing
   circuit breaker still flips `easy_apply_mode` to manual after repeated

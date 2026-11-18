@@ -211,7 +211,7 @@ Never invent an environment URL. If a task needs one, stop and ask.
 | ----------------------- | ---------------------------------------------------------------------------- |
 | Base branch             | `main` (never assume anything else; see the current history)                 |
 | Work branches           | `issue-<number>-<short-slug>`, created by `issue-implement` in `.worktrees/` |
-| CI workflow             | `.github/workflows/ci.yml`, on pushes and pull requests to `main`, Node 20   |
+| CI workflow             | `.github/workflows/ci.yml`: on pushes to `main` and on every pull request, Node 20     |
 | Integration auto-deploy | No. Nothing deploys; releases are tagged manually                            |
 
 ## Agent Login

@@ -87,7 +87,7 @@ Format: short ADRs. Each has a status, a context, the decision, and consequences
 
 ## ADR-005: LangGraph for orchestration
 
-**Status:** Accepted.
+**Status:** Superseded by ADR-024.
 
 **Context.** The application workflow is a state machine: search → score → tailor → review → apply → handle blocker → submitted. We considered:
 
