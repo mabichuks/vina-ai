@@ -36,6 +36,9 @@ export type SiteKind = (typeof SITE_KINDS)[number];
 export const EASY_APPLY_MODES = ['autonomous', 'manual'] as const;
 export type EasyApplyMode = (typeof EASY_APPLY_MODES)[number];
 
+export const EXTERNAL_APPLY_MODES = ['manual', 'assisted', 'autonomous'] as const;
+export type ExternalApplyMode = (typeof EXTERNAL_APPLY_MODES)[number];
+
 export const ALERT_KINDS = [
   'missing_field',
   'captcha',
@@ -72,6 +75,7 @@ export const TASK_KINDS = [
   'prepare_manual_apply',
   'review',
   'resume',
+  'external_form_fill',
 ] as const;
 export type TaskKind = (typeof TASK_KINDS)[number];
 
@@ -93,6 +97,10 @@ export const APPLICATION_EVENT_KINDS = [
   'resumed',
   'ready_for_manual_apply',
   'applied_manually',
+  'external_form_opened',
+  'external_field_filled',
+  'external_ready_for_review',
+  'external_submitted',
 ] as const;
 export type ApplicationEventKind = (typeof APPLICATION_EVENT_KINDS)[number];
 

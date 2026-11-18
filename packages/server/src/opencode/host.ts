@@ -1,5 +1,6 @@
 import fs from 'node:fs';
 import { OpenCode } from '@opencode/sdk';
+import type { ExternalApplyMode } from '@vina/shared';
 import {
   hostCreateOptions,
   renderAgentsConfig,
@@ -41,7 +42,9 @@ export interface OpenCodeHostDeps {
   /** Server-injected service container backing the `vina_*` tools (issue #16). */
   services: VinaServices;
   /** Resolves the loopback CDP endpoint the Playwright MCP attaches to (ADR-022). */
-  cdpEndpoint: () => string;
+  cdpEndpoint: () => string | null;
+  /** Resolves the current `external_apply_mode` for the plugin's mode-aware trim. */
+  externalApplyMode: () => ExternalApplyMode;
 }
 
 export interface OpenCodeHost {
@@ -103,7 +106,10 @@ export function renderHostConfig(dataDir: string, provider: ResolvedProvider): s
     base = JSON.parse(fs.readFileSync(paths.opencodeConfigFile, 'utf8')) as Record<string, unknown>;
   } catch (err) {
     if ((err as NodeJS.ErrnoException).code !== 'ENOENT') throw err;
-    log.warn({ file: paths.opencodeConfigFile }, 'generated opencode.jsonc missing; booting with provider only');
+    log.warn(
+      { file: paths.opencodeConfigFile },
+      'generated opencode.jsonc missing; booting with provider only',
+    );
   }
   const { plugins: _plugins, ...rest } = base;
   return JSON.stringify(
@@ -125,7 +131,11 @@ export async function createOpenCodeHost(deps: OpenCodeHostDeps): Promise<OpenCo
   // instances, not package-name strings). Its `setup` runs per-location and
   // registers the `vina_*` tool namespace, the Playwright MCP, and the token
   // budget hook — with the live `VinaServices` injected at boot.
-  const plugin = vinaPlugin({ services: deps.services, cdpEndpoint: deps.cdpEndpoint });
+  const plugin = vinaPlugin({
+    services: deps.services,
+    cdpEndpoint: deps.cdpEndpoint,
+    externalApplyMode: deps.externalApplyMode,
+  });
 
   const client = await OpenCode.create({
     config: { directory: hostCreateOptions(deps.dataDir).config.directory, content },

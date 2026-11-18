@@ -37,6 +37,41 @@ describe('settings routes', () => {
     expect(res.statusCode).toBe(400);
   });
 
+  it('GET returns external_apply_mode=manual by default; PATCH persists it', async () => {
+    const before = await h.app.inject({
+      method: 'GET',
+      url: '/api/settings',
+      headers: auth(h.token),
+    });
+    expect((before.json() as Record<string, unknown>)['external_apply_mode']).toBe('manual');
+
+    const patch = await h.app.inject({
+      method: 'PATCH',
+      url: '/api/settings',
+      headers: auth(h.token),
+      payload: { external_apply_mode: 'assisted' },
+    });
+    expect(patch.statusCode).toBe(200);
+    expect((patch.json() as Record<string, unknown>)['external_apply_mode']).toBe('assisted');
+
+    const after = await h.app.inject({
+      method: 'GET',
+      url: '/api/settings',
+      headers: auth(h.token),
+    });
+    expect((after.json() as Record<string, unknown>)['external_apply_mode']).toBe('assisted');
+  });
+
+  it('PATCH invalid external_apply_mode value returns 400', async () => {
+    const res = await h.app.inject({
+      method: 'PATCH',
+      url: '/api/settings',
+      headers: auth(h.token),
+      payload: { external_apply_mode: 'banana' },
+    });
+    expect(res.statusCode).toBe(400);
+  });
+
   it('PATCH active_llm_provider_id with a nonexistent id returns 409', async () => {
     const res = await h.app.inject({
       method: 'PATCH',

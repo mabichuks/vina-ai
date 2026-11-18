@@ -5,6 +5,8 @@ export {
   AskUserOutputSchema,
   EasyApplyInputSchema,
   EasyApplyOutputSchema,
+  ExternalSubmitInputSchema,
+  ExternalSubmitOutputSchema,
   JobGetInputSchema,
   JobGetOutputSchema,
   JobsListInputSchema,
@@ -45,6 +47,8 @@ export {
   type ApplicationStatusOutput,
   type EasyApplyInput,
   type EasyApplyOutput,
+  type ExternalSubmitInput,
+  type ExternalSubmitOutput,
   type AskUserInput,
   type AskUserOutput,
 } from './contract.js';

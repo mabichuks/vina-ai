@@ -87,13 +87,13 @@ describe('boot isolation', () => {
       // pinned by the snapshot + allowlist tests.)
       const doc = entries.find((e) => e.type === 'document');
       expect(doc, 'generated config document').toBeDefined();
-      expect(doc!.info?.skills).toEqual(
-        VENDORED_SKILL_IDS.map((id) => `skills/${id}`),
-      );
+      expect(doc!.info?.skills).toEqual(VENDORED_SKILL_IDS.map((id) => `skills/${id}`));
 
       const playwright = doc!.info?.mcp?.servers?.playwright;
       expect(playwright).toBeDefined();
-      expect(playwright!.disabled).toBe(true);
+      // The static config ships an enabled (non-disabled) Playwright MCP entry;
+      // the plugin replaces it with the live loopback endpoint at host boot.
+      expect(playwright!.disabled).toBeUndefined();
 
       // The isolated config home is the directory the host was pointed at.
       const dirEntry = entries.find((e) => e.type === 'directory');

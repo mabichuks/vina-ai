@@ -20,6 +20,7 @@ function toResponse(row: SettingsRow): Settings {
   return {
     id: 'app',
     easy_apply_mode: row.easy_apply_mode,
+    external_apply_mode: row.external_apply_mode,
     autonomous_apply_dry_run: row.autonomous_apply_dry_run,
     apply_daily_cap: row.apply_daily_cap,
     apply_min_interval_seconds: row.apply_min_interval_seconds,
@@ -72,6 +73,9 @@ export async function settingsRoutes(
     // touched the row; one more update is fine — settings is a singleton.
     const row = updateSettings(db, {
       ...(input.easy_apply_mode !== undefined && { easy_apply_mode: input.easy_apply_mode }),
+      ...(input.external_apply_mode !== undefined && {
+        external_apply_mode: input.external_apply_mode,
+      }),
       ...(input.autonomous_apply_dry_run !== undefined && {
         autonomous_apply_dry_run: input.autonomous_apply_dry_run,
       }),

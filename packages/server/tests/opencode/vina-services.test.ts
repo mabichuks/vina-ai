@@ -321,7 +321,8 @@ describe('vina_materials_read', () => {
     const services = makeServices();
     await services.materialsSave({
       applicationId: appId,
-      cvMarkdown: '## Summary\nTailored summary\n\n## Experience\n### Acme\n- Built APIs.\n\n## Skills\n- TypeScript',
+      cvMarkdown:
+        '## Summary\nTailored summary\n\n## Experience\n### Acme\n- Built APIs.\n\n## Skills\n- TypeScript',
       coverLetterMarkdown: 'Dear team,\n\nI am a fit.\n\nSincerely, Ada',
       formAnswers: { years: '7' },
     });
@@ -636,6 +637,92 @@ describe('vina_easy_apply', () => {
 
     await expect(services.easyApply({ applicationId: app.id })).rejects.toThrow(/blocked by gate/);
     expect(runApplyCalled).toBe(false);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// external_submit
+// ---------------------------------------------------------------------------
+describe('vina_external_submit', () => {
+  function seedManualApp() {
+    seedProfile();
+    const cv = seedCv();
+    const job = seedJob('j-ext', 'manual');
+    updateJobScore(db, job.id, 80, 'strong');
+    const app = seedApp(job.id, cv.id, 'manual');
+    return { jobId: job.id, appId: app.id };
+  }
+
+  it('submits in autonomous mode: transition + external_submitted event + rate-limit', async () => {
+    const { appId, jobId } = seedManualApp();
+    updateSettings(db, { external_apply_mode: 'autonomous' });
+    const out = await makeServices().externalSubmit({ applicationId: appId });
+
+    expect(out.outcome).toBe('submitted');
+    expect(findApplicationById(db, appId)!.status).toBe('submitted');
+    expect(findJobById(db, jobId)!.status).toBe('submitted');
+    expect(listEvents(db, appId).some((e) => e.kind === 'external_submitted')).toBe(true);
+    expect(getRateLimit(db).successful_today).toBe(1);
+  });
+
+  it('refuses in manual mode (ConflictError)', async () => {
+    const { appId } = seedManualApp();
+    updateSettings(db, { external_apply_mode: 'manual' });
+    await expect(makeServices().externalSubmit({ applicationId: appId })).rejects.toThrow(
+      /requires autonomous mode/,
+    );
+  });
+
+  it('refuses in assisted mode (ConflictError)', async () => {
+    const { appId } = seedManualApp();
+    updateSettings(db, { external_apply_mode: 'assisted' });
+    await expect(makeServices().externalSubmit({ applicationId: appId })).rejects.toThrow(
+      /requires autonomous mode/,
+    );
+  });
+
+  it('rejects an auto-apply job with ConflictError (inverted apply_method check)', async () => {
+    seedProfile();
+    const cv = seedCv();
+    const job = seedJob('j-auto', 'auto');
+    updateJobScore(db, job.id, 80, 'strong');
+    const app = seedApp(job.id, cv.id, 'auto');
+    updateSettings(db, { external_apply_mode: 'autonomous' });
+    await expect(makeServices().externalSubmit({ applicationId: app.id })).rejects.toThrow(
+      /apply_method=auto/,
+    );
+  });
+
+  it('rejects when the gate blocks (below threshold)', async () => {
+    seedProfile();
+    const cv = seedCv();
+    const job = seedJob('j-low', 'manual'); // match_score stays null → treated as 0
+    const app = seedApp(job.id, cv.id, 'manual');
+    updateSettings(db, { external_apply_mode: 'autonomous' });
+    await expect(makeServices().externalSubmit({ applicationId: app.id })).rejects.toThrow(
+      /blocked by gate/,
+    );
+  });
+
+  it('short-circuits dry_run without submitting', async () => {
+    const { appId, jobId } = seedManualApp();
+    updateSettings(db, { external_apply_mode: 'autonomous', autonomous_apply_dry_run: true });
+
+    const out = await makeServices().externalSubmit({ applicationId: appId });
+
+    expect(out.outcome).toBe('awaiting_user');
+    expect(out.reason).toBe('dry_run');
+    expect(findApplicationById(db, appId)!.status).toBe('awaiting_user');
+    expect(findJobById(db, jobId)!.status).not.toBe('submitted');
+    expect(listEvents(db, appId).some((e) => e.kind === 'external_submitted')).toBe(false);
+    expect(getRateLimit(db).last_attempt_at).toBeTruthy();
+  });
+
+  it('rejects an unknown application with NotFoundError', async () => {
+    updateSettings(db, { external_apply_mode: 'autonomous' });
+    await expect(makeServices().externalSubmit({ applicationId: 'missing' })).rejects.toThrow(
+      NotFoundError,
+    );
   });
 });
 

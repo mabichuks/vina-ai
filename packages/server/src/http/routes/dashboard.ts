@@ -46,10 +46,10 @@ export async function dashboardRoutes(
     return {
       submitted_today: rl.successful_today,
       day_bucket: rl.day_bucket,
-      circuit_breaker_tripped:
-        rl.consecutive_failures >= settings.apply_consecutive_failure_limit,
+      circuit_breaker_tripped: rl.consecutive_failures >= settings.apply_consecutive_failure_limit,
       consecutive_failures: rl.consecutive_failures,
       easy_apply_mode: settings.easy_apply_mode,
+      external_apply_mode: settings.external_apply_mode,
       daily_cap: settings.apply_daily_cap,
       recent,
     };

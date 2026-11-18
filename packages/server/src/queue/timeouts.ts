@@ -19,4 +19,5 @@ export const DEFAULT_TIMEOUTS_MS: Record<TaskKind, number> = {
   prepare_manual_apply: 2 * 60 * 1000, // vina-materials session (read + write + render)
   review: 2 * 60 * 1000, // vina-review session (read + verdict)
   resume: 60 * 1000, // re-enqueue + reload state
+  external_form_fill: 10 * 60 * 1000, // vina-manual session (multi-step form fill, possible CAPTCHA pause)
 };

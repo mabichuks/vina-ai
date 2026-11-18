@@ -123,9 +123,14 @@ describe('isToolDenied / trimToolsForAgent (hard boundary)', () => {
 
   it('vina-chat loses the submit tools and every playwright* tool', () => {
     const tools = { ...chatToolSet };
-    const removed = trimToolsForAgent('vina-chat', tools);
+    const removed = trimToolsForAgent('vina-chat', tools, 'autonomous');
     expect(removed).toEqual(
-      expect.arrayContaining(['vina_easy_apply', 'vina_external_submit', 'playwright_navigate', 'playwright_click']),
+      expect.arrayContaining([
+        'vina_easy_apply',
+        'vina_external_submit',
+        'playwright_navigate',
+        'playwright_click',
+      ]),
     );
     expect(tools).not.toHaveProperty('vina_easy_apply');
     expect(tools).not.toHaveProperty('vina_external_submit');
@@ -152,7 +157,7 @@ describe('isToolDenied / trimToolsForAgent (hard boundary)', () => {
       vina_external_submit: {},
       playwright_navigate: {},
     };
-    trimToolsForAgent('vina-review', tools);
+    trimToolsForAgent('vina-review', tools, 'autonomous');
     expect(tools).toHaveProperty('vina_review_record');
     expect(tools).toHaveProperty('vina_materials_read');
     expect(tools).not.toHaveProperty('vina_materials_save');
@@ -171,7 +176,7 @@ describe('isToolDenied / trimToolsForAgent (hard boundary)', () => {
       vina_external_submit: {},
       playwright_navigate: {},
     };
-    trimToolsForAgent('vina-apply', tools);
+    trimToolsForAgent('vina-apply', tools, 'autonomous');
     expect(tools).toHaveProperty('vina_easy_apply');
     expect(tools).not.toHaveProperty('vina_external_submit');
     expect(tools).not.toHaveProperty('playwright_navigate');
@@ -186,7 +191,7 @@ describe('isToolDenied / trimToolsForAgent (hard boundary)', () => {
       vina_application_status: {},
       vina_easy_apply: {},
     };
-    trimToolsForAgent('vina-manual', tools);
+    trimToolsForAgent('vina-manual', tools, 'autonomous');
     expect(tools).toHaveProperty('vina_external_submit');
     expect(tools).toHaveProperty('playwright_navigate');
     expect(tools).not.toHaveProperty('vina_easy_apply');
@@ -199,7 +204,7 @@ describe('isToolDenied / trimToolsForAgent (hard boundary)', () => {
       playwright_navigate: {},
       vina_profile_read: {},
     };
-    trimToolsForAgent('does-not-exist-xyz', tools);
+    trimToolsForAgent('does-not-exist-xyz', tools, 'autonomous');
     expect(tools).not.toHaveProperty('vina_easy_apply');
     expect(tools).not.toHaveProperty('vina_external_submit');
     expect(tools).not.toHaveProperty('playwright_navigate');
@@ -208,11 +213,65 @@ describe('isToolDenied / trimToolsForAgent (hard boundary)', () => {
   });
 
   it('playwright matches by namespace prefix, not only exact', () => {
-    expect(isToolDenied('vina-chat', 'playwright')).toBe(true);
-    expect(isToolDenied('vina-chat', 'playwright_navigate')).toBe(true);
-    expect(isToolDenied('vina-chat', 'playwright_click')).toBe(true);
-    expect(isToolDenied('vina-chat', 'vina_easy_apply')).toBe(true);
-    expect(isToolDenied('vina-chat', 'vina_profile_read')).toBe(false);
+    expect(isToolDenied('vina-chat', 'playwright', 'autonomous')).toBe(true);
+    expect(isToolDenied('vina-chat', 'playwright_navigate', 'autonomous')).toBe(true);
+    expect(isToolDenied('vina-chat', 'playwright_click', 'autonomous')).toBe(true);
+    expect(isToolDenied('vina-chat', 'vina_easy_apply', 'autonomous')).toBe(true);
+    expect(isToolDenied('vina-chat', 'vina_profile_read', 'autonomous')).toBe(false);
+  });
+});
+
+describe('mode-aware external-apply trim (external_apply_mode)', () => {
+  const manualTools: Record<string, unknown> = {
+    vina_external_submit: {},
+    playwright_navigate: {},
+    playwright_type: {},
+    vina_job_get: {},
+    vina_profile_read: {},
+    vina_application_status: {},
+    vina_easy_apply: {},
+  };
+
+  it('manual: vina-manual loses playwright* AND vina_external_submit', () => {
+    const tools = { ...manualTools };
+    trimToolsForAgent('vina-manual', tools, 'manual');
+    expect(tools).not.toHaveProperty('vina_external_submit');
+    expect(tools).not.toHaveProperty('playwright_navigate');
+    expect(tools).not.toHaveProperty('playwright_type');
+    // Its read/status tools survive; easy_apply stays denied by the static table.
+    expect(tools).toHaveProperty('vina_job_get');
+    expect(tools).toHaveProperty('vina_profile_read');
+    expect(tools).not.toHaveProperty('vina_easy_apply');
+  });
+
+  it('assisted: vina-manual keeps playwright* but loses vina_external_submit', () => {
+    const tools = { ...manualTools };
+    trimToolsForAgent('vina-manual', tools, 'assisted');
+    expect(tools).toHaveProperty('playwright_navigate');
+    expect(tools).toHaveProperty('playwright_type');
+    expect(tools).not.toHaveProperty('vina_external_submit');
+  });
+
+  it('autonomous: vina-manual keeps both playwright* and vina_external_submit', () => {
+    const tools = { ...manualTools };
+    trimToolsForAgent('vina-manual', tools, 'autonomous');
+    expect(tools).toHaveProperty('playwright_navigate');
+    expect(tools).toHaveProperty('playwright_type');
+    expect(tools).toHaveProperty('vina_external_submit');
+  });
+
+  it('manual mode denies playwright* to every agent (no external browser)', () => {
+    // vina-sweep is granted playwright in the static table but must lose it in manual mode.
+    const tools = { playwright_navigate: {}, vina_search_jobs: {} };
+    trimToolsForAgent('vina-sweep', tools, 'manual');
+    expect(tools).not.toHaveProperty('playwright_navigate');
+    expect(tools).toHaveProperty('vina_search_jobs');
+  });
+
+  it('vina_external_submit is unreachable outside autonomous for any agent', () => {
+    expect(isToolDenied('vina-manual', 'vina_external_submit', 'manual')).toBe(true);
+    expect(isToolDenied('vina-manual', 'vina_external_submit', 'assisted')).toBe(true);
+    expect(isToolDenied('vina-manual', 'vina_external_submit', 'autonomous')).toBe(false);
   });
 });
 

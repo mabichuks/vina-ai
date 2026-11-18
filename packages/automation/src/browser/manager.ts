@@ -26,6 +26,19 @@ export interface BrowserManagerHandle {
   /** Lazy-launch on first call per siteId; cached promise on repeat. */
   getContext(siteId: string): Promise<BrowserContext>;
   /**
+   * Eager-launch the dedicated `external` session and return its loopback CDP
+   * endpoint (`http://127.0.0.1:<port>`). Idempotent — returns the cached
+   * endpoint on repeat. `headless` controls the launch (assisted runs headful,
+   * autonomous follows `settings.browser_headful`).
+   */
+  ensureExternalSession(options?: { headless?: boolean }): Promise<string>;
+  /**
+   * The loopback CDP endpoint of the already-launched `external` session, or
+   * `null` when none is running (e.g. `manual` mode). Synchronous so the host
+   * can pass it to the Playwright MCP at `OpenCode.create` time.
+   */
+  cdpEndpoint(): string | null;
+  /**
    * Close one site's session (e.g. on session-expired recovery). No-op
    * if no session is cached for that siteId. Disconnects CDP AND
    * terminates the Chromium process.
@@ -47,21 +60,26 @@ export interface BrowserManagerHandle {
  */
 export function createBrowserManager(opts: BrowserManagerOptions): BrowserManagerHandle {
   const cache = new Map<string, Promise<CdpSessionHandle>>();
+  /** Resolved loopback endpoint of the `external` session, cached for sync reads. */
+  let externalEndpoint: string | null = null;
 
-  function getSession(siteId: string): Promise<CdpSessionHandle> {
+  const EXTERNAL_SITE_ID = 'external';
+
+  function getSession(siteId: string, headless?: boolean): Promise<CdpSessionHandle> {
     const cached = cache.get(siteId);
     if (cached) return cached;
 
     const launching = launchCdpSession({
       siteId,
       dataDir: opts.dataDir,
-      headless: opts.headless ?? true,
+      headless: headless ?? opts.headless ?? true,
       ...(opts.channel && { channel: opts.channel }),
       ...(opts.stealth !== undefined && { stealth: opts.stealth }),
     }).catch((err: unknown) => {
       // Evict on launch failure so the next caller retries instead of being
       // permanently stuck with a poisoned cache entry.
       cache.delete(siteId);
+      if (siteId === EXTERNAL_SITE_ID) externalEndpoint = null;
       throw err;
     });
     cache.set(siteId, launching);
@@ -73,10 +91,22 @@ export function createBrowserManager(opts: BrowserManagerOptions): BrowserManage
     return session.context;
   }
 
+  async function ensureExternalSession(options?: { headless?: boolean }): Promise<string> {
+    if (externalEndpoint) return externalEndpoint;
+    const session = await getSession(EXTERNAL_SITE_ID, options?.headless);
+    externalEndpoint = `http://127.0.0.1:${session.port}`;
+    return externalEndpoint;
+  }
+
+  function cdpEndpoint(): string | null {
+    return externalEndpoint;
+  }
+
   async function closeContext(siteId: string): Promise<void> {
     const cached = cache.get(siteId);
     if (!cached) return;
     cache.delete(siteId);
+    if (siteId === EXTERNAL_SITE_ID) externalEndpoint = null;
     try {
       const session = await cached;
       await session.close();
@@ -88,6 +118,7 @@ export function createBrowserManager(opts: BrowserManagerOptions): BrowserManage
   async function closeAll(): Promise<void> {
     const entries = [...cache.entries()];
     cache.clear();
+    externalEndpoint = null;
     await Promise.all(
       entries.map(async ([siteId, sessionPromise]) => {
         try {
@@ -100,5 +131,5 @@ export function createBrowserManager(opts: BrowserManagerOptions): BrowserManage
     );
   }
 
-  return { getContext, closeContext, closeAll };
+  return { getContext, ensureExternalSession, cdpEndpoint, closeContext, closeAll };
 }

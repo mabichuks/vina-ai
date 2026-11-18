@@ -8,9 +8,10 @@
  * see it.
  *
  * Tool ids are the flattened `vina_<name>` form, plus `playwright` for the
- * browser MCP. `external_submit` is listed for `vina-manual` per §5 even
- * though the tool lands in a later stage (the allowlist is a forward contract).
+ * browser MCP. `external_submit` is listed for `vina-manual` per §5.
  */
+
+import type { ExternalApplyMode } from '@vina/shared';
 
 /** The `vina` tool short names an agent may be granted, in flattened form. */
 export const VINA_ALL_TOOL_IDS = [
@@ -85,7 +86,13 @@ export const VINA_AGENTS: readonly VinaAgent[] = [
     title: 'Sweep',
     model: 'cheap',
     description: 'Find and score job leads; never prepares materials or applies.',
-    allowed: ['vina_search_jobs', 'vina_jobs_list', 'vina_job_get', 'vina_score_job', PLAYWRIGHT_TOOL_ID],
+    allowed: [
+      'vina_search_jobs',
+      'vina_jobs_list',
+      'vina_job_get',
+      'vina_score_job',
+      PLAYWRIGHT_TOOL_ID,
+    ],
     denied: ['vina_materials_save', 'vina_easy_apply'],
   },
   {
@@ -95,7 +102,9 @@ export const VINA_AGENTS: readonly VinaAgent[] = [
     description: 'Tailor the CV and cover letter for one role; never submits.',
     allowed: ['vina_profile_read', 'vina_job_get', 'vina_materials_save', 'vina_ask_user'],
     denied: [PLAYWRIGHT_TOOL_ID, 'vina_easy_apply'],
-    notes: ['May write workspace files (notes, intermediate HTML) under <dataDir>/workspace/runs/.'],
+    notes: [
+      'May write workspace files (notes, intermediate HTML) under <dataDir>/workspace/runs/.',
+    ],
   },
   {
     id: 'vina-review',
@@ -111,7 +120,9 @@ export const VINA_AGENTS: readonly VinaAgent[] = [
       'vina_external_submit',
       'vina_search_jobs',
     ],
-    notes: ['Denies every write outside vina_review_record (fresh session, never sees the writer transcript).'],
+    notes: [
+      'Denies every write outside vina_review_record (fresh session, never sees the writer transcript).',
+    ],
   },
   {
     id: 'vina-apply',
@@ -140,7 +151,13 @@ export const VINA_AGENTS: readonly VinaAgent[] = [
     title: 'Chat',
     model: 'strong',
     description: 'Conversational assistant over the pipeline; never submits or drives the browser.',
-    allowed: ['vina_profile_read', 'vina_jobs_list', 'vina_application_status', 'vina_search_jobs', 'vina_ask_user'],
+    allowed: [
+      'vina_profile_read',
+      'vina_jobs_list',
+      'vina_application_status',
+      'vina_search_jobs',
+      'vina_ask_user',
+    ],
     denied: ['vina_easy_apply', PLAYWRIGHT_TOOL_ID],
   },
 ];
@@ -159,17 +176,34 @@ function matchesToolId(toolId: string, entry: string): boolean {
 }
 
 /**
- * Decide whether a concrete tool id must be denied for an agent. Two layers:
+ * Decide whether a concrete tool id must be denied for an agent. Three layers:
  *
- * 1. The agent's explicit `denied` list (§5's Denied column, exact/prefix).
- * 2. The submit/browser default-deny: `vina_easy_apply`, `vina_external_submit`,
+ * 1. The mode-aware external-apply overlay (issue #21): `vina_external_submit`
+ *    is only reachable in `autonomous` mode, and `playwright*` is denied to
+ *    every agent in `manual` mode (no external browser is running).
+ * 2. The agent's explicit `denied` list (§5's Denied column, exact/prefix).
+ * 3. The submit/browser default-deny: `vina_easy_apply`, `vina_external_submit`,
  *    and `playwright*` are only reachable through the agent's `allowed` list.
  *    An unknown/mis-resolved agent id gets the full submit/browser deny.
  *
  * This is the authoritative gate — it runs in the session context hook and does
  * not rely on the generated markdown being discovered.
  */
-export function isToolDenied(agentId: string, toolId: string): boolean {
+export function isToolDenied(
+  agentId: string,
+  toolId: string,
+  externalApplyMode: ExternalApplyMode,
+): boolean {
+  // Mode overlay — vina_external_submit is the only external submit path and is
+  // gated to autonomous; in manual mode no external browser exists so
+  // playwright* is unreachable for every agent.
+  if (matchesToolId(toolId, 'vina_external_submit') && externalApplyMode !== 'autonomous') {
+    return true;
+  }
+  if (matchesToolId(toolId, PLAYWRIGHT_TOOL_ID) && externalApplyMode === 'manual') {
+    return true;
+  }
+
   const agent = VINA_AGENTS.find((a) => a.id === agentId);
 
   if (!agent) {
@@ -193,10 +227,11 @@ export function isToolDenied(agentId: string, toolId: string): boolean {
 export function trimToolsForAgent(
   agentId: string,
   tools: Record<string, unknown>,
+  externalApplyMode: ExternalApplyMode,
 ): string[] {
   const removed: string[] = [];
   for (const toolId of Object.keys(tools)) {
-    if (isToolDenied(agentId, toolId)) {
+    if (isToolDenied(agentId, toolId, externalApplyMode)) {
       delete tools[toolId];
       removed.push(toolId);
     }

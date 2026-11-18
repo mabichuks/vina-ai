@@ -81,6 +81,11 @@ export const EasyApplyInputSchema = z.object({
 });
 export type EasyApplyInput = z.infer<typeof EasyApplyInputSchema>;
 
+export const ExternalSubmitInputSchema = z.object({
+  applicationId: z.string().min(1),
+});
+export type ExternalSubmitInput = z.infer<typeof ExternalSubmitInputSchema>;
+
 export const AskUserInputSchema = z.object({
   questions: z
     .array(
@@ -218,6 +223,13 @@ export const EasyApplyOutputSchema = z.object({
 });
 export type EasyApplyOutput = z.infer<typeof EasyApplyOutputSchema>;
 
+export const ExternalSubmitOutputSchema = z.object({
+  application_id: z.string(),
+  outcome: z.enum(['submitted', 'awaiting_user', 'failed']),
+  reason: z.string().optional(),
+});
+export type ExternalSubmitOutput = z.infer<typeof ExternalSubmitOutputSchema>;
+
 export const AskUserOutputSchema = z.object({
   status: z.literal('pending'),
   alert_id: z.string(),
@@ -246,10 +258,11 @@ export interface VinaServices {
   reviewRecord(input: ReviewRecordInput): Promise<ReviewRecordOutput>;
   applicationStatus(input: ApplicationStatusInput): Promise<ApplicationStatusOutput>;
   easyApply(input: EasyApplyInput): Promise<EasyApplyOutput>;
+  externalSubmit(input: ExternalSubmitInput): Promise<ExternalSubmitOutput>;
   askUser(input: AskUserInput): Promise<AskUserOutput>;
 }
 
-/** The namespace the eleven tools register under (flattened to `vina_<name>`). */
+/** The namespace the twelve tools register under (flattened to `vina_<name>`). */
 export const VINA_NAMESPACE = 'vina' as const;
 
 /** Short tool names, in registration order. The UI lists them as `vina_<name>`. */
@@ -264,6 +277,7 @@ export const VINA_TOOL_NAMES = [
   'review_record',
   'application_status',
   'easy_apply',
+  'external_submit',
   'ask_user',
 ] as const;
 export type VinaToolName = (typeof VINA_TOOL_NAMES)[number];
