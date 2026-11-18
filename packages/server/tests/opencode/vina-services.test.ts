@@ -11,11 +11,13 @@ import { createEventBus, type EventBus } from '../../src/events/bus.js';
 import { createVinaServices, type VinaServicesDeps } from '../../src/opencode/services.js';
 import { insertProfile } from '../../src/db/repositories/profile.js';
 import { insertCv } from '../../src/db/repositories/cvs.js';
-import { insertJob, updateJobScore } from '../../src/db/repositories/jobs.js';
+import { insertJob, updateJobScore, findJobById } from '../../src/db/repositories/jobs.js';
 import { insertApplication, findApplicationById } from '../../src/db/repositories/applications.js';
 import { listEvents } from '../../src/db/repositories/application-events.js';
 import { listAlerts } from '../../src/db/repositories/alerts.js';
 import { upsertAnswer } from '../../src/db/repositories/profile-answers.js';
+import { getRateLimit } from '../../src/db/repositories/apply-rate-limit.js';
+import { updateSettings } from '../../src/db/repositories/settings.js';
 
 let db: DatabaseType;
 let bus: EventBus;
@@ -422,7 +424,7 @@ describe('vina_easy_apply', () => {
   it('wraps the gate + runApply and records submitted in a transaction', async () => {
     const { appId } = seedAutoApp();
     const services = makeServices({
-      runApply: async () => ({ outcome: 'submitted' }),
+      runApply: async () => ({ outcome: 'submitted', events: [] }),
     });
     const out = await services.easyApply({ applicationId: appId });
     expect(out.outcome).toBe('submitted');
@@ -454,6 +456,91 @@ describe('vina_easy_apply', () => {
     await expect(makeServices().easyApply({ applicationId: app.id })).rejects.toThrow(
       /blocked by gate/,
     );
+  });
+
+  it('short-circuits dry_run without running runApply or submitting', async () => {
+    const { appId, jobId } = seedAutoApp();
+    updateSettings(db, { autonomous_apply_dry_run: true });
+    let runApplyCalled = false;
+    const services = makeServices({
+      runApply: async () => {
+        runApplyCalled = true;
+        return { outcome: 'submitted', events: [] };
+      },
+    });
+
+    const out = await services.easyApply({ applicationId: appId });
+
+    expect(out.outcome).toBe('awaiting_user');
+    expect(out.reason).toBe('dry_run');
+    expect(runApplyCalled).toBe(false);
+    const app = findApplicationById(db, appId)!;
+    expect(app.status).toBe('awaiting_user');
+    expect(app.failure_reason).toBe('dry_run');
+    expect(findJobById(db, jobId)!.status).not.toBe('submitted');
+    expect(listEvents(db, appId).some((e) => e.kind === 'submitted')).toBe(false);
+    // dry_run still consumes a velocity slot.
+    expect(getRateLimit(db).last_attempt_at).toBeTruthy();
+  });
+
+  it('advances the rate-limit counter on a successful submit', async () => {
+    const { appId } = seedAutoApp();
+    const services = makeServices({
+      runApply: async () => ({ outcome: 'submitted', events: [] }),
+    });
+
+    await services.easyApply({ applicationId: appId });
+
+    const rl = getRateLimit(db);
+    expect(rl.successful_today).toBe(1);
+    expect(rl.last_success_at).toBeTruthy();
+    expect(rl.consecutive_failures).toBe(0);
+  });
+
+  it('advances the consecutive-failure counter on a failed apply', async () => {
+    const { appId } = seedAutoApp();
+    const services = makeServices({
+      runApply: async () => ({ outcome: 'failed', reason: 'other', events: [] }),
+    });
+
+    await services.easyApply({ applicationId: appId });
+
+    expect(getRateLimit(db).consecutive_failures).toBe(1);
+    expect(findApplicationById(db, appId)!.status).toBe('failed');
+  });
+
+  it('persists the graph event timeline into application_events', async () => {
+    const { appId } = seedAutoApp();
+    const services = makeServices({
+      runApply: async () => ({
+        outcome: 'submitted',
+        events: [
+          { step: 'started' },
+          { step: 'field_filled', detail: { ref: 'email', label: 'Email' } },
+          { step: 'submitted' },
+        ],
+      }),
+    });
+
+    await services.easyApply({ applicationId: appId });
+
+    const kinds = listEvents(db, appId).map((e) => e.kind);
+    expect(kinds).toContain('apply_started');
+    expect(kinds).toContain('field_filled');
+    expect(kinds).toContain('submitted');
+  });
+
+  it('writes an application_events row on the awaiting_user outcome', async () => {
+    const { appId } = seedAutoApp();
+    const services = makeServices({
+      runApply: async () => ({ outcome: 'awaiting_user', reason: 'missing_field', events: [] }),
+    });
+
+    const out = await services.easyApply({ applicationId: appId });
+
+    expect(out.outcome).toBe('awaiting_user');
+    expect(findApplicationById(db, appId)!.status).toBe('awaiting_user');
+    expect(listEvents(db, appId).length).toBeGreaterThan(0);
   });
 });
 
