@@ -13,12 +13,12 @@ export interface CheckResult {
 
 function checkNodeVersion(): CheckResult {
   const major = Number.parseInt(process.versions.node.split('.')[0] ?? '0', 10);
-  return major >= 20
-    ? { name: `Node ≥ 20 (running ${process.versions.node})`, ok: true }
+  return major >= 24
+    ? { name: `Node ≥ 24 (running ${process.versions.node})`, ok: true }
     : {
-        name: `Node ≥ 20 (running ${process.versions.node})`,
+        name: `Node ≥ 24 (running ${process.versions.node})`,
         ok: false,
-        remediation: 'Install Node 20 LTS or newer (e.g. via nvm or fnm)',
+        remediation: 'Install Node 24 LTS or newer (e.g. via nvm or fnm)',
       };
 }
 
