@@ -826,7 +826,9 @@ one path where determinism is cheap, fast, and testable, and 863 tests cover it.
 **Consequences.**
 
 - Vina gains a second runtime with its own release cadence, so the version is
-  pinned and upgraded deliberately. SDK-on-Node support is proven (see
+  pinned and upgraded deliberately. SDK-on-Node support, a real
+  `session.prompt` stream, the `permission.assert` → `permission.reply` round
+  trip, and Playwright MCP attach over `--cdp-endpoint` are all proven (see
   `opencode-orchestration.md` §14), so the embedded host is the expected path;
   the pinned-binary fallback remains documented. The SDK alone costs ~388 MB
   unpacked, and the host must run with an isolated config home or the user's
