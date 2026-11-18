@@ -36,6 +36,7 @@ import { createPromptsService } from './services/prompts-service.js';
 import { createSkillsService } from './services/skills-service.js';
 import { generateWorkspace } from '@vina/opencode-plugin';
 import { createOpenCodeHost, type OpenCodeHost } from './opencode/host.js';
+import { createVinaServices } from './opencode/services.js';
 import { createChatService, type ChatService } from './services/chat-service.js';
 
 const log = createLogger('main');
@@ -96,6 +97,18 @@ export async function bootServer(overrides: Partial<ServerConfig> = {}): Promise
   // this workspace with an isolated config home (see @vina/opencode-plugin).
   generateWorkspace({ dataDir: config.dataDir });
 
+  const bus = createEventBus();
+
+  // The `vina_*` tool service container (issue #16) — the plugin receives the
+  // live repositories/services by injection at host boot. The host driver needs
+  // `bus` before the worker/scheduler are built, so it is created first here.
+  const services = createVinaServices({
+    db,
+    bus,
+    buildModel: () => getActiveChatModel(db),
+    dataDir: config.dataDir,
+  });
+
   // Boot the single embedded OpenCode host (ADR-024 §2/§14). A boot failure
   // degrades to "chat unavailable" + a general alert (§10) — never crashes the
   // daemon. `resolveProvider` reads the active provider from settings and
@@ -105,6 +118,13 @@ export async function bootServer(overrides: Partial<ServerConfig> = {}): Promise
     host = await createOpenCodeHost({
       dataDir: config.dataDir,
       resolveProvider: () => resolveChatProvider(db),
+      services,
+      // The Playwright MCP attaches to the browser manager's loopback CDP
+      // endpoint (ADR-022). The manager launches per-site on first use and its
+      // port is dynamic; stage 1 chat denies `playwright` entirely, so the MCP
+      // is registered but never dialled — the placeholder is resolved when the
+      // browser manager surfaces its endpoint (#16 follow-up).
+      cdpEndpoint: () => 'http://127.0.0.1:9222',
     });
   } catch (err) {
     log.error({ err }, 'OpenCode host failed to boot; chat unavailable');
@@ -141,8 +161,6 @@ export async function bootServer(overrides: Partial<ServerConfig> = {}): Promise
       'enqueued score tasks for jobs stranded at status=new from a prior run',
     );
   }
-
-  const bus = createEventBus();
 
   // Chat service drives the single `vina-chat` conversation over the host.
   // `null` when the host failed to boot — the route is then not registered.

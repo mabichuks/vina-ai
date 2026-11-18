@@ -1,6 +1,6 @@
 import fs from 'node:fs';
 import { OpenCode } from '@opencode/sdk';
-import { hostCreateOptions, workspacePaths } from '@vina/opencode-plugin';
+import { hostCreateOptions, vinaPlugin, workspacePaths, type VinaServices } from '@vina/opencode-plugin';
 import { createLogger } from '@vina/shared';
 
 const log = createLogger('opencode-host');
@@ -32,6 +32,10 @@ export type ProviderResolver = () => Promise<ResolvedProvider>;
 export interface OpenCodeHostDeps {
   dataDir: string;
   resolveProvider: ProviderResolver;
+  /** Server-injected service container backing the `vina_*` tools (issue #16). */
+  services: VinaServices;
+  /** Resolves the loopback CDP endpoint the Playwright MCP attaches to (ADR-022). */
+  cdpEndpoint: () => string;
 }
 
 export interface OpenCodeHost {
@@ -78,9 +82,10 @@ export function renderProviderFragment(provider: ResolvedProvider): Record<strin
 /**
  * Build the full host config `content`: the generated workspace config (skills,
  * agents, MCP) plus the injected provider + model. The generated config's
- * `plugins` entry is dropped — the vina plugin's tool registration lands with
- * the #16 plugin wiring, not via package-name loading (the embedded SDK does
- * not resolve `@vina/opencode-plugin` by name in stage 1).
+ * `plugins` entry is a package-name string (`@vina/opencode-plugin`) — the
+ * embedded SDK does not resolve plugin packages by name, so it is dropped here
+ * and the plugin is injected as an instance via `OpenCode.create({ plugins })`
+ * instead (see `createOpenCodeHost`).
  */
 export function renderHostConfig(dataDir: string, provider: ResolvedProvider): string {
   const paths = workspacePaths(dataDir);
@@ -103,8 +108,15 @@ export async function createOpenCodeHost(deps: OpenCodeHostDeps): Promise<OpenCo
   const provider = await deps.resolveProvider();
   const content = renderHostConfig(deps.dataDir, provider);
 
+  // Register the vina plugin as an instance (the SDK accepts `Plugin.Plugin`
+  // instances, not package-name strings). Its `setup` runs per-location and
+  // registers the `vina_*` tool namespace, the Playwright MCP, and the token
+  // budget hook — with the live `VinaServices` injected at boot.
+  const plugin = vinaPlugin({ services: deps.services, cdpEndpoint: deps.cdpEndpoint });
+
   const client = await OpenCode.create({
     config: { directory: hostCreateOptions(deps.dataDir).config.directory, content },
+    plugins: [plugin],
   });
 
   return {

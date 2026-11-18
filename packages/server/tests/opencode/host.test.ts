@@ -2,13 +2,40 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { generateWorkspace, workspacePaths } from '@vina/opencode-plugin';
+import { OpenCode } from '@opencode/sdk';
+import {
+  generateWorkspace,
+  hostCreateOptions,
+  vinaPlugin,
+  VINA_TOOL_NAMES,
+  workspacePaths,
+  type VinaServices,
+} from '@vina/opencode-plugin';
 import {
   createOpenCodeHost,
   renderHostConfig,
   renderProviderFragment,
   sanitizeModelId,
 } from '../../src/opencode/host.js';
+
+/** Minimal failing service container — the tools only need to *register*. */
+function stubServices(): VinaServices {
+  const fail = async (): Promise<never> => {
+    throw new Error('stub');
+  };
+  return {
+    profileRead: fail,
+    searchJobs: fail,
+    jobsList: fail,
+    jobGet: fail,
+    scoreJob: fail,
+    materialsSave: fail,
+    reviewRecord: fail,
+    applicationStatus: fail,
+    easyApply: fail,
+    askUser: fail,
+  } as VinaServices;
+}
 
 describe('host driver', () => {
   it('sanitizes free-form model ids into config-safe keys', () => {
@@ -81,6 +108,8 @@ describe('host driver', () => {
         baseURL: 'http://127.0.0.1:9/v1',
         apiKey: null,
       }),
+      services: stubServices(),
+      cdpEndpoint: () => 'http://127.0.0.1:9333',
     });
     try {
       // The location's plugins/MCP activate asynchronously; under a loaded CI
@@ -101,6 +130,63 @@ describe('host driver', () => {
       const models = await waitReady(() => host.client.model.list());
       expect(providers.data.map((p) => p.id)).toContain('vina');
       expect(models.data.map((m) => m.modelID)).toContain('probe-model');
+    } finally {
+      await host.close();
+      fs.rmSync(dataDir, { recursive: true, force: true });
+    }
+  }, 30_000);
+
+  it('boots a real host and registers the vina_* tools via the injected plugin', async () => {
+    const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'vina-host-'));
+    generateWorkspace({ dataDir });
+
+    // The SDK exposes no client-side tool listing, so the registered tools are
+    // read back from the plugin's own `ctx.tool.list()` after the real `setup`
+    // runs. This is the same wiring `createOpenCodeHost` performs — an instance
+    // plugin passed to `OpenCode.create({ plugins })` — proving the earlier
+    // "plugins don't load" claim is reversed.
+    const plugin = vinaPlugin({
+      services: stubServices(),
+      cdpEndpoint: () => 'http://127.0.0.1:9333',
+    });
+    let registeredToolIds: string[] = [];
+    const observed = {
+      ...plugin,
+      setup: async (ctx: Parameters<typeof plugin.setup>[0]) => {
+        const cleanup = await plugin.setup(ctx);
+        const tools = await ctx.tool.list();
+        registeredToolIds = tools.map((t) => t.id);
+        return cleanup;
+      },
+    };
+
+    const content = renderHostConfig(dataDir, {
+      model: 'probe-model',
+      baseURL: 'http://127.0.0.1:9/v1',
+      apiKey: null,
+    });
+
+    const host = await OpenCode.create({
+      config: { directory: hostCreateOptions(dataDir).config.directory, content },
+      plugins: [observed],
+    });
+    try {
+      // Activation is lazy and asynchronous; the plugin `setup` (and thus the
+      // tool registration) runs once the location activates — the first
+      // provider/model query triggers it.
+      for (let attempt = 0; attempt < 20 && registeredToolIds.length === 0; attempt++) {
+        try {
+          await host.provider.list();
+          await host.model.list();
+        } catch {
+          // activation race — retry
+        }
+        await new Promise((r) => setTimeout(r, 200));
+      }
+
+      // Every vina tool registers under its short name (the SDK's namespace
+      // transform flattens it to `vina_<name>` as the effective id).
+      expect(registeredToolIds).toEqual(expect.arrayContaining([...VINA_TOOL_NAMES]));
     } finally {
       await host.close();
       fs.rmSync(dataDir, { recursive: true, force: true });
