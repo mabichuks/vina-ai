@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { Tool } from '@opencode/sdk';
-import { vinaPlugin, buildVinaTools, VINA_TOOL_NAMES, type VinaServices } from '../src/index.js';
+import { vinaPlugin, buildVinaTools, VINA_TOOL_NAMES, type VinaServices, type EasyApplyPermission } from '../src/index.js';
 
 /** Minimal recording stand-in for the plugin host `setup` context. */
 interface Captured {
@@ -89,6 +89,12 @@ function stubServices(): VinaServices {
     easyApply: fail,
     askUser: fail,
   } as VinaServices;
+}
+
+function stubPermission(): EasyApplyPermission {
+  return {
+    assert: async () => {},
+  };
 }
 
 describe('vinaPlugin boot-and-registers', () => {
@@ -200,14 +206,14 @@ describe('vinaPlugin boot-and-registers', () => {
 
 describe('buildVinaTools', () => {
   it('returns exactly the eleven fixed tools in order', () => {
-    const tools = buildVinaTools(stubServices());
+    const tools = buildVinaTools(stubServices(), stubPermission());
     expect(tools.map((t) => t.name)).toEqual(VINA_TOOL_NAMES);
   });
 
   it('executes a tool by zod-validating input then delegating to the service', async () => {
     const services = stubServices();
     const profileRead = vi.fn(async () => ({ profile: null, cvs: [], answers: [] }));
-    const tools = buildVinaTools({ ...services, profileRead } as VinaServices);
+    const tools = buildVinaTools({ ...services, profileRead } as VinaServices, stubPermission());
     const tool = tools.find((t) => t.name === 'profile_read')!;
 
     const result = await (
@@ -221,7 +227,7 @@ describe('buildVinaTools', () => {
 
   it('rejects malformed input with a zod error', async () => {
     const services = stubServices();
-    const tools = buildVinaTools(services);
+    const tools = buildVinaTools(services, stubPermission());
     const tool = tools.find((t) => t.name === 'job_get')!;
 
     await expect(
@@ -230,5 +236,52 @@ describe('buildVinaTools', () => {
         {},
       ),
     ).rejects.toThrow();
+  });
+
+  it('easy_apply asserts permission before delegating to the service', async () => {
+    const services = stubServices();
+    const easyApply = vi.fn(async () => ({ application_id: 'a', outcome: 'submitted' as const }));
+    const assert = vi.fn(async () => {});
+    const tools = buildVinaTools({ ...services, easyApply } as VinaServices, { assert });
+    const tool = tools.find((t) => t.name === 'easy_apply')!;
+
+    const ctx = { sessionID: 'ses_1' };
+    const result = await (
+      tool as unknown as {
+        execute: (i: unknown, ctx: unknown) => Promise<{ output: unknown }>;
+      }
+    ).execute({ applicationId: 'app_1' }, ctx);
+
+    expect(result.output).toEqual({ application_id: 'a', outcome: 'submitted' });
+    // Permission is asserted with the session id and the application resource.
+    expect(assert).toHaveBeenCalledOnce();
+    expect(assert).toHaveBeenCalledWith({
+      sessionID: 'ses_1',
+      action: 'vina.easy_apply',
+      resources: ['app_1'],
+    });
+    // The service is only reached after the assertion resolves.
+    expect(easyApply).toHaveBeenCalledOnce();
+    expect(easyApply).toHaveBeenCalledWith({ applicationId: 'app_1' });
+  });
+
+  it('a rejected easy_apply permission prevents the service from running (no submit)', async () => {
+    const services = stubServices();
+    const easyApply = vi.fn(async () => ({ application_id: 'a', outcome: 'submitted' as const }));
+    const assert = vi.fn(async () => {
+      throw new Error('permission denied');
+    });
+    const tools = buildVinaTools({ ...services, easyApply } as VinaServices, { assert });
+    const tool = tools.find((t) => t.name === 'easy_apply')!;
+
+    await expect(
+      (tool as unknown as { execute: (i: unknown, ctx: unknown) => Promise<unknown> }).execute(
+        { applicationId: 'app_1' },
+        { sessionID: 'ses_1' },
+      ),
+    ).rejects.toThrow(/permission denied/);
+
+    expect(assert).toHaveBeenCalledOnce();
+    expect(easyApply).not.toHaveBeenCalled();
   });
 });

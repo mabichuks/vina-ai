@@ -27,10 +27,27 @@ import {
 } from './contract.js';
 
 /**
+ * The permission gate the `easy_apply` tool consults before delegating.
+ * Mirrors the stage-0 probe (§14 Check 2): `assert` resolves on allow and
+ * rejects with a `Tool.Error` on a deny/rejection. The session id comes from
+ * the SDK tool context at execute time.
+ */
+export interface EasyApplyPermission {
+  assert(input: {
+    sessionID: Tool.Context['sessionID'];
+    action: string;
+    resources: string[];
+  }): Promise<void>;
+}
+
+/**
  * Assembles the eleven `vina` tool descriptors. Each `execute` zod-validates its
  * input (defence in depth — the SDK also decodes against `input`) and then
  * delegates to the injected `VinaServices`. Descriptors carry a short name;
  * the plugin's namespace transform flattens them to `vina_<name>`.
+ *
+ * `easy_apply` is the only tool that asserts permission before delegating; all
+ * other tools ignore the SDK context.
  */
 interface ToolSpec<I extends z.ZodType, O extends z.ZodType> {
   name: string;
@@ -38,6 +55,8 @@ interface ToolSpec<I extends z.ZodType, O extends z.ZodType> {
   input: I;
   output: O;
   run: (input: z.infer<I>) => Promise<z.infer<O>>;
+  /** Runs before `run` (easy_apply only). */
+  assert?: (input: z.infer<I>, ctx: Tool.Context) => Promise<void>;
 }
 
 function defineTool<I extends z.ZodType, O extends z.ZodType>(
@@ -48,14 +67,18 @@ function defineTool<I extends z.ZodType, O extends z.ZodType>(
     description: spec.description,
     input: spec.input,
     output: spec.output,
-    execute: async (input: z.infer<I>) => {
+    execute: async (input: z.infer<I>, ctx: Tool.Context) => {
       const parsed = spec.input.parse(input);
+      if (spec.assert) await spec.assert(parsed, ctx);
       return { output: await spec.run(parsed) };
     },
   } as Tool.Info<I, O>;
 }
 
-export function buildVinaTools(services: VinaServices): Tool.Info[] {
+export function buildVinaTools(
+  services: VinaServices,
+  permission: EasyApplyPermission,
+): Tool.Info[] {
   return [
     defineTool({
       name: 'profile_read',
@@ -133,6 +156,13 @@ export function buildVinaTools(services: VinaServices): Tool.Info[] {
       input: EasyApplyInputSchema,
       output: EasyApplyOutputSchema,
       run: async (input) => services.easyApply(input),
+      assert: async (input, ctx) => {
+        await permission.assert({
+          sessionID: ctx.sessionID,
+          action: 'vina.easy_apply',
+          resources: [input.applicationId],
+        });
+      },
     }),
     defineTool({
       name: 'ask_user',

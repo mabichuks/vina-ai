@@ -55,7 +55,7 @@ export function vinaPlugin(options: VinaPluginOptions): Plugin.Plugin {
           name: VINA_NAMESPACE,
           description: 'Vina job-search facts and actions',
         });
-        for (const tool of buildVinaTools(options.services)) editor.add(tool);
+        for (const tool of buildVinaTools(options.services, ctx.permission)) editor.add(tool);
       });
 
       await ctx.mcp.transform((editor) => {

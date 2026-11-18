@@ -48,7 +48,7 @@ export {
   type AskUserInput,
   type AskUserOutput,
 } from './contract.js';
-export { buildVinaTools } from './tools.js';
+export { buildVinaTools, type EasyApplyPermission } from './tools.js';
 export { vinaPlugin, budgetFor, type VinaPluginOptions } from './plugin.js';
 export {
   VINA_AGENTS,

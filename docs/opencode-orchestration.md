@@ -123,7 +123,7 @@ Plugin.define({
 | `vina_search_jobs`        | `sources, query, location, limit`                               | writes `jobs`, dedupes         | SerpAPI and LinkedIn search; no browser for Google Jobs               |
 | `vina_jobs_list`          | `status?, limit?`                                               | none                           | Pipeline view for dedupe and triage                                   |
 | `vina_job_get`            | `jobId`                                                         | none                           | Description, score, eligibility, application state                    |
-| `vina_score_job`          | `jobId`                                                         | writes `applications.score`    | Runs the existing scoring prompt; keeps scores comparable across runs |
+| `vina_score_job`          | `jobId`                                                         | writes `jobs.match_score`      | Runs the existing scoring prompt; keeps scores comparable across runs |
 | `vina_materials_save`     | `applicationId, cvMarkdown, coverLetterMarkdown?, formAnswers?` | renders PDF/DOCX, sets `ready` | Rendering stays deterministic; the agent writes prose only            |
 | `vina_materials_read`     | `applicationId`                                                 | none                           | Returns the tailored CV/cover-letter markdown, paths, and form answers |
 | `vina_review_record`      | `applicationId, round, verdict, findings[]`                     | writes event + review row      | Review agent's only write                                             |

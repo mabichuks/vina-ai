@@ -469,7 +469,7 @@ describe('vina_easy_apply', () => {
   it('wraps the gate + runApply and records submitted in a transaction', async () => {
     const { appId } = seedAutoApp();
     const services = makeServices({
-      runApply: async () => ({ outcome: 'submitted', events: [] }),
+      runApply: async () => ({ outcome: 'submitted', events: [{ step: 'submitted' }] }),
     });
     const out = await services.easyApply({ applicationId: appId });
     expect(out.outcome).toBe('submitted');
@@ -575,7 +575,7 @@ describe('vina_easy_apply', () => {
     expect(kinds).toContain('submitted');
   });
 
-  it('writes an application_events row on the awaiting_user outcome', async () => {
+  it('does not write a spurious terminal event on the awaiting_user outcome', async () => {
     const { appId } = seedAutoApp();
     const services = makeServices({
       runApply: async () => ({ outcome: 'awaiting_user', reason: 'missing_field', events: [] }),
@@ -585,7 +585,57 @@ describe('vina_easy_apply', () => {
 
     expect(out.outcome).toBe('awaiting_user');
     expect(findApplicationById(db, appId)!.status).toBe('awaiting_user');
-    expect(listEvents(db, appId).length).toBeGreaterThan(0);
+    // The outcome branch appends nothing: only the walker's own events are written.
+    expect(listEvents(db, appId)).toHaveLength(0);
+  });
+
+  it('writes a terminal submitted event exactly once', async () => {
+    const { appId } = seedAutoApp();
+    const services = makeServices({
+      runApply: async () => ({
+        outcome: 'submitted',
+        events: [{ step: 'started' }, { step: 'submitted' }],
+      }),
+    });
+
+    await services.easyApply({ applicationId: appId });
+
+    const submitted = listEvents(db, appId).filter((e) => e.kind === 'submitted');
+    expect(submitted).toHaveLength(1);
+    expect(listEvents(db, appId).filter((e) => e.kind === 'apply_started')).toHaveLength(1);
+  });
+
+  it('writes a terminal failed event exactly once', async () => {
+    const { appId } = seedAutoApp();
+    const services = makeServices({
+      runApply: async () => ({
+        outcome: 'failed',
+        reason: 'other',
+        events: [{ step: 'started' }, { step: 'submit_failed' }],
+      }),
+    });
+
+    await services.easyApply({ applicationId: appId });
+
+    const failed = listEvents(db, appId).filter((e) => e.kind === 'failed');
+    expect(failed).toHaveLength(1);
+  });
+
+  it('gate still blocks when a seam is supplied — permission cannot replace the gate', async () => {
+    seedProfile();
+    const cv = seedCv();
+    const job = seedJob('j-gate', 'auto'); // match_score stays null → treated as 0 → below threshold
+    const app = seedApp(job.id, cv.id, 'auto');
+    let runApplyCalled = false;
+    const services = makeServices({
+      runApply: async () => {
+        runApplyCalled = true;
+        return { outcome: 'submitted', events: [] };
+      },
+    });
+
+    await expect(services.easyApply({ applicationId: app.id })).rejects.toThrow(/blocked by gate/);
+    expect(runApplyCalled).toBe(false);
   });
 });
 

@@ -9,12 +9,7 @@ import {
   type ApplicationStatus,
 } from '@vina/shared';
 import {
-  runApply,
   type StructuredScorer,
-  type StructuredApplyDecider,
-  type RunApplyOptions,
-  type ApplyResult,
-  type ApplyEvent,
   type ManualApplyToolKit,
   type SkillRegistry,
 } from '@vina/orchestrator';
@@ -65,15 +60,9 @@ import {
   updateApplicationStatus,
 } from '../db/repositories/applications.js';
 import { appendEvent, listEvents } from '../db/repositories/application-events.js';
-import {
-  recordAttempt,
-  recordSuccess,
-  recordFailure,
-} from '../db/repositories/apply-rate-limit.js';
 import { insertAlert } from '../db/repositories/alerts.js';
 import { findSiteById } from '../db/repositories/sites.js';
 import { getOrInitSearchPreferences } from '../db/repositories/search-preferences.js';
-import { checkEasyApplyGate, dayBucketFromIso } from '../services/easy-apply-gate.js';
 import {
   searchGoogleJobs,
   type GoogleJobsListing,
@@ -88,16 +77,8 @@ import {
   renderCvMarkdownPdf,
 } from '../services/materials-renderer.js';
 import { createManualApplyToolKit } from '../orchestrator/tools/index.js';
+import { runEasyApply, type EasyApplySeam } from '../services/easy-apply-runner.js';
 import type { EventBus } from '../events/bus.js';
-
-export type EasyApplyRunOutcome = {
-  outcome: 'submitted' | 'awaiting_user' | 'failed';
-  reason?: string;
-  events: ApplyEvent[];
-};
-
-/** Runs the real `runApply` graph for an application. Mirrors the apply handler. */
-export type RunApplySeam = (applicationId: string) => Promise<EasyApplyRunOutcome>;
 
 export interface VinaServicesDeps {
   db: DatabaseType;
@@ -112,12 +93,11 @@ export interface VinaServicesDeps {
     opts: { apiKey: string; signal?: AbortSignal },
   ) => AsyncIterable<GoogleJobsListing>;
   /**
-   * Easy Apply submit seam: runs the real `runApply` graph (the gate is
-   * checked by the tool first). Defaults to wiring `runApply` to the browser
-   * via `createAutoApplyToolKit` when the browser deps are supplied. Tests
-   * inject a fake so no browser is required.
+   * Easy Apply submit seam: runs the real `runApply` graph. Defaults to wiring
+   * `runApply` to the browser via `createAutoApplyToolKit` when the browser deps
+   * are supplied. Tests inject a fake so no browser is required.
    */
-  runApply?: RunApplySeam;
+  runApply?: EasyApplySeam;
   browserManager?: BrowserManagerHandle;
   adapters?: Record<string, SiteAdapter>;
   manualApplyToolKit?: ManualApplyToolKit;
@@ -126,68 +106,6 @@ export interface VinaServicesDeps {
 
 function hashString(input: string): string {
   return createHash('sha256').update(input).digest('hex');
-}
-
-/** Default Easy Apply runner: the single `runApply` graph, wired to the browser. */
-function defaultRunApplySeam(deps: VinaServicesDeps): RunApplySeam {
-  return async (applicationId: string): Promise<EasyApplyRunOutcome> => {
-    const { createAutoApplyToolKit } = await import('../orchestrator/tools/auto-apply.js');
-    if (!deps.browserManager || !deps.adapters || !deps.manualApplyToolKit) {
-      throw new ConflictError(
-        'Easy Apply is not wired: supply browserManager/adapters/manualApplyToolKit or a runApply seam',
-      );
-    }
-    const app = findApplicationById(deps.db, applicationId);
-    if (!app) throw new NotFoundError(`Application ${applicationId} not found`);
-    const model = await deps.buildModel();
-    const toolKit = createAutoApplyToolKit({
-      db: deps.db,
-      browserManager: deps.browserManager,
-      adapters: deps.adapters,
-      manualApplyToolKit: deps.manualApplyToolKit,
-      buildModel: deps.buildModel,
-    });
-    const result: ApplyResult = await runApply(
-      { applicationId: app.id, jobId: app.job_id, cvId: app.cv_id },
-      model as unknown as StructuredApplyDecider,
-      toolKit,
-      {
-        ...(deps.skillRegistry ? { skillRegistry: deps.skillRegistry } : {}),
-      } satisfies RunApplyOptions,
-    );
-    return { outcome: result.outcome, reason: result.reason, events: result.events };
-  };
-}
-
-/**
- * Maps a graph event step name to an `application_events.kind`, mirroring the
- * `apply` queue handler's `EVENT_KIND_MAP` so the per-field audit timeline is
- * persisted identically for agent-initiated applies.
- */
-const APPLY_EVENT_KIND_MAP: Partial<Record<string, ApplicationEventKind>> = {
-  started: 'apply_started',
-  tailored: 'cv_tailored',
-  field_filled: 'field_filled',
-  field_unresolved: 'field_unknown',
-  submit_failed: 'failed',
-  submitted: 'submitted',
-};
-
-/** Persists the graph's event stream into `application_events`. */
-function recordApplyEvents(
-  db: DatabaseType,
-  applicationId: string,
-  events: ApplyEvent[],
-): void {
-  for (const event of events) {
-    const kind = APPLY_EVENT_KIND_MAP[event.step];
-    if (!kind) continue;
-    appendEvent(db, {
-      application_id: applicationId,
-      kind,
-      ...(event.detail ? { payload: event.detail } : {}),
-    });
-  }
 }
 
 /**
@@ -227,7 +145,6 @@ const STATUS_EVENT_KIND: Record<ApplicationStatus, ApplicationEventKind> = {
 
 export function createVinaServices(deps: VinaServicesDeps): VinaServices {
   const db = deps.db;
-  const runApplySeam = deps.runApply ?? defaultRunApplySeam(deps);
 
   async function profileRead(_input: ProfileReadInput): Promise<ProfileReadOutput> {
     const profile = findProfile(db);
@@ -662,91 +579,29 @@ export function createVinaServices(deps: VinaServicesDeps): VinaServices {
       throw new ConflictError(`Job ${job.id} is apply_method=manual — cannot Easy Apply`);
     }
 
-    // ADR-023: the single gate runs before any browser/model spend.
-    const nowIso = new Date().toISOString();
-    const today = dayBucketFromIso(nowIso);
-    const gate = checkEasyApplyGate(db, {
-      jobId: job.id,
-      nowIso,
-      today,
-      excludeApplicationId: app.id,
-    });
-    if (gate.decision === 'block') {
-      throw new ConflictError(`Easy Apply blocked by gate: ${gate.reason}`);
+    // Delegate to the single authoritative submit seam. The gate runs inside
+    // `runEasyApply` regardless of any permission outcome upstream.
+    const result = await runEasyApply(deps, app.id);
+
+    if (result.kind === 'blocked') {
+      throw new ConflictError(`Easy Apply blocked by gate: ${result.reason}`);
     }
 
-    // Record the attempt regardless of dry_run vs allow. Dry-run still
-    // consumes a velocity slot so the throttle is visible to the user.
-    recordAttempt(db, nowIso, today);
-
-    if (gate.decision === 'dry_run') {
-      // Mirror the apply handler: no runApply, no submit. The application
-      // pauses for the user; only `allow` may proceed to submit.
-      db.transaction(() => {
-        updateApplicationStatus(db, app.id, 'awaiting_user', {
-          failure_reason: 'dry_run',
-        });
-        appendEvent(db, {
-          application_id: app.id,
-          kind: 'resumed',
-          payload: { status: 'awaiting_user', reason: 'dry_run' },
-        });
-      })();
+    if (result.kind === 'dry_run') {
       deps.bus.emit('application:updated', { id: app.id, status: 'awaiting_user' });
       deps.bus.emit('jobs:updated', { ids: [job.id] });
       return { application_id: app.id, outcome: 'awaiting_user', reason: 'dry_run' };
     }
 
-    const runResult = await runApplySeam(app.id);
-    recordApplyEvents(db, app.id, runResult.events);
-
-    if (runResult.outcome === 'submitted') {
-      db.transaction(() => {
-        updateApplicationStatus(db, app.id, 'submitted', {
-          submitted_at: new Date().toISOString(),
-        });
-        // The job row mirrors the terminal application state so the Jobs
-        // worklist drops it and the Applied tab picks it up.
-        updateJobStatus(db, job.id, 'submitted');
-        appendEvent(db, { application_id: app.id, kind: 'submitted' });
-      })();
-      const completedAt = new Date().toISOString();
-      recordSuccess(db, completedAt, dayBucketFromIso(completedAt));
-      deps.bus.emit('application:updated', { id: app.id, status: 'submitted' });
-    } else if (runResult.outcome === 'failed') {
-      db.transaction(() => {
-        updateApplicationStatus(db, app.id, 'failed', {
-          failure_reason: runResult.reason ?? null,
-        });
-        appendEvent(db, {
-          application_id: app.id,
-          kind: 'failed',
-          payload: runResult.reason ? { reason: runResult.reason } : undefined,
-        });
-      })();
-      recordFailure(db);
-    } else {
-      db.transaction(() => {
-        updateApplicationStatus(db, app.id, 'awaiting_user', {
-          failure_reason: runResult.reason ?? null,
-        });
-        appendEvent(db, {
-          application_id: app.id,
-          kind: 'resumed',
-          payload: {
-            status: 'awaiting_user',
-            ...(runResult.reason ? { reason: runResult.reason } : {}),
-          },
-        });
-      })();
-      deps.bus.emit('application:updated', { id: app.id, status: 'awaiting_user' });
+    if (result.outcome === 'submitted' || result.outcome === 'awaiting_user') {
+      deps.bus.emit('application:updated', { id: app.id, status: result.outcome });
     }
     deps.bus.emit('jobs:updated', { ids: [job.id] });
 
     return {
       application_id: app.id,
-      outcome: runResult.outcome,
-      ...(runResult.reason ? { reason: runResult.reason } : {}),
+      outcome: result.outcome,
+      ...(result.reason ? { reason: result.reason } : {}),
     };
   }
 
