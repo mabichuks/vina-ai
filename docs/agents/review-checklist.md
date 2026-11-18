@@ -19,8 +19,8 @@ apply these. Findings first, severity per the shared `output-format.md`.
 - [ ] A new mutating `vina_*` tool writes `application_events` in the same transaction as its
       effect, and is idempotent on `(applicationId, contentHash)` where a retry is possible.
 - [ ] Tool inputs are zod-validated; tool output is a slice, never a whole table.
-- [ ] Only `vina_easy_apply` can submit. Any other path that clicks submit is a Critical
-      finding.
+- [ ] Only `vina_easy_apply` and `vina_external_submit` can submit, each bound to its site
+      kind and gated. Any other path that clicks submit is a Critical finding.
 - [ ] The agent still cannot type into a LinkedIn Easy Apply form.
 
 ## Submit path and the gate (ADR-023)

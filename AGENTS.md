@@ -26,9 +26,10 @@ Vina supports three job sources and two application workflows:
 
 The manual-apply pipeline tailors the CV and cover letter, marks the application
 `ready_for_manual_apply`, surfaces it in a "Ready to Apply" UI, and waits for the user to
-apply externally and click "Mark as applied". This avoids the unbounded scope of automating
-arbitrary external ATS systems while still giving the user the highest-value automation —
-tailored materials matched to each role.
+apply externally and click "Mark as applied". This is the default of three external modes
+ADR-024 adds: `assisted` has the agent pre-fill the form and the user submit, and
+`autonomous` has the agent fill and submit through a gated tool, always with a visible
+activity log.
 
 CV tailoring uses a configurable LLM (Anthropic, OpenAI, or local Ollama). The user can run
 fully autonomously (Vina picks jobs to apply to or prepare) or supervised (user picks).
@@ -262,13 +263,14 @@ ships in the same PR.
 - Bypass the orchestrator to call LLMs directly from `server` or `web`
 - Add a LangGraph graph, node, prompt module, or LangChain provider — the layer is frozen
   (ADR-024). New behaviour is a `vina_*` tool plus a skill
-- Click submit anywhere except `vina_easy_apply`, or let an agent type into a LinkedIn Easy
-  Apply form
+- Click submit anywhere except `vina_easy_apply` or `vina_external_submit`, each bound to its
+  site kind, or let an agent type into a LinkedIn Easy Apply form
 - Hard-code site-specific selectors anywhere outside `packages/automation`
 - Put the SerpAPI client in `packages/automation` — it's HTTP-only and belongs in
   `packages/server/src/services/`
-- Try to automate external ATS systems (Workday, Greenhouse, etc.) — those route through the
-  manual-apply pipeline by design (see `docs/decisions.md` ADR-016)
+- Automate external ATS systems (Workday, Greenhouse, etc.) outside the three-mode model in
+  ADR-024: `manual` hands the user the link, `assisted` fills and stops, `autonomous` fills
+  and submits through `vina_external_submit` after the gate
 - Store API keys, cookies, or other secrets in plaintext logs
 - Push to remotes or open PRs without being asked
 
